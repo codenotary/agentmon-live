@@ -25,7 +25,7 @@ export type Advisor = { isOn: boolean; calls: number; last: string; notes: Note[
 
 declare module 'claude-code' {
   interface PluginState {
-    'agent-stack': {
+    'agent-radar': {
       main: Main
       tools: Record<string, number>
       agents: Card[]

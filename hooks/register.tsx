@@ -5,7 +5,7 @@ import type { Card, LogLine, Note } from '../types'
 import { CATEGORIES, LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 
-const PANE = 'agent-stack'
+const PANE = 'agent-radar'
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
 // A finished turn with fewer main-loop tool calls is too small to be worth a Fable call.
 const MIN_TOOLS_FOR_DONE_CHECK = 3
@@ -16,17 +16,17 @@ let advisorModel = 'claude-fable-5-1'
 let advisorMode = 'all'
 let statusQueued = false
 
-const main = atom({ plugin: 'agent-stack', key: 'main' } as const, { model: '', effort: '' })
-const tools = atom({ plugin: 'agent-stack', key: 'tools' } as const, {})
-const agents = atom({ plugin: 'agent-stack', key: 'agents' } as const, [])
-const log = atom({ plugin: 'agent-stack', key: 'log' } as const, [])
-const advisor = atom({ plugin: 'agent-stack', key: 'advisor' } as const, {
+const main = atom({ plugin: 'agent-radar', key: 'main' } as const, { model: '', effort: '' })
+const tools = atom({ plugin: 'agent-radar', key: 'tools' } as const, {})
+const agents = atom({ plugin: 'agent-radar', key: 'agents' } as const, [])
+const log = atom({ plugin: 'agent-radar', key: 'log' } as const, [])
+const advisor = atom({ plugin: 'agent-radar', key: 'advisor' } as const, {
   isOn: true,
   calls: 0,
   last: '–',
   notes: [],
 })
-const stats = atom({ plugin: 'agent-stack', key: 'stats' } as const, { errors: {}, compactions: 0 })
+const stats = atom({ plugin: 'agent-radar', key: 'stats' } as const, { errors: {}, compactions: 0 })
 
 // `git status`, `cd x && git push`, `git -C dir log`: the git part of a shell command, else undefined.
 export function gitCommand(command: string): string | undefined {
@@ -71,6 +71,21 @@ export function brief(call: object): string {
   return typeof arg === 'string' ? arg.replace(/\s+/g, ' ').slice(0, 100) : ''
 }
 
+const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/
+
+// Cut `s` to `width - 1` terminal columns and pad it to `width`; CJK and full-width characters take two columns.
+export function fit(s: string, width: number): string {
+  let out = ''
+  let used = 0
+  for (const c of s) {
+    const w = WIDE.test(c) ? 2 : 1
+    if (used + w > width - 1) break
+    out += c
+    used += w
+  }
+  return out + ' '.repeat(width - used)
+}
+
 function effortBar(effort: string): string {
   const n = ({ low: 1, medium: 2, high: 3, xhigh: 4, max: 4 } as Record<string, number>)[effort] ?? 0
   return '█'.repeat(n) + '▯'.repeat(4 - n)
@@ -102,7 +117,7 @@ async function refreshStatus($: EngineInterface) {
   $.ui.status(t.statusLine(m.effort || '?', running, list.length, listening(adv.isOn), total, counts.git ?? 0))
 }
 
-// The `/agent-stack advisor` toggle and the advisorMode option both have to allow Fable.
+// The `/agent-radar advisor` toggle and the advisorMode option both have to allow Fable.
 function listening(isOn: boolean): boolean {
   return isOn && advisorMode !== 'off'
 }
@@ -156,7 +171,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'agent-stack',
+      name: 'agent-radar',
       description: t.commandDescription,
       argumentHint: `[${t.argAdvisor}|${t.argClear}]`,
     })
@@ -171,13 +186,13 @@ export const register: Register = (on, options) => {
       update($, agents, list => list.filter(a => a.status in t.status)),
       update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind in t.kind) })),
     ])
-    void $.ui.open({ id: PANE, title: 'Agent Stack' })
+    void $.ui.open({ id: PANE, title: 'Agent Radar' })
     await refreshStatus($)
 
     return next(e)
   })
 
-  on('command.run', { command: 'agent-stack' }, async ($, e) => {
+  on('command.run', { command: 'agent-radar' }, async ($, e) => {
     const arg = e.args.trim()
     if (arg === t.argAdvisor) {
       const a = await update($, advisor, v => ({ ...v, isOn: !v.isOn }))
@@ -195,7 +210,7 @@ export const register: Register = (on, options) => {
       await refreshStatus($)
       return { text: t.cleared }
     }
-    await $.ui.open({ id: PANE, title: 'Agent Stack' })
+    await $.ui.open({ id: PANE, title: 'Agent Radar' })
     return { text: t.opened }
   })
 
@@ -410,20 +425,20 @@ export const register: Register = (on, options) => {
           </Box>
           {rows.map(([c, n]) => (
             <Text>
-              <Text color={c === 'git' ? 'yellow' : undefined} bold={c === 'git'}>{t.cat[c].padEnd(17)}</Text>
+              <Text color={c === 'git' ? 'yellow' : undefined} bold={c === 'git'}>{fit(t.cat[c], 17)}</Text>
               <Text color={c === 'git' ? 'yellow' : 'green'}>{'█'.repeat(Math.round((n / most) * barRoom)).padEnd(barRoom)}</Text>
               {String(n).padStart(4)}{' '}
               {st.errors[c] ? <Text color="red">{t.errors(st.errors[c])}</Text> : <Text color="green">{t.ok}</Text>}
             </Text>
           ))}
           <Text>
-            {t.context.padEnd(17)}
+            {fit(t.context, 17)}
             <Text color={pct > 80 ? 'red' : 'green'}>{'█'.repeat(Math.round((pct / 100) * barRoom)).padEnd(barRoom)}</Text>
             {String(pct).padStart(4)} % <Text dimColor>{t.compactedTimes(st.compactions)}</Text>
           </Text>
           {gitLines.map(l => (
             <Text>
-              <Text color="yellow" bold>{t.lastGit.padEnd(17)}</Text>
+              <Text color="yellow" bold>{fit(t.lastGit, 17)}</Text>
               <Text color={l.result === 'ok' ? 'yellow' : 'red'}>{l.what.slice(0, barRoom + 20)}</Text>
               <Text dimColor> {l.who.slice(0, 16)}</Text>
             </Text>
@@ -440,7 +455,7 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         <Text bold>
-          AGENT STACK · <Text color="#d97757">{modelName(m.model).split(' ')[0]?.toUpperCase()} {t.plans}</Text> ·{' '}
+          AGENT RADAR · <Text color="#d97757">{modelName(m.model).split(' ')[0]?.toUpperCase()} {t.plans}</Text> ·{' '}
           {workerModel && <Text color="blue">{modelName(workerModel).split(' ')[0]?.toUpperCase()} {t.executes} · </Text>}
           {listening(adv.isOn) && <Text color="magenta">{t.watches}</Text>}
         </Text>
@@ -454,8 +469,8 @@ export const register: Register = (on, options) => {
           {lines.slice(-8).map(l => (
             <Text>
               <Text dimColor>{clockTime(l.at)} </Text>
-              <Text color="blue">{l.who.slice(0, 16).padEnd(17)}</Text>
-              <Text color={l.isGit ? 'yellow' : undefined}>{l.what.slice(0, whatRoom).padEnd(whatRoom)}</Text> {l.result}
+              <Text color="blue">{fit(l.who, 17)}</Text>
+              <Text color={l.isGit ? 'yellow' : undefined}>{fit(l.what, whatRoom + 1)}</Text>{l.result}
             </Text>
           ))}
         </Box>

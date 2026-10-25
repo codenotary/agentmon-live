@@ -1,2 +1,23 @@
+# Written by Claude Code when it loads the mod
 .claude-plugin/types/
+.mcpb-cache/
+
+# Packaging
+*.plugin
+*.tgz
+
+# Dependencies and tooling
 node_modules/
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*~
+*.swp
+*.swo
+.idea/
+.vscode/

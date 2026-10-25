@@ -1,43 +1,69 @@
-# agent-stack
+# Agent Radar
 
-A Claude Code mod that shows a live pane beside the chat:
+A Claude Code plugin that keeps a live pane beside the chat, so you can see what the session and its subagents are doing while they work.
 
-- the main session's model and effort
-- tool calls per category, with errors, context use and compactions
-- git commands highlighted: their own row, the last three commands, and a line in the session log
-- subagent cards with model, effort, files touched, tokens and test results
-- a session log
-- Fable, a quiet advisor model that reads along and speaks up (as a toast) when a plan looks incomplete, the session loops on errors, or a finished task seems to skip something
+![Agent Radar icon](.claude-plugin/icon.png)
+
+## What it shows
+
+- **Main session:** model and effort level.
+- **Tools:** calls per category (git, read, search, web, shell, edit, agents, skills, browser, computer use), with error counts, context use and compactions.
+- **Git:** git commands get their own highlighted row, the last three commands with who ran them, and a line in the session log. The status line counts them as `git [n]`.
+- **Subagents:** one card per subagent with model, effort, task, files touched, tokens and test result (PASS/FAIL read from its final answer).
+- **Session log:** subagent starts and finishes, test results, git commands and compactions.
+- **Fable advisor:** a second model that reads along and speaks up, as a toast, only when something looks off: a plan that misses something, three errors in a row, or a task reported done with parts left out. It never writes code.
+
+Languages: English (default), German, French, Spanish, Chinese and Japanese.
 
 ## Install
 
-Load it from a folder:
+At the prompt of a Claude Code terminal session:
 
-```sh
-export CLAUDE_CODE_PLUGIN_DIRS="$HOME/claude-mods/agent-stack"
+```
+/plugin install agent-radar --marketplace vchaindz/agent-radar
 ```
 
-or start a session with `claude --plugin-dir ~/claude-mods/agent-stack`.
+Answer `y` to add the marketplace, then pick a scope. From a shell:
+
+```sh
+claude plugin install agent-radar --marketplace vchaindz/agent-radar
+```
+
+In the desktop app: click + next to the prompt box, then Plugins, Add marketplace with `vchaindz/agent-radar`, then Add plugin.
 
 ## Use
 
-- `/agent-stack` opens the pane
-- `/agent-stack advisor` turns Fable on or off
-- `/agent-stack clear` (or `leeren`) resets the counters, cards and log
+| Command | Does |
+| --- | --- |
+| `/agent-radar` | Opens the pane |
+| `/agent-radar advisor` | Turns Fable on or off |
+| `/agent-radar clear` | Resets counters, cards and log. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
-## Options (`/config`)
+The pane opens by itself at session start when the terminal is wide enough.
+
+## Options
+
+Set in `/config`, under the plugin:
 
 | Option | Values | Default |
 | --- | --- | --- |
-| `language` | `en`, `de` | `en` |
+| `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | `en` |
 | `advisorModel` | any model id | `claude-fable-5-1` |
-| `advisorMode` | `all` (plan, error streak, done checks), `plan` (plan check only), `off` | `all` |
+| `advisorMode` | `all` (plan, error streak and done checks), `plan` (plan check only), `off` | `all` |
 
-The done check runs only after turns with at least 3 tool calls, to keep advisor cost down.
+### Cost
+
+Each Fable check is one small model call (low effort, at most 300 output tokens). The done check runs only after turns with at least 3 tool calls. Set `advisorMode` to `plan` or `off` to cut calls further.
 
 ## Develop
 
-Load the mod once (`claude --plugin-dir .`) before running `tsc`: the engine writes the types `tsconfig.json` extends into `.claude-plugin/types/`, which git ignores.
+```sh
+git clone https://github.com/vchaindz/agent-radar.git
+cd agent-radar
+claude --plugin-dir .
+```
+
+Loading the mod once writes the types `tsconfig.json` extends into `.claude-plugin/types/` (git ignores that folder). Then:
 
 ```sh
 claude plugin validate .
@@ -45,4 +71,19 @@ claude plugin test .
 npx -p typescript tsc --noEmit -p .
 ```
 
-To add a language, add a block to `LANGUAGES` in `hooks/i18n.ts` and its code to the `language` options in `.claude-plugin/plugin.json`.
+| Path | Holds |
+| --- | --- |
+| `hooks/register.tsx` | Hooks, state and the pane |
+| `hooks/i18n.ts` | All text, one block per language |
+| `types/index.d.ts` | State contract |
+| `tests/agent-radar.test.tsx` | Tests |
+
+To add a language, add a block to `LANGUAGES` in `hooks/i18n.ts` (the `Strings` type lists every key) and its code to the `language` options in `.claude-plugin/plugin.json`.
+
+## Author
+
+Developed by [vchaindz](https://github.com/vchaindz).
+
+## License
+
+[Apache License 2.0](LICENSE)

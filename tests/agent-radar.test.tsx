@@ -1,14 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
-import { brief, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
+import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
 
 const PANE = {
-  plugin: 'agent-stack',
+  plugin: 'agent-radar',
   component: 'Pane',
-  requestId: 'agent-stack',
+  requestId: 'agent-radar',
   surface: 'terminal',
   props: {
-    title: 'Agent Stack',
+    title: 'Agent Radar',
     isFocused: false,
     bodyColumns: 120,
     placement: 'dock',
@@ -30,11 +30,14 @@ test('helpers format like the screenshot', async () => {
   expect(gitCommand('cd /x && git  push origin main')).toBe('git push origin main')
   expect(gitCommand('git -C repo log --oneline | head')).toBe('git -C repo log --oneline')
   expect(gitCommand('echo legit')).toBe(undefined)
+  expect(fit('skills & commands', 17)).toBe('skills & command ')
+  expect(fit('读取文件', 10)).toBe('读取文件  ')
+  expect(fit('コンピュータ操作', 10)).toBe('コンピュ  ')
   expect(gitCommand('cd repo\ngit status')).toBe('git status')
 })
 
 test('pane counts tool calls and shows a spawned subagent', async ($, on) => {
-  on('command.register', () => ({ value: { command: 'agent-stack' } }))
+  on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 330000, percent: 33 }, rateLimits: [] } }))
@@ -66,7 +69,7 @@ test('pane counts tool calls and shows a spawned subagent', async ($, on) => {
 })
 
 test('pane counts failed calls and compactions', async ($, on) => {
-  on('command.register', () => ({ value: { command: 'agent-stack' } }))
+  on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -87,7 +90,7 @@ test('pane counts failed calls and compactions', async ($, on) => {
 })
 
 test('german option localizes the pane', { options: { language: 'de' } }, async ($, on) => {
-  on('command.register', () => ({ value: { command: 'agent-stack' } }))
+  on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -107,7 +110,7 @@ test('german option localizes the pane', { options: { language: 'de' } }, async 
 })
 
 test('git commands get their own row and log line', async ($, on) => {
-  on('command.register', () => ({ value: { command: 'agent-stack' } }))
+  on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -127,3 +130,23 @@ test('git commands get their own row and log line', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /EXECUTES/ })).toBe(undefined)
   await ui.unmount()
 })
+
+for (const language of ['fr', 'es', 'zh', 'ja'] as const) {
+  test(`${language} option draws the pane`, { options: { language } }, async ($, on) => {
+    on('command.register', () => ({ value: { command: 'agent-radar' } }))
+    on('ui.open', () => ({ value: { isPlaced: true } }))
+    on('session.model', () => ({ value: 'claude-opus-5-5' }))
+    on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
+    on('session.start', (_, e) => ({ cwd: e.cwd }))
+    on('ui.status', () => ({ value: undefined }))
+    on('clock.now', () => ({ value: 0 }))
+    on('tool.call', () => ({ result: {} }))
+
+    await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+    await $.tool.call({ tool: 'Bash', command: 'git status' })
+
+    const ui = await $.ui.mount(PANE)
+    expect(await ui.find({ type: 'Text', text: /git \[1\]/ })).toBeTruthy()
+    await ui.unmount()
+  })
+}
