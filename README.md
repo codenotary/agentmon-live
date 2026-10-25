@@ -33,6 +33,17 @@ claude plugin install agent-radar --marketplace vchaindz/agent-radar
 
 In the desktop app: click + next to the prompt box, then Plugins, Add marketplace with `vchaindz/agent-radar`, then Add plugin.
 
+### Or let Claude set it up
+
+Paste this into a Claude Code session:
+
+```
+Install the Claude Code plugin agent-radar from the marketplace vchaindz/agent-radar
+(claude plugin install agent-radar --marketplace vchaindz/agent-radar). Then ask me which
+language I want (en, de, fr, es, zh, ja) and which advisor mode (all, plan, off), and set
+those options for the plugin in my user settings. Tell me to restart Claude Code when done.
+```
+
 ## Use
 
 | Command | Does |
