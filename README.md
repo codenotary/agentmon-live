@@ -1,8 +1,10 @@
-# Agent Radar
+<p align="center">
+  <img src=".claude-plugin/icon.png" alt="Agent Radar" width="128" height="128">
+</p>
 
-A Claude Code plugin that keeps a live pane beside the chat, so you can see what the session and its subagents are doing while they work.
+<h1 align="center">Agent Radar</h1>
 
-![Agent Radar icon](.claude-plugin/icon.png)
+<p align="center">A Claude Code plugin that keeps a live pane beside the chat, so you can see what the session and its subagents are doing while they work.</p>
 
 ## What it shows
 
