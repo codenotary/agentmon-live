@@ -23,7 +23,8 @@ const LEFT = 28
 
 // The session as boxes, each pipe drawn in the box it feeds: Box and Text only, so every surface draws it.
 export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: number, t: Strings): RenderChildren {
-  const isWide = cols >= 100
+  // The left column takes 29 columns and a one-line tools row about 33, so side by side fits from 80.
+  const isWide = cols >= 80
   const title = (label: string, color: string) => (
     <Text color={color} bold>
       ● {label.toUpperCase()}

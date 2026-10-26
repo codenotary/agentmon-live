@@ -212,7 +212,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       ))}
       {doing.length === 0 && last && (
         <Text dimColor>
-          {t.lastCall} · {last.tool} {cut(last.what, whatRoom)} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
+          {t.lastCall} · {last.tool}{last.what ? ` ${cut(last.what, whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
         </Text>
       )}
       {liveAgents.length > MAX_CARDS ? (
