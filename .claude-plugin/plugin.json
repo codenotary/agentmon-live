@@ -1,6 +1,6 @@
 {
   "name": "agent-radar",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Agent Radar: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -34,6 +34,12 @@
         "plan",
         "off"
       ]
+    },
+    "advisorBudget": {
+      "type": "number",
+      "title": "Advisor call budget",
+      "description": "Most Fable calls per session; 0 means no limit",
+      "default": 30
     }
   },
   "license": "Apache-2.0",

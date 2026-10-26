@@ -166,17 +166,21 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Box>
   )
 
+  const isListening = listening(adv.isOn)
+  const advisorState =
+    !isListening ? `(${t.off})`
+    : adv.state === 'checking' ? t.checking
+    : adv.state === 'unavailable' ? `(${t.unavailable})`
+    : adv.state === 'budget' ? `(${t.budgetUsed})`
+    : cfg.advisorMode === 'plan' ? `(${t.planOnly})`
+    : ''
   const advisorBox = (
     <Box flexDirection="column" borderStyle="single" borderColor="magenta" paddingX={1} width={isWide ? 30 : undefined}>
       <Text>
         <Text color="magenta" bold>fable</Text>{' '}
-        {!listening(adv.isOn) ? (
-          <Text dimColor>({t.off})</Text>
-        ) : cfg.advisorMode === 'plan' ? (
-          <Text dimColor>({t.planOnly})</Text>
-        ) : (
-          ''
-        )}
+        <Text color={adv.state === 'checking' ? 'cyan' : adv.state === 'unavailable' ? 'red' : undefined} dimColor={adv.state !== 'checking'}>
+          {advisorState}
+        </Text>
       </Text>
       {adv.calls === 0 ? (
         <Text dimColor>{t.advisorAbout}</Text>
@@ -185,11 +189,23 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           n.ok ? (
             <Text color="green">✓ {t.kind[n.kind]} {t.ok}</Text>
           ) : (
-            <Text color="red">✗ {t.kind[n.kind]} {t.nok}: <Text color="yellow">{cut(n.text, 200)}</Text></Text>
+            <Box flexDirection="column">
+              <Text color="red">✗ {t.kind[n.kind]} {t.nok}: <Text color="yellow">{cut(n.text, 200)}</Text></Text>
+              {n.ref && <Text dimColor>  ↳ {cut(n.ref, 40)}</Text>}
+            </Box>
           ),
         )
       )}
-      {adv.calls > 0 && <Text dimColor>{t.calls}  {adv.calls}</Text>}
+      {adv.calls > 0 && (
+        <Text dimColor>
+          {t.calls}  {adv.calls}{cfg.advisorBudget > 0 ? `/${cfg.advisorBudget}` : ''} · {t.advisorTokens(kilo(adv.tokensIn ?? 0), kilo(adv.tokensOut ?? 0))}
+        </Text>
+      )}
+      {isListening && adv.state !== 'checking' && adv.state !== 'budget' && (
+        <Button key="advisor:check" plain hotkey="c" onPress={() => undefined /* register.tsx takes this press in a ui.press hook */}>
+          {t.checkNow}
+        </Button>
+      )}
     </Box>
   )
 

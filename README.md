@@ -12,7 +12,7 @@ Top to bottom, in the order you need it:
 
 - **Needs attention:** a tool call waiting for your approval, three failed calls in a row, a failed check, a subagent that failed or reported failing tests, a subagent waiting. Shown only when there is something.
 - **Running now:** each tool call in flight, with who runs it and for how long; when idle, the last call. Running and waiting subagents sit here as cards.
-- **Fable advisor:** a second model that reads along and speaks up, as a toast, only when something looks off: a plan that misses something, three errors in a row, or a task reported done with parts left out. It never writes code. Each verdict shows as ok or nok.
+- **Fable advisor:** a second model that reads along and speaks up, as a toast, only when something looks off: a plan that misses something, three errors in a row, or a task reported done with parts left out (after real work: 3 or more tool calls, an edit, or a subagent). It sees your request whole, this turn's tool calls, the files changed (by subagents too), the subagents' outcomes and the observed checks. It never writes code. Each verdict shows as ok or nok; an objection names the evidence it rests on (`↳ Bash npm test`). Its state reads checking, off, plan only, unavailable (the model failed) or budget used, with its own call count and tokens. **Check now** (`c`, or `/agent-radar check`) asks it at once. The same question twice in a row, or the same kind of check within a minute, is not sent again; the same objection twice gives no second toast.
 - **Changes and verification:** files edited and read (successful calls only), and the last test, lint, typecheck and build command with its outcome: ok, failed, or unknown when a pipe or a denial hides the exit status. A check run before a later edit is marked stale.
 - **Usage:** context, cost and rate limits with their reset times; `unavailable` where the session does not report a value.
 - **History** (folds with `h`): main session, tool counts per category with errors, the git / shell / MCP detail tabs (`g` `s` `m`, a click, or `/agent-radar git|shell|mcp`), finished subagent cards and the session log.
@@ -57,6 +57,7 @@ those options for the plugin in my user settings. Tell me to restart Claude Code
 | --- | --- |
 | `/agent-radar` | Opens the pane |
 | `/agent-radar advisor` | Turns Fable on or off |
+| `/agent-radar check` | Asks Fable now |
 | `/agent-radar git`, `shell`, `mcp` | Shows that detail tab |
 | `/agent-radar clear` | Resets counters, finished cards, log and Fable's notes; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
@@ -71,10 +72,11 @@ Set in `/config`, under the plugin:
 | `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | `en` |
 | `advisorModel` | any model id | `claude-fable-5-1` |
 | `advisorMode` | `all` (plan, error streak and done checks), `plan` (plan check only), `off` | `all` |
+| `advisorBudget` | most Fable calls per session; `0` for no limit | `30` |
 
 ### Cost
 
-Each Fable check is one small model call (low effort, at most 300 output tokens). The done check runs only after turns with at least 3 tool calls. Set `advisorMode` to `plan` or `off` to cut calls further.
+Each Fable check is one small model call (low effort, at most 300 output tokens, about 12,000 characters of material). The done check runs only after real work; the cooldown, duplicate suppression and `advisorBudget` cap the rest. The pane shows Fable's own tokens. Set `advisorMode` to `plan` or `off` to cut calls further.
 
 ## Develop
 

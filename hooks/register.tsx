@@ -26,8 +26,11 @@ const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
 const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
-// A finished turn with fewer main-loop tool calls is too small to be worth a Fable call.
+// A finished turn with fewer main-loop tool calls, no edit and no subagent is too small to be worth a Fable call.
 const MIN_TOOLS_FOR_DONE_CHECK = 3
+// How much material Fable gets; the request and the evidence stay whole, the oldest trail lines go first.
+const MATERIAL_ROOM = 12000
+const REQUEST_ROOM = 2000
 
 let statusQueued = false
 
@@ -76,27 +79,48 @@ function queueStatus($: EngineInterface) {
   })
 }
 
+// What the main loop did this turn, so Fable judges the work and not only the answer.
+type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string> }
+
+// The request, this turn's subagents and the observed checks are kept whole; the trail gives way.
+async function material($: EngineInterface, turn: Turn): Promise<string> {
+const t = cfg.t
+  const [list, checked, touched] = await Promise.all([read($, agents), read($, checks), read($, files)])
+  const agentLines = list
+    .filter(a => isLive(a) || a.startedAt >= turn.startedAt)
+    .map(a => `- ${a.type}: ${a.status}${a.tests ? ` · ${a.tests} (${t.reported})` : ''} · ${a.task}`)
+  const checkLines = checked.map(
+    c => `- ${c.kind}: ${c.result}${c.result !== 'running' && touched.editedAt > c.at ? ` (${t.stale})` : ''} · ${c.command}`,
+  )
+  const request = turn.prompt.slice(0, REQUEST_ROOM)
+  const changed = [...turn.edited].join('\n')
+  const evidence = t.evidence(agentLines.join('\n'), checkLines.join('\n'))
+  const room = MATERIAL_ROOM - t.material(request, '', changed).length - evidence.length
+  let lines = turn.trail
+  while (lines.length > 0 && lines.join('\n').length > room) lines = lines.slice(1)
+  return t.material(request, lines.join('\n'), changed) + evidence
+}
+
 export const register: Register = (on, options) => {
   const t = (cfg.t = LANGUAGES[String(options.language)] ?? LANGUAGES.en!)
   cfg.advisorModel = String(options.advisorModel || 'claude-fable-5-1')
   cfg.advisorMode = String(options.advisorMode || 'all')
+  const budget = Number(options.advisorBudget ?? 30)
+  cfg.advisorBudget = Number.isFinite(budget) && budget >= 0 ? budget : 30
   // Module variables reset on reload; the atoms above keep the shown state.
   const effortByCall = new Map<string, string>()
   const filesByAgent = new Map<string, Set<string>>()
   const seenStep = new Map<string, string>()
-  let lastPrompt = ''
-  let turnTools = 0
   let callCount = 0
-  // What the main loop did this turn, so Fable judges the work and not only the answer.
-  let trail: string[] = []
-  let edited = new Set<string>()
-  const material = () => t.material(lastPrompt, trail.join('\n'), [...edited].join('\n'))
+  // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
+  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set() }
+  const workRef = () => t.filesTools(turn.edited.size, turn.tools) + (turn.delegated ? ` · ${turn.delegated} subagents` : '')
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'agent-radar',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argClear}|${VIEWS.join('|')}]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}]`,
     })
     const model = await $.session.model()
     await update($, main, m => ({ ...m, model }))
@@ -108,7 +132,7 @@ export const register: Register = (on, options) => {
       update($, stats, s => ({ ...s, errors: keep(s.errors) })),
       update($, agents, list => list.filter(a => a.status in t.status)),
       // A load starts a new advisor epoch, so an answer the last load asked for is dropped.
-      update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind in t.kind), epoch: (a.epoch ?? 0) + 1 })),
+      update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind in t.kind), epoch: (a.epoch ?? 0) + 1, state: 'idle' as const })),
       // Calls in flight when the module reloaded will never report back.
       update($, active, () => []),
     ])
@@ -124,6 +148,10 @@ export const register: Register = (on, options) => {
       const a = await update($, advisor, v => ({ ...v, isOn: !v.isOn }))
       await refreshStatus($)
       return { text: t.advisorToggled(a.isOn) }
+    }
+    if (arg === t.argCheck || arg === 'check') {
+      advise($, 'check', t.askCheck, await material($, turn), workRef(), true)
+      return { text: t.checking }
     }
     const v = VIEWS.find(x => x === arg.toLowerCase())
     if (v) {
@@ -143,7 +171,7 @@ export const register: Register = (on, options) => {
         update($, files, () => ({ read: [], edited: [], editedAt: 0 })),
         update($, lastCall, () => null),
       ])
-      await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1 }))
+      await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const, lastKey: undefined, lastAt: {} }))
       await refreshStatus($)
       return { text: t.cleared }
     }
@@ -153,10 +181,12 @@ export const register: Register = (on, options) => {
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
-      lastPrompt = e.text
-      turnTools = 0
-      trail = []
-      edited = new Set()
+      turn.prompt = e.text
+      turn.tools = 0
+      turn.delegated = 0
+      turn.startedAt = await $.clock.now()
+      turn.trail = []
+      turn.edited = new Set()
       await update($, stats, s => ({ ...s, streak: 0 }))
     } else {
       // A finished agent that gets a new message runs again.
@@ -202,13 +232,13 @@ export const register: Register = (on, options) => {
       filesByAgent.set(id, files)
       await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, files: files.size } : a)))
     } else {
-      turnTools += 1
+      turn.tools += 1
     }
     queueStatus($)
 
     if (e.tool === 'ExitPlanMode' && e.agentId === undefined && cfg.advisorMode !== 'off') {
       const plan = (await $.session.messages()).filter(m => m.role === 'assistant').at(-1)?.text ?? ''
-      advise($, 'plan', t.askPlan, `${t.task}: ${lastPrompt}\n\n${t.plan}:\n${plan}`)
+      advise($, 'plan', t.askPlan, `${t.task}: ${turn.prompt.slice(0, REQUEST_ROOM)}\n\n${t.plan}:\n${plan.slice(0, MATERIAL_ROOM)}`, t.plan)
     }
 
     const command = e.tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
@@ -242,7 +272,7 @@ export const register: Register = (on, options) => {
       await update($, checks, list => list.map(c => (c.kind === kind && c.at === startedAt ? { ...c, result } : c)))
     }
     if (path && !failed && (cat === 'edit' || cat === 'read')) {
-      if (cat === 'edit' && e.agentId === undefined) edited.add(path)
+      if (cat === 'edit') turn.edited.add(path)
       await update($, files, f =>
         cat === 'edit'
           ? { ...f, edited: [...f.edited.filter(p => p !== path), path].slice(-200), editedAt: at }
@@ -250,9 +280,9 @@ export const register: Register = (on, options) => {
       )
     }
     if (e.agentId === undefined && ran.deny === undefined) {
-      trail = [...trail, `${e.tool} ${brief(e)} -> ${ran.isError ? `${t.failed}: ${String(ran.text ?? '').slice(0, 300)}` : 'ok'}`].slice(-40)
+      turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${ran.isError ? `${t.failed}: ${String(ran.text ?? '').slice(0, 300)}` : 'ok'}`].slice(-40)
       const s = await update($, stats, v => ({ ...v, streak: ran.isError ? (v.streak ?? 0) + 1 : 0 }))
-      if (s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, material())
+      if (s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, await material($, turn), `${e.tool} ${brief(e)}`.trim())
     }
     return ran
   })
@@ -308,6 +338,7 @@ export const register: Register = (on, options) => {
       const id = e.agentId
       const u = e.usage
       const tests = testsOf(e.answer)
+      turn.delegated += 1
       const status: Card['status'] = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'cancelled' : 'error'
       seenStep.delete(id)
       const list = await update($, agents, all =>
@@ -331,10 +362,20 @@ export const register: Register = (on, options) => {
         await addLog($, { who: card.type, what: t.doneAfter(decimal(e.durationMs / 1000)), result: t.filesTools(card.files, card.tools) })
       }
       await refreshStatus($)
-    } else if (e.reason === 'answer' && turnTools >= MIN_TOOLS_FOR_DONE_CHECK && cfg.advisorMode === 'all') {
-      advise($, 'done', t.askDone, `${material()}\n\n${t.finalAnswer}:\n${e.answer}`)
+    } else if (
+      e.reason === 'answer' &&
+      cfg.advisorMode === 'all' &&
+      (turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0)
+    ) {
+      advise($, 'done', t.askDone, `${await material($, turn)}\n\n${t.finalAnswer}:\n${e.answer.slice(-4000)}`, workRef())
     }
     return next(e)
+  })
+
+  // The pane's "check now" button; taken here, where this turn's material is at hand.
+  on('ui.press', { plugin: 'agent-radar', element: 'advisor:check' }, async ($, e) => {
+    advise($, 'check', t.askCheck, await material($, turn), workRef(), true)
+    return { element: e.element }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, drawPane)

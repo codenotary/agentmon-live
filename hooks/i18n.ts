@@ -20,7 +20,7 @@ const en = {
     other: 'other',
   } as Record<Category, string>,
   status: { running: 'running', waiting: 'waiting', done: 'done', error: 'error', cancelled: 'cancelled' },
-  kind: { plan: 'plan', error: 'error', done: 'done' },
+  kind: { plan: 'plan', error: 'error', done: 'done', check: 'check' },
   testsPass: (n: string) => `PASS · ${n} tests`,
   statusLine: (effort: string, running: number, agents: number, listening: boolean, tools: number, git: number) =>
     `effort [${effort}] · subagents [${running}/${agents}] · advisor [${listening ? 'listening' : 'off'}] · tools [${tools}] · git [${git}]`,
@@ -61,6 +61,14 @@ const en = {
   errors: (n: number) => `${n} failed`,
   ok: 'ok',
   nok: 'nok',
+  askCheck: 'Look at the work so far. Is anything wrong or missing?',
+  argCheck: 'check',
+  checkNow: 'check now',
+  checking: 'checking…',
+  budgetUsed: 'budget used',
+  evidence: (agents: string, checks: string) =>
+    `\n\nSubagents:\n${agents || '(none)'}\n\nChecks:\n${checks || '(none)'}`,
+  advisorTokens: (i: string, o: string) => `tokens ${i} / ${o}`,
   changes: 'changes & verification',
   edited: (n: number) => `${n} edited`,
   readFiles: (n: number) => `${n} read`,

@@ -207,7 +207,8 @@ test('fable verdicts show as ok and nok', async ($, on) => {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('session.messages', () => ({ value: [{ role: 'assistant', text: 'the plan', toolUses: [] }] }))
+  const plans = ['the first plan', 'the second plan']
+  on('session.messages', () => ({ value: [{ role: 'assistant', text: plans.shift() ?? 'later plan', toolUses: [] }] }))
   on('ui.status', () => ({ value: undefined }))
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
@@ -221,6 +222,8 @@ test('fable verdicts show as ok and nok', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'ExitPlanMode' })
   await clock.settle()
+  // A second plan check within the minute's cooldown would be skipped.
+  await clock.advance(61_000)
   await $.tool.call({ tool: 'ExitPlanMode' })
   await clock.settle()
 
@@ -474,6 +477,132 @@ test('a narrow pane still draws every section', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /needs attention/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /changes & verification/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^usage$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+// Fable answers from `answers` in turn and records each prompt it was sent.
+function fable(on: On, answers: string[], prompts: string[]) {
+  on('model.complete', (_, e) => {
+    prompts.push(e.prompt)
+    return {
+      value: { isAnswered: true, text: answers.shift() ?? 'OK', usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } },
+    }
+  })
+}
+
+test('delegated work gets a done check with the request and subagent evidence', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, ['The subagent reported failing tests.'], prompts)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('ui.toast', () => ({ value: undefined }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  await $.turn.complete({ ...DONE, answer: '3 tests passed, 1 failed', agentId: 'a1' })
+  await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Done.' })
+  await clock.settle()
+
+  expect(prompts.length).toBe(1)
+  expect(prompts[0]).toContain('Fix the parser')
+  expect(prompts[0]).toMatch(/- Explore: done · FAIL \(reported\) · Mod lesen/)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^✗ done nok/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /↳ 0 files · 0 tools · 1 subagents/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /tokens 100 \/ 20/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a long trail is trimmed from its oldest lines, never from the request', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, [], prompts)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('tool.call', () => ({ result: {}, text: 'e'.repeat(300), isError: true }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'REQUEST-MARK keep me', turnId: 'm1' })
+  for (let i = 0; i < 40; i++) await $.tool.call({ tool: 'Bash', command: `step-${i} ${'x'.repeat(90)}` })
+  await clock.advance(61_000)
+  await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Done.' })
+  await clock.settle()
+
+  const done = prompts.at(-1) ?? ''
+  expect(done).toContain('REQUEST-MARK keep me')
+  expect(done).toContain('step-39')
+  expect(done).not.toContain('step-0 ')
+  expect(done.length).toBeLessThan(13000)
+})
+
+test('repeated and rapid checks are suppressed and the budget holds', { options: { advisorBudget: 3 } }, async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  const plans = ['plan A', 'plan B', 'plan B', 'plan B', 'plan C', 'plan D']
+  engine(on)
+  fable(on, [], prompts)
+  on('session.messages', () => ({ value: [{ role: 'assistant', text: plans.shift() ?? '', toolUses: [] }] }))
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const plan = async (wait: number) => {
+    await clock.advance(wait)
+    await $.tool.call({ tool: 'ExitPlanMode' })
+    await clock.settle()
+  }
+  await plan(0) // A: asked
+  await plan(1000) // B within the cooldown: skipped, so never asked
+  await plan(61_000) // B: asked
+  await plan(61_000) // B again: a duplicate, skipped
+  await plan(61_000) // C: asked, the budget of 3 now used
+  await plan(61_000) // D: over budget
+  expect(prompts.map(p => p.match(/plan [A-D]/)?.[0])).toEqual(['plan A', 'plan B', 'plan C'])
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /budget used/ })).toBeTruthy()
+  expect(await ui.find({ key: 'advisor:check' })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('a failing advisor model leaves the dashboard working', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('session.messages', () => ({ value: [{ role: 'assistant', text: 'the plan', toolUses: [] }] }))
+  on('model.complete', () => {
+    throw new Error('overloaded')
+  })
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'ExitPlanMode' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /\(unavailable\)/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /total 1/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('check now asks Fable at once, past the cooldown', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, [], prompts)
+  on('session.messages', () => ({ value: [{ role: 'assistant', text: 'the plan', toolUses: [] }] }))
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'advisor:check' })
+  await clock.settle()
+  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await clock.settle()
+  expect(prompts.length).toBe(2)
+  expect(prompts[0]).toMatch(/^Look at the work so far/)
+  expect(await ui.find({ type: 'Text', text: /^✓ check ok$/ })).toBeTruthy()
   await ui.unmount()
 })
 
