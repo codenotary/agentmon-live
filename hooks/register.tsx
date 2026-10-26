@@ -1,13 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Card, Check, CheckKind, LogLine, Task } from '../types'
+import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
 import { advise } from './advisor'
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
+import { areaOf, bump, estTokens, pathOf, pushDuration } from './insights'
 import { drawPane } from './render'
-import { cfg, INIT, isLive, listening, reconcile, PANE, trimAgents, VIEWS } from './state'
+import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
 
 export { brief, fit, gitCommand, kilo, modelName, testsOf } from './format'
@@ -27,6 +28,54 @@ const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.
 const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
 const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
 const flow = atom({ plugin: 'agent-radar', key: 'flow' } as const, INIT.flow)
+const insights = atom({ plugin: 'agent-radar', key: 'insights' } as const, INIT.insights)
+
+// A call slower than this joins the slowest list; a result bigger than this the biggest.
+const SLOW_MIN_MS = 5000
+const BIG_MIN_TOKENS = 2000
+
+// The main loop's turn clock: every moment of a turn goes to one bucket. A call waiting on an
+// approval puts the time on `you`; running calls share it by category; a request streaming with
+// no call running puts it on `model`; the rest is `idle`.
+type TurnClock = {
+  inTurn: boolean
+  startedAt: number
+  since: number
+  stepping: boolean
+  steps: number
+  calls: Map<string, { cat: string; isAsking: boolean }>
+  buckets: Record<string, number>
+  ctxStart?: number
+  ctxEnd?: number
+}
+
+function newClock(now: number, inTurn: boolean): TurnClock {
+  return { inTurn, startedAt: now, since: now, stepping: false, steps: 0, calls: new Map(), buckets: {} }
+}
+
+function clockMode(c: TurnClock): string {
+  const running = [...c.calls.values()]
+  if (running.some(x => x.isAsking)) return 'you'
+  if (running.length > 0) return running[0]!.cat
+  return c.stepping ? 'model' : 'idle'
+}
+
+// Books the time since the clock last moved to the bucket it was in.
+function book(c: TurnClock, now: number) {
+  if (!c.inTurn) return
+  const ms = Math.max(0, now - c.since)
+  c.since = Math.max(c.since, now)
+  if (ms === 0) return
+  const running = [...c.calls.values()]
+  const add = (k: string, v: number) => (c.buckets[k] = (c.buckets[k] ?? 0) + v)
+  if (running.some(x => x.isAsking)) add('you', ms)
+  else if (running.length > 0) for (const x of running) add(x.cat, ms / running.length)
+  else add(c.stepping ? 'model' : 'idle', ms)
+}
+
+function snapshot(c: TurnClock): TurnTime {
+  return { startedAt: c.startedAt, wallMs: c.since - c.startedAt, buckets: { ...c.buckets }, steps: c.steps, ctxStart: c.ctxStart, ctxEnd: c.ctxEnd, mode: clockMode(c), since: c.since }
+}
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
 // A finished turn with fewer main-loop tool calls, no edit and no subagent is too small to be worth a Fable call.
@@ -150,6 +199,41 @@ async function trackTasks($: EngineInterface, call: { tool: string }, result: un
   }
 }
 
+let clk = newClock(0, false)
+
+async function flushTurn($: EngineInterface) {
+  const turnTime = clk.inTurn ? snapshot(clk) : undefined
+  await update($, insights, v => ({ ...v, turn: turnTime }))
+}
+
+// The main turn ended: its time joins the session's, and the window is broken down once, locally.
+async function finishTurn($: EngineInterface, durationMs: number) {
+  if (!clk.inTurn) return
+  book(clk, await $.clock.now())
+  const done: TurnTime = { ...snapshot(clk), mode: undefined, since: undefined }
+  // The engine's figure for the turn's length, when it has one, over the clock's.
+  done.wallMs = Math.max(done.wallMs, durationMs || 0)
+  clk.inTurn = false
+  await update($, insights, v => {
+    const session = { ...v.session }
+    for (const [k, ms] of Object.entries(done.buckets)) session[k] = (session[k] ?? 0) + ms
+    return { ...v, turn: undefined, last: done, session, sessionWall: v.sessionWall + done.wallMs, turns: v.turns + 1 }
+  })
+  $.clock.after(0, async () => {
+    const u = await $.session.usage({ breakdown: 'summary' }).catch(() => undefined)
+    const b = u?.context.breakdown
+    if (!b) return
+    const breakdown = b.categories
+      .filter(c => c.kind === 'used' && c.tokens > 0)
+      .sort((x, y) => y.tokens - x.tokens)
+      .slice(0, 6)
+      .map(c => ({ name: c.name, tokens: c.tokens }))
+    const mcpTokens = b.mcpTools.filter(m => m.isLoaded).reduce((n, m) => n + m.tokens, 0)
+    const memoryTokens = b.memoryFiles.reduce((n, m) => n + m.tokens, 0)
+    await update($, insights, v => ({ ...v, breakdown, mcpTokens, memoryTokens }))
+  })
+}
+
 // What the main loop did this turn, so Fable judges the work and not only the answer.
 type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string> }
 
@@ -190,6 +274,10 @@ export const register: Register = (on, options) => {
   // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
   const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set() }
   const workRef = () => t.filesTools(turn.edited.size, turn.tools) + (turn.delegated ? ` · ${turn.delegated} subagents` : '')
+  clk = newClock(0, false)
+  let cwd = ''
+  // Calls that waited on an approval: their time is the person's, not the tool's.
+  const askedCalls = new Set<string>()
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -197,8 +285,11 @@ export const register: Register = (on, options) => {
       description: t.commandDescription,
       argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}]`,
     })
+    cwd = e.cwd
     const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
     await update($, main, m => ({ ...m, model }))
+    // A turn under way when the module reloaded lost its clock; older state lacks fields.
+    await update($, insights, v => ({ ...shapeInsights(v), turn: undefined }))
     // State from an older version or another language holds keys this one does not draw; drop them.
     const known = (k: string) => k in t.cat
     const keep = (r: Record<string, number>) => Object.fromEntries(Object.entries(r).filter(([k]) => known(k)))
@@ -254,6 +345,7 @@ export const register: Register = (on, options) => {
         update($, flow, () => []),
         update($, tasks, () => []),
         update($, skills, () => []),
+        update($, insights, v => ({ ...EMPTY_INSIGHTS, turn: v.turn })),
       ])
       // The request stays: the turn under way still answers it.
       turn.tools = 0
@@ -277,8 +369,16 @@ export const register: Register = (on, options) => {
       turn.trail = []
       turn.edited = new Set()
       effortByCall.clear()
+      askedCalls.clear()
       const turnAt = turn.startedAt
-      await Promise.all([update($, stats, s => ({ ...s, streak: 0 })), update($, main, v => ({ ...v, turnAt }))])
+      clk = newClock(turnAt, true)
+      const turnTime = snapshot(clk)
+      await Promise.all([
+        update($, stats, s => ({ ...s, streak: 0 })),
+        update($, main, v => ({ ...v, turnAt })),
+        // Loops and switches are this turn's; approvals and re-reads add up over the session.
+        update($, insights, v => ({ ...v, turn: turnTime, fails: {}, turnSwitches: 0, turnAreas: {} })),
+      ])
     } else {
       // A finished agent that gets a new message runs again.
       const id = e.agentId
@@ -291,8 +391,11 @@ export const register: Register = (on, options) => {
   on('turn.step', async function* ($, e, next) {
     const key = e.agentId ?? 'main'
     const seen = `${e.model}|${e.effort ?? ''}`
-    if (seenStep.get(key) !== seen) {
+    const before = seenStep.get(key)
+    if (before !== seen) {
       seenStep.set(key, seen)
+      // A model or effort change mid-session starts the prompt cache over.
+      if (before !== undefined && e.agentId === undefined) await update($, insights, v => ({ ...v, modelSwitches: v.modelSwitches + 1 }))
       const effort = e.effort === undefined ? '' : String(e.effort)
       if (e.agentId === undefined) {
         await update($, main, v => ({ ...v, model: e.model, effort }))
@@ -304,7 +407,48 @@ export const register: Register = (on, options) => {
       }
       await refreshStatus($)
     }
-    return yield* next(e)
+    const isMain = e.agentId === undefined
+    const agentId = e.agentId
+    const stepAt = await $.clock.now()
+    if (isMain) {
+      book(clk, stepAt)
+      clk.stepping = true
+      clk.steps += 1
+      await flushTurn($)
+    } else {
+      await update($, agents, list => list.map(a => (a.id === agentId ? { ...a, lastAt: stepAt } : a)))
+    }
+    let r: Awaited<ReturnType<typeof next>['result']> | undefined
+    try {
+      r = yield* next(e)
+    } finally {
+      if (isMain) {
+        book(clk, await $.clock.now())
+        clk.stepping = false
+      }
+    }
+    // What the request was answered over is the context as it stands.
+    const u = r.usage
+    const total = u ? u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens : 0
+    if (isMain && u) {
+      clk.ctxStart ??= total
+      clk.ctxEnd = total
+    }
+    const turnTime = isMain && clk.inTurn ? snapshot(clk) : undefined
+    await update($, insights, v => ({
+      ...v,
+      turn: isMain ? turnTime : v.turn,
+      ...(u && isMain
+        ? {
+            ctx: [...v.ctx, total].slice(-80),
+            cacheRead: u.cache_read_input_tokens,
+            cacheTotal: total,
+            tokens: { ...v.tokens, mainIn: v.tokens.mainIn + total, mainOut: v.tokens.mainOut + u.output_tokens, mainCached: v.tokens.mainCached + u.cache_read_input_tokens },
+          }
+        : {}),
+      ...(u && !isMain ? { tokens: { ...v.tokens, agentsIn: v.tokens.agentsIn + total, agentsOut: v.tokens.agentsOut + u.output_tokens } } : {}),
+    }))
+    return r
   })
 
   on('tool.call', async ($, e, next) => {
@@ -327,6 +471,8 @@ export const register: Register = (on, options) => {
       agentFiles = files.size
     } else {
       turn.tools += 1
+      book(clk, startedAt)
+      clk.calls.set(callId, { cat, isAsking: false })
     }
 
     if (e.tool === 'ExitPlanMode' && e.agentId === undefined && cfg.advisorMode !== 'off') {
@@ -346,7 +492,8 @@ export const register: Register = (on, options) => {
     // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
     await Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
-      id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, files: agentFiles } : a))),
+      id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, files: agentFiles, lastAt: startedAt } : a))),
+      id === undefined && flushTurn($),
       update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => tick($)),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
       found.length > 0 &&
@@ -366,8 +513,13 @@ export const register: Register = (on, options) => {
       ran = await next(e)
     } finally {
       if (run) skillRuns.splice(skillRuns.indexOf(run), 1)
+      if (id === undefined && clk.calls.has(callId)) {
+        book(clk, await $.clock.now())
+        clk.calls.delete(callId)
+      }
       // A call that threw never reports back.
       await Promise.all([
+        id === undefined && flushTurn($),
         update($, active, all => all.filter(a => a.id !== callId)),
         ran === undefined && tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: t.unknown } : c))),
         ran === undefined && found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: 'unknown' as const } : c))),
@@ -388,6 +540,13 @@ export const register: Register = (on, options) => {
       const touched = path && !failed && (cat === 'edit' || cat === 'read') ? path : undefined
       if (touched && cat === 'edit' && sameTurn) turn.edited.add(touched)
       if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)
+      // Insights: how long it took, what it cost the context, where the main loop works.
+      const ms = Math.max(0, at - startedAt)
+      const wasAsked = askedCalls.delete(callId)
+      const callKey = `${e.tool} ${brief(e)}`.trim().slice(0, 80)
+      const resultTokens = e.agentId === undefined && !failed ? estTokens(String(r.text ?? '')) : 0
+      const workPath = e.agentId === undefined && sameTurn && r.deny === undefined ? pathOf(e) : undefined
+      const area = workPath === undefined ? undefined : areaOf(workPath, cwd)
       // One batch of writes, so the pane redraws once per call.
       const [s] = await Promise.all([
         (r.isError || isMain) &&
@@ -407,6 +566,31 @@ export const register: Register = (on, options) => {
               ? { ...f, edited: [...f.edited.filter(p => p !== touched), touched].slice(-200), editedAt: at }
               : { ...f, read: [...f.read.filter(p => p !== touched), touched].slice(-200) },
           ),
+        update($, insights, v => {
+          const fails = { ...v.fails }
+          if (r.deny === undefined) {
+            if (r.isError) fails[callKey] = (fails[callKey] ?? 0) + 1
+            else delete fails[callKey]
+          }
+          const moved = area !== undefined && v.area !== undefined && area !== v.area
+          return {
+            ...v,
+            // An approval's wait would make the tool look slow.
+            durations: wasAsked || r.deny !== undefined ? v.durations : pushDuration(v.durations, e.tool, ms),
+            slow:
+              wasAsked || r.deny !== undefined || ms < SLOW_MIN_MS
+                ? v.slow
+                : [...v.slow, { tool: e.tool, what, who, ms, at }].sort((a, b) => b.ms - a.ms).slice(0, 8),
+            big: resultTokens < BIG_MIN_TOKENS ? v.big : [...v.big, { tool: e.tool, what, tokens: resultTokens, at }].sort((a, b) => b.tokens - a.tokens).slice(0, 6),
+            reads: touched && cat === 'read' && e.agentId === undefined ? bump(v.reads, touched) : v.reads,
+            edits: touched && cat === 'edit' ? bump(v.edits, touched) : v.edits,
+            fails,
+            area: area ?? v.area,
+            switches: v.switches + (moved ? 1 : 0),
+            turnSwitches: v.turnSwitches + (moved ? 1 : 0),
+            turnAreas: area === undefined ? v.turnAreas : bump(v.turnAreas, area),
+          }
+        }),
       ])
       if (isMain && s && s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, () => material($, turn), `${e.tool} ${brief(e)}`.trim())
     })
@@ -417,10 +601,21 @@ export const register: Register = (on, options) => {
   on('tool.check', async ($, e, next) => {
     const v = await next(e)
     if (v.decision === 'ask') {
+      let askedId: string | undefined
       await update($, active, list => {
         const mine = list.find(a => a.id === e.tool_use_id) ?? list.filter(a => a.tool === e.tool && !a.isAsking).at(-1)
+        askedId = mine?.id
         return list.map(a => (a === mine ? { ...a, isAsking: true } : a))
       })
+      const asking = askedId === undefined ? undefined : clk.calls.get(askedId)
+      if (askedId !== undefined) askedCalls.add(askedId)
+      if (asking) {
+        book(clk, await $.clock.now())
+        asking.isAsking = true
+      }
+      const askKey = `${e.tool} ${brief((e.input ?? {}) as object)}`.trim().slice(0, 60)
+      const turnTime = clk.inTurn ? snapshot(clk) : undefined
+      await update($, insights, s => ({ ...s, turn: turnTime ?? s.turn, asked: bump(s.asked, askKey) }))
     }
     return v
   })
@@ -509,7 +704,11 @@ export const register: Register = (on, options) => {
         await addLog($, { who: card.type, what: t.doneAfter(decimal(e.durationMs / 1000)), result: t.filesTools(card.files, card.tools) })
       }
       await refreshStatus($)
-    } else if (
+    } else {
+      await finishTurn($, e.durationMs)
+    }
+    if (
+      e.agentId === undefined &&
       e.reason === 'answer' &&
       cfg.advisorMode === 'all' &&
       (turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0)

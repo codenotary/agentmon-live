@@ -899,14 +899,15 @@ test('a failed check moves its section to the top', async ($, on) => {
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
-  const titles = async () => (await ui.findAll({ type: 'Text', text: /^● [A-Z& ]+$/ })).map(x => x.text.trim())
+  const titles = async () => (await ui.findAll({ type: 'Text', text: /^● [A-Z&· ]+$/ })).map(x => x.text.trim())
   await clock.settle()
   const ui = await $.ui.mount(PANE)
-  expect((await titles()).slice(0, 2)).toEqual(['● TASKS', '● FABLE'])
+  // Focus is always on top; with nothing to look at it is one line.
+  expect((await titles()).slice(0, 3)).toEqual(['● FOCUS', '● TASKS', '● FABLE'])
   await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
   await clock.settle()
   // Needs attention stays above every section.
-  expect((await titles()).slice(0, 2)).toEqual(['● NEEDS ATTENTION', '● CHANGES & VERIFICATION'])
+  expect((await titles()).slice(0, 2)).toEqual(['● FOCUS · NEEDS ATTENTION', '● CHANGES & VERIFICATION'])
   await ui.unmount()
 })
 

@@ -146,7 +146,7 @@ test('needs attention stays on top in the flow view', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   await ui.press({ key: 'view' })
   const titles = (await ui.findAll({ type: 'Text', text: /^● [A-Z& ·]+$/ })).map(x => x.text.trim())
-  expect(titles[0]).toBe('● NEEDS ATTENTION')
+  expect(titles[0]).toBe('● FOCUS · NEEDS ATTENTION')
   expect(titles[1]).toBe('● SESSION')
   await ui.unmount()
 })

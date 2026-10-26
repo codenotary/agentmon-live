@@ -7,8 +7,9 @@ import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { CANVAS_ROWS, canvasFits, paintTopology } from './canvas'
 import { drawFlow } from './flow'
-import { cfg, INIT, isLive, listening, liveStatus, rank, VIEWS } from './state'
+import { cfg, INIT, isLive, listening, liveStatus, rank, shapeInsights, VIEWS } from './state'
 import { isHigh, topology } from './topology'
+import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline } from './insights'
 
 const main = atom({ plugin: 'agent-radar', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agent-radar', key: 'tools' } as const, INIT.tools)
@@ -26,6 +27,9 @@ const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
 const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
 const flow = atom({ plugin: 'agent-radar', key: 'flow' } as const, INIT.flow)
 const layout = atom({ plugin: 'agent-radar', key: 'layout' } as const, INIT.layout)
+const insights = atom({ plugin: 'agent-radar', key: 'insights' } as const, INIT.insights)
+// Insights shown in Focus with details off; the rest wait for `d`.
+const FOCUS_SHOWN = 3
 
 const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 'red', running: 'cyan', unknown: 'gray' }
 
@@ -34,7 +38,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
   const ui = $.ui.resolve(e)
   const { Box, Button, Text } = ui
-  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows] = await Promise.all([
+  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored] = await Promise.all([
     read($, main),
     read($, tools),
     read($, agents),
@@ -55,7 +59,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, tasks),
     read($, skills),
     read($, flow),
+    read($, insights),
   ])
+  const ins = shapeInsights(insStored)
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const cols = e.props.bodyColumns
@@ -146,7 +152,20 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     })),
   ]
   const dismissed = new Set(lay.dismissed ?? [])
-  const shownItems = items.filter(x => !x.key || !dismissed.has(x.key))
+  const urgent = items.filter(x => !x.key || !dismissed.has(x.key))
+  // Below what needs the person: what is worth a look, most important first.
+  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, now }).filter(x => !dismissed.has(x.key))
+  const insightItems: Item[] = found.slice(0, lay.isDetailed ? found.length : FOCUS_SHOWN).map(x => ({
+    key: x.key,
+    row: (
+      <Text>
+        {chip(x.tag, x.color)} {cut(x.text, whatRoom + 40)}
+      </Text>
+    ),
+    prompt: x.prompt,
+  }))
+  const moreInsights = found.length - insightItems.length
+  const shownItems = [...urgent, ...insightItems]
   const dismissable = shownItems.flatMap(x => (x.key ? [x.key] : []))
   // Approval rows have no prompt, so `i` goes to the first row that does.
   const firstPrompt = shownItems.findIndex(x => x.prompt)
@@ -420,12 +439,119 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Box>
   )
 
+  // Insights: where the time went, what fills the context, where the session works.
+  const ti = t.ins
+  const stackRoom = Math.max(10, Math.min(40, cols - 40))
+  const stack = (buckets: Record<string, number>) => {
+    const parts = shares(buckets)
+    const widths = cells(parts.map(p => p[2]), stackRoom)
+    return (
+      <Text>
+        <Text dimColor>▕</Text>
+        {parts.map(([k], i) => (
+          <Text color={BUCKET_COLOR[k] ?? 'gray'}>{'█'.repeat(widths[i] ?? 0)}</Text>
+        ))}
+        <Text dimColor>▏</Text>
+      </Text>
+    )
+  }
+  const legend = (buckets: Record<string, number>) => (
+    <Text>
+      {'  '}
+      {shares(buckets)
+        .slice(0, lay.isDetailed ? undefined : 5)
+        .map(([k, ms, f], i) => (
+          <Text>
+            {i > 0 ? <Text dimColor> · </Text> : ''}
+            <Text color={BUCKET_COLOR[k] ?? 'gray'}>{bucketName(k)}</Text> {Math.round(f * 100)}%{lay.isDetailed ? <Text dimColor> {dur(ms)}</Text> : ''}
+          </Text>
+        ))}
+    </Text>
+  )
+  const shownTurn = ins.turn ?? ins.last
+  const turnBuckets = ins.turn ? liveBuckets(ins.turn, now) : ins.last?.buckets
+  const turnWall = ins.turn ? now - ins.turn.startedAt : (ins.last?.wallMs ?? 0)
+  const ctxNow = ins.ctx.at(-1)
+  const ctxDelta = ins.last?.ctxStart !== undefined && ins.last.ctxEnd !== undefined ? ins.last.ctxEnd - ins.last.ctxStart : undefined
+  const cachePct = ins.cacheTotal > 0 ? Math.round((ins.cacheRead / ins.cacheTotal) * 100) : undefined
+  const allIn = ins.tokens.mainIn + ins.tokens.agentsIn
+  const top = (r: Record<string, number>, n: number, min: number) =>
+    Object.entries(r)
+      .filter(([, v]) => v >= min)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n)
+  const areaList = top(ins.turnAreas, 4, 1).map(([a, n]) => `${a} ${n}`).join(' · ')
+  const rereads = top(ins.reads, 2, 2).map(([p, n]) => `${shortPath(p)} ${n}×`).join(', ')
+  const churned = top(ins.edits, 2, 2).map(([p, n]) => `${shortPath(p)} ${n}×`).join(', ')
+  const hasInsights = shownTurn !== undefined || ins.slow.length > 0 || ins.ctx.length > 0
+  const insightBox = isRadar && hasInsights && (
+    <Box flexDirection="column" borderStyle="round" borderColor="blue" paddingX={1} flexGrow={1}>
+      {title(ti.title, 'blue')}
+      {shownTurn && turnBuckets && (
+        <Box flexDirection="column">
+          <Text>
+            {fit(ins.turn ? ti.thisTurn(dur(turnWall)) : ti.lastTurn(dur(turnWall)), 22)}
+            {stack(turnBuckets)}
+          </Text>
+          {legend(turnBuckets)}
+        </Box>
+      )}
+      {ins.turns > 1 && (
+        <Text>
+          {fit(ti.session(dur(ins.sessionWall), ins.turns), 22)}
+          {stack(ins.session)}
+        </Text>
+      )}
+      {ins.slow.length > 0 && <Text dimColor>{ti.slowest}</Text>}
+      {ins.slow.slice(0, lay.isDetailed ? 8 : 3).map(s => (
+        <Text>
+          <Text color={s.ms >= 60_000 ? 'yellow' : undefined}>{dur(s.ms).padStart(7)}</Text> <Text bold>{fit(s.tool, 10)}</Text>
+          {fit(cut(s.what, whatRoom), whatRoom + 1)}
+          <Text dimColor>{s.who.slice(0, 16)}</Text>
+        </Text>
+      ))}
+      {ins.ctx.length > 0 && (
+        <Text>
+          {fit(ti.context, 10)}
+          <Text color={isHigh(pct ?? 0) ? 'red' : 'cyan'}>{sparkline(ins.ctx, Math.min(40, stackRoom))}</Text>{' '}
+          <Text dimColor>{ti.ctxLine(kilo(ctxNow ?? 0), !ctxDelta ? '' : `${ctxDelta >= 0 ? '+' : ''}${kilo(ctxDelta)}`, cachePct, st.compactions)}</Text>
+        </Text>
+      )}
+      {ins.big.slice(0, lay.isDetailed ? 6 : 2).map(b => (
+        <Text dimColor>
+          {'  '}≈{kilo(b.tokens).padStart(6)} {b.tool} {cut(b.what, whatRoom)}
+        </Text>
+      ))}
+      {lay.isDetailed && ins.breakdown && ins.breakdown.length > 0 && (
+        <Text dimColor>
+          {'  '}
+          {ins.breakdown.map(c => `${c.name} ${kilo(c.tokens)}`).join(' · ')}
+          {ins.mcpTokens ? ` · MCP ${kilo(ins.mcpTokens)}` : ''}
+          {ins.memoryTokens ? ` · CLAUDE.md ${kilo(ins.memoryTokens)}` : ''}
+        </Text>
+      )}
+      {allIn > 0 && (
+        <Text dimColor>
+          {ti.tokens(kilo(allIn), ins.tokens.mainIn > 0 ? Math.round((ins.tokens.mainCached / ins.tokens.mainIn) * 100) : 0, kilo(ins.tokens.mainOut + ins.tokens.agentsOut), Math.round((ins.tokens.agentsIn / allIn) * 100))}
+        </Text>
+      )}
+      {ins.turnSwitches > 0 && areaList && <Text>{cut(ti.areas(ins.turnSwitches, areaList), whatRoom + 40)}</Text>}
+      {(rereads || churned) && (
+        <Text dimColor>
+          {[rereads && `${ti.reread} ${rereads}`, churned && `${ti.editedOften} ${churned}`].filter(Boolean).join(' · ')}
+        </Text>
+      )}
+      {lay.isDetailed && ins.modelSwitches > 0 && <Text dimColor>{ti.modelSwitches(ins.modelSwitches)}</Text>}
+    </Box>
+  )
+
   // What each section last did and whether it needs the person now; `rank` orders them by it. Listed in the usual order.
   const latest = (...at: number[]) => Math.max(0, ...at)
   const lastNote = adv.notes.at(-1)
   const sections = !isRadar ? [] : rank(
     [
       { key: 'tasks', node: taskBox, isUrgent: false, at: latest(...planned.map(k => k.at ?? 0)) },
+      { key: 'insights', node: insightBox, isUrgent: false, at: ins.turn ? now : ins.last ? ins.last.startedAt + ins.last.wallMs : 0 },
       { key: 'skills', node: skillBox, isUrgent: false, at: latest(...loaded.map(s => s.at)) },
       { key: 'advisor', node: advisorBox, isUrgent: lastNote?.ok === false && now - latest(...Object.values(adv.lastAt ?? {})) < 10 * 60_000, at: latest(...Object.values(adv.lastAt ?? {})) },
       { key: 'changes', node: changes, isUrgent: checked.some(c => c.result === 'failed' && !isStale(c)), at: latest(touched.editedAt, ...checked.map(c => c.at)) },
@@ -463,10 +589,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {listening(adv.isOn) && <Text color="magenta">{t.watches}</Text>}
         {cfg.build && <Text dimColor bold={false}> {cfg.build}</Text>}
       </Text>
-      {attention.length > 0 && (
-        <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
+      {attention.length > 0 ? (
+        <Box flexDirection="column" borderStyle="round" borderColor={urgent.length > 0 ? 'red' : 'yellow'} paddingX={1}>
           <Box justifyContent="space-between">
-            {title(t.attention, 'red')}
+            {title(urgent.length > 0 ? `${ti.focus} · ${t.attention}` : ti.focus, urgent.length > 0 ? 'red' : 'yellow')}
             {dismissable.length > 0 && (
               <Button key="attention:dismiss" plain hotkey="x" onPress={() => update($, layout, l => ({ ...l, dismissed: [...(l.dismissed ?? []), ...dismissable].slice(-50) }))}>
                 {t.dismiss}
@@ -474,7 +600,23 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             )}
           </Box>
           {attention}
+          {moreInsights > 0 && <Text dimColor>+{moreInsights} · {t.details} (d)</Text>}
         </Box>
+      ) : (
+        // Always on top: when nothing needs a look, where the last turn's time went.
+        <Text>
+          {title(ti.focus, 'green')} <Text dimColor>{ti.allClear}</Text>
+          {shownTurn && turnBuckets && (
+            <Text dimColor>
+              {' · '}
+              {ins.turn ? ti.thisTurn(dur(turnWall)) : ti.lastTurn(dur(turnWall))}
+              {shares(turnBuckets)
+                .slice(0, 3)
+                .map(([k, , f]) => ` · ${bucketName(k)} ${Math.round(f * 100)}%`)
+                .join('')}
+            </Text>
+          )}
+        </Text>
       )}
       {topoView}
       {isRadar && runningNow}
