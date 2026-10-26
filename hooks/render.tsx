@@ -26,7 +26,7 @@ const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 're
 // Order, as the review asks: needs attention, running now, changes and verification, usage, then the folding history.
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
-  const { Box, Button, Link, Text } = $.ui.resolve(e)
+  const { Box, Button, Text } = $.ui.resolve(e)
   const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay] = await Promise.all([
     read($, main),
     read($, tools),
@@ -52,7 +52,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const isWide = cols >= 100
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   const most = Math.max(1, ...Object.values(counts))
-  const barRoom = Math.max(6, Math.min(24, cols - (isWide ? 60 : 30)))
+  // Two columns less than the row leaves, for the bar's end caps.
+  const barRoom = Math.max(6, Math.min(24, cols - (isWide ? 62 : 32)))
   const running = list.filter(isLive).length
   const workerModel = list.at(-1)?.model
   const rows: (readonly [Category, number])[] = CATEGORIES.map(c => [c, counts[c] ?? 0] as const)
@@ -76,7 +77,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       {` ${label.toUpperCase()} `}
     </Text>
   )
-  const title = (label: string, color: string) => (
+  const title = (label: string, color?: string) => (
     <Text color={color} bold>
       ● {label.toUpperCase()}
     </Text>
@@ -163,7 +164,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {t.edited(touched.edited.length)} <Text dimColor>· {t.readFiles(touched.read.length)}</Text>
       </Text>
       {touched.edited.slice(lay.isDetailed ? -20 : -3).map(p => (
-        <Link href={`file://${p}`} label={`${lay.isDetailed ? p : shortPath(p)} ↗`} />
+        <Text dimColor>  {lay.isDetailed ? p : shortPath(p)}</Text>
       ))}
       {checked.map(c => (
         <Text>
@@ -178,7 +179,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const pct = usage.context.percent
   const usageBox = (
     <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} flexGrow={1}>
-      {title(t.usage, 'white')}
+      {title(t.usage)}
       <Text>
         {fit(t.context, 17)}
         {pct === undefined ? (

@@ -72,14 +72,23 @@ export function testsOf(answer: string): string | undefined {
   return undefined
 }
 
-// Which kind of check a shell command runs, if any; the first match wins, so `tsc` is a typecheck, not a build.
+const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?`
+// Each pattern must start a command; the first kind that matches wins, so `tsc` is a typecheck, not a build.
+const CHECKS: [CheckKind, RegExp][] = [
+  ['typecheck', new RegExp(String.raw`^(?:tsc|${RUN}(?:typecheck|type-check)|mypy|pyright|cargo check)\b`)],
+  ['lint', new RegExp(String.raw`^(?:${RUN}lint|eslint|ruff|clippy|golangci-lint|flake8|biome (?:check|lint)|(?:claude )?plugin validate)\b`)],
+  ['test', new RegExp(String.raw`^(?:${RUN}test|go test|cargo test|pytest|jest|vitest|mocha|(?:claude )?plugin test|make test)\b`)],
+  ['build', new RegExp(String.raw`^(?:${RUN}build|cargo build|go build|make|webpack|esbuild|vite build)\b`)],
+]
+
+// Which kind of check a shell command runs, if any. Only the commands themselves count: heredoc bodies are
+// dropped and a runner must start a command, so `cat <<EOF … npm test … EOF` or `grep lint x` is no check.
 export function checkKind(command: string): CheckKind | undefined {
-  const run = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?`
-  if (new RegExp(String.raw`\b(?:tsc|${run}(?:typecheck|type-check)|mypy|pyright|cargo check)\b`).test(command)) return 'typecheck'
-  if (new RegExp(String.raw`\b(?:${run}lint|eslint|ruff|clippy|golangci-lint|flake8|biome (?:check|lint)|plugin validate)\b`).test(command)) return 'lint'
-  if (new RegExp(String.raw`\b(?:${run}test|go test|cargo test|pytest|jest|vitest|mocha|plugin test|make test)\b`).test(command)) return 'test'
-  if (new RegExp(String.raw`\b(?:${run}build|cargo build|go build|make|webpack|esbuild|vite build)\b`).test(command)) return 'build'
-  return undefined
+  const heads = command
+    .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '')
+    .split(/&&|\|\||;|\||\n/)
+    .map(s => s.trim().replace(/^(?:\w+=\S*\s+)*(?:(?:npx|bunx|sudo|time)\s+)*/, ''))
+  return CHECKS.find(([, re]) => heads.some(h => re.test(h)))?.[0]
 }
 
 // A pipe hides the check's own exit status unless pipefail is set, so success there is only `unknown`.
