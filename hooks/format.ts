@@ -91,3 +91,19 @@ export function hidesExit(command: string): boolean {
 export function shortPath(path: string): string {
   return path.split('/').slice(-2).join('/')
 }
+
+const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+
+// A bar `width` cells wide filled to `fraction` in eighths of a cell, padded with spaces.
+export function smoothBar(fraction: number, width: number): string {
+  const eighths = Math.round(Math.min(1, Math.max(0, fraction || 0)) * width * 8)
+  const bar = '█'.repeat(Math.floor(eighths / 8)) + EIGHTHS[eighths % 8]
+  return bar.padEnd(width)
+}
+
+const FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+
+// The spinner frame for `now`; the pane redraws twice a second while something runs.
+export function spinner(now: number): string {
+  return FRAMES[Math.floor(now / 500) % FRAMES.length] ?? '⠋'
+}

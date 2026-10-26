@@ -70,11 +70,11 @@ async function refreshStatus($: EngineInterface) {
   $.ui.status(cfg.t.statusLine(m.effort || '?', running, list.length, listening(adv.isOn), total, counts.git ?? 0))
 }
 
-// Elapsed seconds under Running now move on their own: redraw once a second while a call or a subagent runs.
+// The spinner and elapsed seconds under Running now move on their own: redraw twice a second while a call or a subagent runs.
 function tick($: EngineInterface) {
   if (isTicking) return
   isTicking = true
-  $.clock.after(1000, async () => {
+  $.clock.after(500, async () => {
     isTicking = false
     const [doing, list] = await Promise.all([read($, active), read($, agents)])
     if (doing.length === 0 && !list.some(isLive)) return
