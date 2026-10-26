@@ -5,7 +5,6 @@ import type { Card, Check } from '../types'
 import { ago, clockTime, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
-import { CANVAS_ROWS, canvasFits, paintTopology } from './canvas'
 import { drawFlow } from './flow'
 import { cfg, INIT, isLive, listening, liveStatus, rank, VIEWS } from './state'
 import { isHigh, topology } from './topology'
@@ -60,11 +59,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const cols = e.props.bodyColumns
   const isWide = cols >= 100
-  // The view switch: the canvas needs the terminal's Raster and room for its rows, elsewhere the cycle skips it.
-  // `'Raster' in ui` alone holds on desktop too, which draws no Raster.
-  const hasCanvas = e.surface === 'terminal' && 'Raster' in ui && canvasFits(cols, usage.rateLimits.length)
-  const modes = hasCanvas ? (['radar', 'flow', 'canvas'] as const) : (['radar', 'flow'] as const)
-  const mode = lay.mode === 'canvas' && !hasCanvas ? 'flow' : (lay.mode ?? 'radar')
+  // The view switch; a mode an older version saved and this one no longer draws counts as the dashboard.
+  const mode = lay.mode === 'flow' ? 'flow' : 'radar'
   const isRadar = mode === 'radar'
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   const most = Math.max(1, ...Object.values(counts))
@@ -434,7 +430,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     now,
   )
 
-  const nextMode = modes[(modes.indexOf(mode as never) + 1) % modes.length]!
+  const nextMode = mode === 'radar' ? ('flow' as const) : ('radar' as const)
   const viewButton = (
     <Button key="view" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, mode: nextMode }))}>
       {`${t.view}: ${t.modes[mode]}`}
@@ -445,14 +441,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       ? undefined
       : topology({ main: m, counts, errors: st.errors, compactions: st.compactions, agents: list, usage, advisor: adv, isListening: listening(adv.isOn), checks: checked, flow: flows, now })
   const phase = Math.floor(now / 500)
-  const canvasColumns = Math.min(cols, 160)
-  const topoView =
-    topo &&
-    (mode === 'canvas' && 'Raster' in ui ? (
-      <ui.Raster key="topology" columns={canvasColumns} rows={CANVAS_ROWS} cells={paintTopology(topo, canvasColumns, phase, t).encode()} />
-    ) : (
-      drawFlow(ui, topo, cols, phase, t)
-    ))
+  const topoView = topo && drawFlow(ui, topo, cols, phase, t)
 
   return (
     <Box flexDirection="column">

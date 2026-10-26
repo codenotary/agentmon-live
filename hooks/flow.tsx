@@ -9,22 +9,19 @@ import { fillEighths, isHigh, isMid, isRunning, limitName } from './topology'
 type Els = Pick<ReturnType<EngineInterface['ui']['resolve']>, 'Box' | 'Text'>
 
 const TANK_ROWS = 6
+const WELL = '#2c313a'
 
-// A vertical gauge filled from the bottom: one string per row, top first.
-export function tankRows(fraction: number, rows = TANK_ROWS, width = 5): string[] {
-  return fillEighths(fraction, rows)
-    .reverse()
-    .map(n => (n === 0 ? '·' : ' ▁▂▃▄▅▆▇█'[n]!).repeat(width))
-}
+// A vertical gauge filled from the bottom, top row first: each row's eighths, 0 empty to 8 full.
+export const tankRows = (fraction: number, rows = TANK_ROWS) => fillEighths(fraction, rows).reverse()
 
 const levelColor = (n: number) => (isHigh(n) ? 'red' : isMid(n) ? 'yellow' : 'green')
 
-// The wide row is session 26, pipes ~22, tanks ~25 and gaps; the tools bar takes what is left, 6..20.
-export const toolsBarWidth = (cols: number) => Math.max(6, Math.min(20, cols - 105))
-// Below this the tanks stack under the agents, so the wide row still fits in its width.
-const TANKS_RIGHT = 111
+// Name 12, count 5 and rate 8 columns beside the bar; the bar takes the rest of the box, 4..30.
+export const toolsBarWidth = (inner: number) => Math.max(4, Math.min(30, inner - 25))
+// The left column (session, Fable, tanks) in the wide layout.
+const LEFT = 28
 
-// The session as boxes joined by pipes with their live rates: Box and Text only, so every surface draws it.
+// The session as boxes, each pipe drawn in the box it feeds: Box and Text only, so every surface draws it.
 export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: number, t: Strings): RenderChildren {
   const isWide = cols >= 100
   const title = (label: string, color: string) => (
@@ -33,48 +30,60 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
     </Text>
   )
   // A pipe's dots move one step a frame while something flows through it.
-  const pipe = (label: string, isFlowing: boolean, color: string, length = 10) => {
-    const body = Array.from({ length }, (_, i) => (isFlowing && (i + phase) % 4 === 0 ? '●' : '═')).join('')
-    return (
-      <Text color={isFlowing ? color : undefined} dimColor={!isFlowing}>
-        {isWide ? `${body}▶ ${label}` : `║ ${label}`}
-      </Text>
-    )
-  }
+  const pipe = (label: string, isFlowing: boolean, color: string) => (
+    <Text color={isFlowing ? color : undefined} dimColor={!isFlowing} wrap="truncate">
+      {' '}
+      {Array.from({ length: 8 }, (_, i) => (isFlowing && (i + phase) % 4 === 0 ? '●' : '═')).join('')}▶ {label}
+    </Text>
+  )
+  const header = (label: string, color: string, feed: RenderChildren) => (
+    <Box>
+      {title(label, color)}
+      {feed}
+    </Box>
+  )
   const mins = Math.floor(topo.session.uptimeMs / 60_000)
 
   const session = (
-    <Box flexDirection="column" borderStyle="round" borderColor="#d97757" paddingX={1} width={isWide ? 26 : undefined}>
+    <Box flexDirection="column" borderStyle="round" borderColor="#d97757" paddingX={1}>
       {title(t.session, '#d97757')}
       <Text color="#d97757">{modelName(topo.session.model)}</Text>
-      <Text>
+      <Text wrap="truncate">
         {t.effortWord} <Text bold>{topo.session.effort || '?'}</Text>
       </Text>
-      <Text>{t.uptime(mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : ago(topo.session.uptimeMs))}</Text>
+      <Text wrap="truncate">{t.uptime(mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} min` : ago(topo.session.uptimeMs))}</Text>
       {topo.session.cost !== undefined && <Text color="yellow">${topo.session.cost.toFixed(2)}</Text>}
-      <Text dimColor>{t.compactedTimes(topo.session.compactions)}</Text>
+      <Text dimColor wrap="truncate">{t.compactedTimes(topo.session.compactions)}</Text>
     </Box>
   )
   const fable = (
-    <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} width={isWide ? 26 : undefined}>
+    <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1}>
       {title(t.fable, 'magenta')}
-      <Text color={topo.fable.state === 'unavailable' ? 'red' : undefined}>{t.fableStates[topo.fable.state]}</Text>
-      <Text>
+      <Text color={topo.fable.state === 'unavailable' ? 'red' : undefined} wrap="truncate">
+        {t.fableStates[topo.fable.state]}
+        {topo.fable.why ? `: ${topo.fable.why}` : ''}
+      </Text>
+      <Text wrap="truncate">
         {topo.fable.verdicts.map(ok => (
           <Text color={ok ? 'green' : 'red'}>● </Text>
         ))}
+        <Text dimColor>
+          {t.calls} {topo.fable.calls}
+        </Text>
       </Text>
     </Box>
   )
 
+  // The boxes on the right get the width the left column leaves; their border and padding take four columns.
+  const inner = (isWide ? cols - LEFT - 1 : cols) - 4
+  const barW = toolsBarWidth(inner)
   const most = Math.max(1, ...topo.tools.map(x => x.total))
-  const barW = isWide ? toolsBarWidth(cols) : Math.max(6, Math.min(20, cols - 40))
   const tools = (
     <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1} flexGrow={1}>
-      {title(t.toolsWord, 'green')}
+      {header(t.toolsWord, 'green', pipe(`${topo.callsPerMin}/min`, topo.callsPerMin > 0, 'cyan'))}
       {topo.tools.map(x => (
-        <Text>
-          <Text color={x.cat === 'git' ? 'yellow' : undefined}>{fit(t.cat[x.cat], 14)}</Text>
+        <Text wrap="truncate">
+          <Text color={x.cat === 'git' ? 'yellow' : undefined}>{fit(t.cat[x.cat], 12)}</Text>
           <Text color={x.errors > 0 ? 'red' : x.cat === 'git' ? 'yellow' : 'green'}>{smoothBar(x.total / most, barW)}</Text>
           {String(x.total).padStart(5)}
           {x.perMin > 0 && <Text color="cyan"> {x.perMin}/min</Text>}
@@ -82,13 +91,14 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
       ))}
     </Box>
   )
+  const running = topo.agents.filter(isRunning).length
   const shown = [...topo.agents.filter(isRunning), ...topo.agents.filter(a => !isRunning(a)).reverse()].slice(0, 8)
   const agents = (
     <Box flexDirection="column" borderStyle="round" borderColor="blue" paddingX={1} flexGrow={1}>
-      {title(t.agentsWord, 'blue')}
+      {header(t.agentsWord, 'blue', pipe(`${running} ${t.status.running}`, running > 0, 'blue'))}
       {shown.length === 0 && <Text dimColor>—</Text>}
       {shown.map(a => (
-        <Text dimColor={!isRunning(a) && !a.isFail}>
+        <Text dimColor={!isRunning(a) && !a.isFail} wrap="truncate">
           <Text color={a.isFail ? 'red' : isRunning(a) ? 'cyan' : undefined}>{a.isFail ? '✗' : isRunning(a) ? (phase % 2 ? '◉' : '●') : '○'} </Text>
           {fit(a.type, 18)}
           <Text color="blue">{modelName(a.model)}</Text>
@@ -97,34 +107,36 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
       {topo.agents.length > shown.length && <Text dimColor>+{topo.agents.length - shown.length}</Text>}
     </Box>
   )
-  const tank = (label: string, percent: number | undefined) => (
-    <Box flexDirection="column" alignItems="center">
-      <Text>{label.slice(0, 9)}</Text>
-      {tankRows((percent ?? 0) / 100).map(row => (
-        <Text color={levelColor(percent ?? 0)}>{row}</Text>
-      ))}
-      <Text color={levelColor(percent ?? 0)}>{percent === undefined ? '?' : `${Math.round(percent)}%`}</Text>
-    </Box>
-  )
+  // A tank is coloured cells, not block characters, so the filled part is solid without gaps between lines.
+  const tank = (label: string, percent: number | undefined) => {
+    const color = levelColor(percent ?? 0)
+    return (
+      <Box flexDirection="column" alignItems="center">
+        <Text>{label.slice(0, 5)}</Text>
+        {tankRows((percent ?? 0) / 100).map(n => (
+          <Text color={color} backgroundColor={n === 8 ? color : WELL}>
+            {(n === 0 || n === 8 ? ' ' : ' ▁▂▃▄▅▆▇'[n]!).repeat(5)}
+          </Text>
+        ))}
+        <Text color={color}>{percent === undefined ? '?' : `${Math.round(percent)}%`}</Text>
+      </Box>
+    )
+  }
   const tanks = (
     <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-      {title(`${t.contextWord} · ${t.limitsWord}`, 'white')}
-      <Box gap={2}>
-        {tank(t.context, topo.context)}
+      {title(t.limitsWord, 'white')}
+      <Box gap={1}>
+        {tank('ctx', topo.context)}
         {topo.limits.map(l => tank(limitName(l.kind), l.percent))}
       </Box>
     </Box>
   )
-  const toolsPipe = pipe(`${topo.callsPerMin}/min`, topo.callsPerMin > 0, 'cyan')
-  const agentsPipe = pipe(`${topo.agents.filter(isRunning).length} ${t.status.running}`, topo.agents.some(isRunning), 'blue')
 
   if (!isWide) {
     return (
       <Box flexDirection="column">
         {session}
-        {toolsPipe}
         {tools}
-        {agentsPipe}
         {agents}
         {tanks}
         {fable}
@@ -133,20 +145,15 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
   }
   return (
     <Box flexDirection="row" gap={1}>
-      <Box flexDirection="column">
+      <Box flexDirection="column" width={LEFT}>
         {session}
+        {tanks}
         {fable}
-      </Box>
-      <Box flexDirection="column" justifyContent="space-around" paddingTop={2}>
-        {toolsPipe}
-        {agentsPipe}
       </Box>
       <Box flexDirection="column" flexGrow={1}>
         {tools}
         {agents}
-        {cols < TANKS_RIGHT && tanks}
       </Box>
-      {cols >= TANKS_RIGHT && tanks}
     </Box>
   )
 }

@@ -89,7 +89,7 @@ const en = {
   attention: 'needs attention',
   investigate: 'investigate',
   view: 'view',
-  modes: { radar: 'radar', flow: 'flow', canvas: 'canvas' },
+  modes: { radar: 'radar', flow: 'flow' },
   session: 'session',
   fable: 'fable',
   fableStates: { idle: 'idle', checking: 'checking', off: 'off', unavailable: 'unavailable', budget: 'budget used' },
