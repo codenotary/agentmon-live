@@ -1,3 +1,4 @@
+import type { CheckKind } from '../types'
 import { cfg } from './state'
 
 // `git status`, `cd x && git push`, `git -C dir log`: the git part of a shell command, else undefined.
@@ -69,4 +70,24 @@ export function testsOf(answer: string): string | undefined {
     answer.match(/\bPASS(?:ED)?\b\D{0,12}(\d+)\s+tests?/i)
   if (pass) return cfg.t.testsPass(pass[1] ?? '')
   return undefined
+}
+
+// Which kind of check a shell command runs, if any; the first match wins, so `tsc` is a typecheck, not a build.
+export function checkKind(command: string): CheckKind | undefined {
+  const run = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?`
+  if (new RegExp(String.raw`\b(?:tsc|${run}(?:typecheck|type-check)|mypy|pyright|cargo check)\b`).test(command)) return 'typecheck'
+  if (new RegExp(String.raw`\b(?:${run}lint|eslint|ruff|clippy|golangci-lint|flake8|biome (?:check|lint)|plugin validate)\b`).test(command)) return 'lint'
+  if (new RegExp(String.raw`\b(?:${run}test|go test|cargo test|pytest|jest|vitest|mocha|plugin test|make test)\b`).test(command)) return 'test'
+  if (new RegExp(String.raw`\b(?:${run}build|cargo build|go build|make|webpack|esbuild|vite build)\b`).test(command)) return 'build'
+  return undefined
+}
+
+// A pipe hides the check's own exit status unless pipefail is set, so success there is only `unknown`.
+export function hidesExit(command: string): boolean {
+  return /[^|]\|[^|]/.test(command) && !/pipefail/.test(command)
+}
+
+// /home/me/repo/hooks/state.ts -> hooks/state.ts
+export function shortPath(path: string): string {
+  return path.split('/').slice(-2).join('/')
 }

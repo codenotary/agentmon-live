@@ -1,9 +1,9 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Card, LogLine } from '../types'
+import type { Card, Check, LogLine } from '../types'
 import { advise } from './advisor'
-import { brief, decimal, describe, gitCommand, testsOf } from './format'
+import { brief, checkKind, decimal, describe, gitCommand, hidesExit, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { drawPane } from './render'
@@ -21,6 +21,9 @@ const stats = atom({ plugin: 'agent-radar', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agent-radar', key: 'calls' } as const, INIT.calls)
 const view = atom({ plugin: 'agent-radar', key: 'view' } as const, INIT.view)
 const active = atom({ plugin: 'agent-radar', key: 'active' } as const, INIT.active)
+const checks = atom({ plugin: 'agent-radar', key: 'checks' } as const, INIT.checks)
+const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
+const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
 // A finished turn with fewer main-loop tool calls is too small to be worth a Fable call.
@@ -136,6 +139,9 @@ export const register: Register = (on, options) => {
         update($, log, () => []),
         update($, stats, () => ({ errors: {}, compactions: 0, streak: 0 })),
         update($, calls, () => []),
+        update($, checks, () => []),
+        update($, files, () => ({ read: [], edited: [], editedAt: 0 })),
+        update($, lastCall, () => null),
       ])
       await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1 }))
       await refreshStatus($)
@@ -197,7 +203,6 @@ export const register: Register = (on, options) => {
       await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, files: files.size } : a)))
     } else {
       turnTools += 1
-      if (path && cat === 'edit') edited.add(path)
     }
     queueStatus($)
 
@@ -206,20 +211,43 @@ export const register: Register = (on, options) => {
       advise($, 'plan', t.askPlan, `${t.task}: ${lastPrompt}\n\n${t.plan}:\n${plan}`)
     }
 
+    const command = e.tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
+    const kind = cat === 'shell' ? checkKind(command) : undefined
     const startedAt = await $.clock.now()
-    await update($, active, list => [...list, { id: callId, who, tool: e.tool, what, startedAt }])
+    // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
+    await Promise.all([
+      update($, active, list => [...list, { id: callId, who, tool: e.tool, what, startedAt }]),
+      tab && update($, calls, list => [...list, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
+      kind && update($, checks, list => [...list.filter(c => c.kind !== kind), { kind, command: what, who, at: startedAt, result: 'running' as const }]),
+    ])
     let ran
     try {
       ran = await next(e)
     } finally {
       await update($, active, list => list.filter(a => a.id !== callId))
     }
+    const failed = ran.deny !== undefined || ran.isError
+    const error = failed ? String(ran.deny ?? ran.text ?? '').slice(0, 2000) : undefined
+    const at = await $.clock.now()
+    await update($, lastCall, () => ({ tool: e.tool, what, who, at }))
     if (ran.isError) await update($, stats, s => ({ ...s, errors: { ...s.errors, [cat]: (s.errors[cat] ?? 0) + 1 } }))
     if (tab) {
-      const result = ran.deny !== undefined || ran.isError ? t.failed : 'ok'
-      const at = await $.clock.now()
-      await update($, calls, list => [...list, { at, who, view: tab, what, result }].slice(-60))
+      const result = failed ? t.failed : 'ok'
+      await update($, calls, list => list.map(c => (c.id === callId ? { ...c, result, error } : c)))
       if (tab === 'git') await addLog($, { who, what, isGit: true, result })
+    }
+    if (kind) {
+      // A denied or aborted run says nothing about the code; a pipe hides the exit status.
+      const result: Check['result'] = ran.deny !== undefined ? 'unknown' : ran.isError ? 'failed' : hidesExit(command) ? 'unknown' : 'ok'
+      await update($, checks, list => list.map(c => (c.kind === kind && c.at === startedAt ? { ...c, result } : c)))
+    }
+    if (path && !failed && (cat === 'edit' || cat === 'read')) {
+      if (cat === 'edit' && e.agentId === undefined) edited.add(path)
+      await update($, files, f =>
+        cat === 'edit'
+          ? { ...f, edited: [...f.edited.filter(p => p !== path), path].slice(-200), editedAt: at }
+          : { ...f, read: [...f.read.filter(p => p !== path), path].slice(-200) },
+      )
     }
     if (e.agentId === undefined && ran.deny === undefined) {
       trail = [...trail, `${e.tool} ${brief(e)} -> ${ran.isError ? `${t.failed}: ${String(ran.text ?? '').slice(0, 300)}` : 'ok'}`].slice(-40)

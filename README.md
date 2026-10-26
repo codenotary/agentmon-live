@@ -8,14 +8,17 @@
 
 ## What it shows
 
-- **Needs attention:** a tool call waiting for your approval, three failed calls in a row, a subagent that failed or reported failing tests, a subagent waiting. Shown only when there is something.
-- **Running now:** each tool call in flight, with who runs it and for how long.
-- **Main session:** model and effort level.
-- **Tools:** calls per category (git, read, search, web, shell, edit, agents, skills, browser, computer use, MCP), with error counts, context use and compactions.
-- **Git, shell and MCP detail:** tabs under the tool counts list the last calls of each kind with who ran them. Switch with a click, `g` `s` `m` while the pane has focus, or `/agent-radar git|shell|mcp`. The status line counts git commands as `git [n]`.
-- **Subagents:** one card per subagent with model, effort, task, files touched, tokens and test result (PASS/FAIL as *reported* in its final answer; a failure wins over a pass). Running and waiting subagents are always kept; the last 12 finished ones stay.
-- **Session log:** subagent starts and finishes, test results, git commands and compactions.
-- **Fable advisor:** a second model that reads along and speaks up, as a toast, only when something looks off: a plan that misses something, three errors in a row, or a task reported done with parts left out. It never writes code. Each verdict shows in the pane as ok or nok.
+Top to bottom, in the order you need it:
+
+- **Needs attention:** a tool call waiting for your approval, three failed calls in a row, a failed check, a subagent that failed or reported failing tests, a subagent waiting. Shown only when there is something.
+- **Running now:** each tool call in flight, with who runs it and for how long; when idle, the last call. Running and waiting subagents sit here as cards.
+- **Fable advisor:** a second model that reads along and speaks up, as a toast, only when something looks off: a plan that misses something, three errors in a row, or a task reported done with parts left out. It never writes code. Each verdict shows as ok or nok.
+- **Changes and verification:** files edited and read (successful calls only), and the last test, lint, typecheck and build command with its outcome: ok, failed, or unknown when a pipe or a denial hides the exit status. A check run before a later edit is marked stale.
+- **Usage:** context, cost and rate limits with their reset times; `unavailable` where the session does not report a value.
+- **History** (folds with `h`): main session, tool counts per category with errors, the git / shell / MCP detail tabs (`g` `s` `m`, a click, or `/agent-radar git|shell|mcp`), finished subagent cards and the session log.
+- **Details** (`d`) shows cut-off tasks, commands and error texts whole.
+
+Subagent test results are *reported* from the agent's final answer (a failure wins over a pass). Running and waiting subagents are always kept; the last 12 finished ones stay. The status line counts git commands as `git [n]`.
 
 Languages: English (default), German, French, Spanish, Chinese and Japanese.
 

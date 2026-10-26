@@ -22,6 +22,10 @@ export const INIT = {
   calls: [],
   view: 'git' as View,
   active: [],
+  checks: [],
+  files: { read: [], edited: [], editedAt: 0 },
+  lastCall: null,
+  layout: { isHistoryOpen: true, isDetailed: false },
 }
 
 // The `/agent-radar advisor` toggle and the advisorMode option both have to allow Fable.

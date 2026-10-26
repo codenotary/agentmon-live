@@ -1,6 +1,7 @@
 import type { On } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { checkKind, hidesExit } from '../hooks/format'
 import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
 
 const PANE = {
@@ -364,6 +365,115 @@ test('the engine\'s agent status wins over the card', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /Explore waiting/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^waiting · 0 files/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('shell commands are told apart by the check they run', () => {
+  expect(checkKind('npm test')).toBe('test')
+  expect(checkKind('claude plugin test .')).toBe('test')
+  expect(checkKind('ls tests')).toBe(undefined)
+  expect(checkKind('npx tsc --noEmit')).toBe('typecheck')
+  expect(checkKind('npm run lint')).toBe('lint')
+  expect(checkKind('cargo build --release')).toBe('build')
+  expect(hidesExit('npm test | tail -5')).toBe(true)
+  expect(hidesExit('set -o pipefail; npm test | tail')).toBe(false)
+  expect(hidesExit('npm test || echo x')).toBe(false)
+})
+
+test('checks show their outcome and go stale after an edit', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', (_, e) =>
+    'command' in e && /lint/.test(String(e.command)) ? { result: {}, text: 'lint errors', isError: true } : { result: {} },
+  )
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Read', file_path: '/repo/src/a.ts' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await $.tool.call({ tool: 'Bash', command: 'npx tsc --noEmit | tail -3' })
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^test\s+ok\s+npm test/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^typecheck\s+unknown/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /✗ lint failed · npm run lint/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /stale/ })).toBe(undefined)
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' })
+  expect(await ui.find({ type: 'Text', text: /^1 edited · 1 read/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^test\s+ok\s+stale/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a call shows in its tab while it runs', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', async () => {
+    await clock.sleep(1000)
+    return { result: {} }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const call = $.tool.call({ tool: 'Bash', command: 'git push' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^⟳ git push$/ })).toBeTruthy()
+  await clock.advance(1000)
+  await call
+  expect(await ui.find({ type: 'Text', text: /^git push$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^last · Bash git push/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('usage says unavailable rather than zero, and shows rate limits', async ($, on) => {
+  mock.clock(on)
+  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({
+    value: { startedAt: 0, context: { window: 1000000 }, rateLimits: [{ kind: '5h', percentUsed: 42, resetsAt: '2026-10-26T14:00:00Z' }], cost: { usd: 1.5 } },
+  }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', () => ({ value: undefined }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /context\s+unavailable/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^5h .*42 % resets/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /\$1\.50/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('history folds and details unfold long text', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  const long = `git commit -m "${'x'.repeat(80)}"`
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: long })
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^git commit -m "x+…$/ })).toBeTruthy()
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ type: 'Text', text: new RegExp(`^${long.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /TOOLS · calls/ })).toBeTruthy()
+  await ui.press({ key: 'fold:history' })
+  expect(await ui.find({ type: 'Text', text: /TOOLS · calls/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /subagents \[0\/0\]/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a narrow pane still draws every section', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 50 } })
+  expect(await ui.find({ type: 'Text', text: /needs attention/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /changes & verification/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^usage$/ })).toBeTruthy()
   await ui.unmount()
 })
 

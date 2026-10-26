@@ -22,7 +22,21 @@ export type Note = { kind: 'plan' | 'error' | 'done'; ok?: boolean; text: string
 
 export type View = 'git' | 'shell' | 'mcp'
 
-export type Call = { at: number; who: string; view: View; what: string; result: string }
+// `result` is `running` from the moment the call starts until it reports back; `error` holds its error text.
+export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string }
+
+export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
+
+// The last run of one kind of check: `unknown` when its exit status could not be read (a pipe, a denial).
+export type Check = { kind: CheckKind; command: string; who: string; at: number; result: 'running' | 'ok' | 'failed' | 'unknown' }
+
+// Files the session read and edited successfully; `editedAt` is the last successful edit, to tell stale checks.
+export type Files = { read: string[]; edited: string[]; editedAt: number }
+
+export type LastCall = { tool: string; what: string; who: string; at: number }
+
+// What the pane shows folded or in full.
+export type Layout = { isHistoryOpen: boolean; isDetailed: boolean }
 
 // `streak` counts the main loop's failed calls in a row this turn.
 export type Stats = { errors: Record<string, number>; compactions: number; streak?: number }
@@ -45,6 +59,10 @@ declare module 'claude-code' {
       calls: Call[]
       view: View
       active: Active[]
+      checks: Check[]
+      files: Files
+      lastCall: LastCall | null
+      layout: Layout
     }
   }
 }
