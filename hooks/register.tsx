@@ -345,7 +345,7 @@ export const register: Register = (on, options) => {
       const id = e.agentId
       const u = e.usage
       const tests = testsOf(e.answer)
-      const status = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'cancelled' : 'error'
+      const status: Card['status'] = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'cancelled' : 'error'
       seenStep.delete(id)
       const list = await update($, agents, all =>
         all.map(a =>
