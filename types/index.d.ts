@@ -17,6 +17,64 @@ export type Card = {
   testsWhy?: string
   endedAt?: number
   startedAt: number
+  // The agent's last sign of life: a tool call or a model request.
+  lastAt?: number
+}
+
+// Where a main-loop turn's wall time went, in ms per bucket: `model` (requests streaming),
+// a tool category (`shell`, `agents`, ...; parallel calls share the time), `you` (a call waiting
+// on an approval, its run included) and `idle` (between steps). `mode` is the bucket the clock
+// is in now and `since` when it last moved, so a drawing can add the time not yet booked.
+export type TurnTime = {
+  startedAt: number
+  wallMs: number
+  buckets: Record<string, number>
+  steps: number
+  ctxStart?: number
+  ctxEnd?: number
+  mode?: string
+  since?: number
+}
+
+export type SlowCall = { tool: string; what: string; who: string; ms: number; at: number }
+
+// A tool result the main loop read, by its estimated tokens (characters / 4).
+export type BigResult = { tool: string; what: string; tokens: number; at: number }
+
+export type Insights = {
+  // The main loop's turn under way, or undefined between turns; `last` the last finished one.
+  turn?: TurnTime
+  last?: TurnTime
+  // Summed over finished turns.
+  session: Record<string, number>
+  sessionWall: number
+  turns: number
+  // The last 20 durations per tool, approvals left out, to tell an unusually long call.
+  durations: Record<string, number[]>
+  slow: SlowCall[]
+  big: BigResult[]
+  // Successful reads by the main loop and edits by anyone, per path.
+  reads: Record<string, number>
+  edits: Record<string, number>
+  // Failures in a row per call (tool and its argument); a success clears it.
+  fails: Record<string, number>
+  // Approval prompts per call.
+  asked: Record<string, number>
+  // The main loop's context per model request, oldest first; a drop is a compaction.
+  ctx: number[]
+  cacheRead: number
+  cacheTotal: number
+  tokens: { mainIn: number; mainOut: number; mainCached: number; agentsIn: number; agentsOut: number }
+  // Where the main loop works (a directory under the project) and how often it moved.
+  area?: string
+  switches: number
+  turnSwitches: number
+  turnAreas: Record<string, number>
+  modelSwitches: number
+  // The window by category at the last turn's end, used rows only, largest first.
+  breakdown?: { name: string; tokens: number }[]
+  mcpTokens?: number
+  memoryTokens?: number
 }
 
 export type LogLine = { at: number; who: string; what: string; result: string }
@@ -99,6 +157,7 @@ declare module 'claude-code' {
       tasks: Task[]
       skills: SkillUse[]
       flow: Flow[]
+      insights: Insights
     }
   }
 }
