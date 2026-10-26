@@ -8,16 +8,20 @@
 
 ## What it shows
 
+- **Needs attention:** a tool call waiting for your approval, three failed calls in a row, a subagent that failed or reported failing tests, a subagent waiting. Shown only when there is something.
+- **Running now:** each tool call in flight, with who runs it and for how long.
 - **Main session:** model and effort level.
-- **Tools:** calls per category (git, read, search, web, shell, edit, agents, skills, browser, computer use), with error counts, context use and compactions.
-- **Git:** git commands get their own highlighted row, the last three commands with who ran them, and a line in the session log. The status line counts them as `git [n]`.
-- **Subagents:** one card per subagent with model, effort, task, files touched, tokens and test result (PASS/FAIL read from its final answer).
+- **Tools:** calls per category (git, read, search, web, shell, edit, agents, skills, browser, computer use, MCP), with error counts, context use and compactions.
+- **Git, shell and MCP detail:** tabs under the tool counts list the last calls of each kind with who ran them. Switch with a click, `g` `s` `m` while the pane has focus, or `/agent-radar git|shell|mcp`. The status line counts git commands as `git [n]`.
+- **Subagents:** one card per subagent with model, effort, task, files touched, tokens and test result (PASS/FAIL as *reported* in its final answer; a failure wins over a pass). Running and waiting subagents are always kept; the last 12 finished ones stay.
 - **Session log:** subagent starts and finishes, test results, git commands and compactions.
-- **Fable advisor:** a second model that reads along and speaks up, as a toast, only when something looks off: a plan that misses something, three errors in a row, or a task reported done with parts left out. It never writes code.
+- **Fable advisor:** a second model that reads along and speaks up, as a toast, only when something looks off: a plan that misses something, three errors in a row, or a task reported done with parts left out. It never writes code. Each verdict shows in the pane as ok or nok.
 
 Languages: English (default), German, French, Spanish, Chinese and Japanese.
 
 ## Install
+
+Requires Claude Code 2.1.308 or later.
 
 At the prompt of a Claude Code terminal session:
 
@@ -50,7 +54,8 @@ those options for the plugin in my user settings. Tell me to restart Claude Code
 | --- | --- |
 | `/agent-radar` | Opens the pane |
 | `/agent-radar advisor` | Turns Fable on or off |
-| `/agent-radar clear` | Resets counters, cards and log. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
+| `/agent-radar git`, `shell`, `mcp` | Shows that detail tab |
+| `/agent-radar clear` | Resets counters, finished cards, log and Fable's notes; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
 The pane opens by itself at session start when the terminal is wide enough.
 

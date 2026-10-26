@@ -6,7 +6,7 @@ export type Card = {
   model: string
   effort: string
   task: string
-  status: 'running' | 'done' | 'error' | 'cancelled'
+  status: 'running' | 'waiting' | 'done' | 'error' | 'cancelled'
   files: number
   tools: number
   input: number
@@ -24,9 +24,14 @@ export type View = 'git' | 'shell' | 'mcp'
 
 export type Call = { at: number; who: string; view: View; what: string; result: string }
 
-export type Stats = { errors: Record<string, number>; compactions: number }
+// `streak` counts the main loop's failed calls in a row this turn.
+export type Stats = { errors: Record<string, number>; compactions: number; streak?: number }
 
-export type Advisor = { isOn: boolean; calls: number; notes: Note[] }
+// `epoch` moves on each clear and load; an answer to an older epoch is dropped.
+export type Advisor = { isOn: boolean; calls: number; notes: Note[]; epoch?: number }
+
+// A tool call that has started and not yet finished; `isAsking` while it waits for the person's approval.
+export type Active = { id: string; who: string; tool: string; what: string; startedAt: number; isAsking?: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -39,6 +44,7 @@ declare module 'claude-code' {
       stats: Stats
       calls: Call[]
       view: View
+      active: Active[]
     }
   }
 }
