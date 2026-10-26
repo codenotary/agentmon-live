@@ -1,9 +1,15 @@
-import type { On } from 'claude-code/testing'
+import type { AgentInfo } from 'claude-code'
+import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { ago, findCheck, hidesExit, outcomeOf, resetTime, smoothBar, spinner } from '../hooks/format'
 import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
 import { rank } from '../hooks/state'
+
+// The kit declares the hook-adding `on` without exporting its type.
+type On = Parameters<TestBody>[1]
+// What the engine stamps on a command the person typed.
+const TYPED = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 
 const PANE = {
   plugin: 'agent-radar',
@@ -198,7 +204,8 @@ test('mcp calls get a row and their own detail tab', async ($, on) => {
   on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.tool.call({ tool: 'mcp__sentry__search_issues', query: 'crash' })
+  // An MCP tool this machine has not connected, so its name is not in the typed tool list.
+  await $.tool.call({ tool: 'mcp__sentry__search_issues', query: 'crash' } as never)
   await $.tool.call({ tool: 'Bash', command: 'ls -la' })
 
   await clock.settle()
@@ -293,7 +300,7 @@ test('clear keeps running agents and drops history', async ($, on) => {
   await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
   await $.turn.complete({ ...DONE, agentId: 'a1' })
   await $.tool.call({ tool: 'Bash', command: 'ls' })
-  await $.command.run({ command: 'agent-radar', args: 'clear' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'clear' })
 
   expect(status()).toMatch(/subagents \[1\/1\].*tools \[0\]/)
 })
@@ -316,7 +323,7 @@ test('an advisor answer that arrives after a clear is dropped', async ($, on) =>
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'ExitPlanMode' })
   await clock.settle()
-  await $.command.run({ command: 'agent-radar', args: 'clear' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'clear' })
   await clock.advance(5000)
 
   const ui = await $.ui.mount(PANE)
@@ -656,7 +663,7 @@ test('check now asks Fable at once, past the cooldown', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   await ui.press({ key: 'advisor:check' })
   await clock.settle()
-  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
   await clock.settle()
   expect(prompts.length).toBe(2)
   expect(prompts[0]).toMatch(/^Look at the work so far/)
@@ -722,7 +729,7 @@ test('a hung advisor call times out and leaves Fable usable', async ($, on) => {
   })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
   await clock.settle()
   expect(timeoutMs).toBe(30_000)
 })
@@ -731,7 +738,7 @@ test('a reload settles calls, checks and subagents nobody will report back', asy
   mock.clock(on)
   engine(on)
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
-  let listed = [{ id: 'a1', description: 'Mod lesen', type: 'Explore', status: 'running' }]
+  let listed: AgentInfo[] = [{ id: 'a1', description: 'Mod lesen', type: 'Explore', status: 'running' }]
   on('agent.list', () => ({ value: listed }))
   // The call never reports back: the module reloads while it runs.
   on('tool.call', () => new Promise(() => {}))
@@ -832,23 +839,23 @@ test('a dropped advisor answer still counts its tokens, and a reload keeps unava
   on('model.complete', async () => {
     await clock.sleep(1000)
     return answer
-      ? { value: { isAnswered: true, text: 'OK', usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
-      : { value: { isAnswered: false, usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
+      ? { value: { isAnswered: true as const, text: 'OK', usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
+      : { value: { isAnswered: false as const, reason: 'empty-reply' as const, usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
   })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
   await clock.settle()
-  await $.command.run({ command: 'agent-radar', args: 'clear' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'clear' })
   await clock.advance(1000)
   answer = false
-  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
   await clock.advance(1000)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /tokens 100 \/ 20/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /\(unavailable\)/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /\(unavailable: empty-reply\)/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -1026,7 +1033,7 @@ test('clear empties the task list and the skills', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /TASKS 1\/3/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /SKILLS & COMMANDS/ })).toBeTruthy()
-  await $.command.run({ command: 'agent-radar', args: 'clear' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'clear' })
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: /TASKS/ })).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /SKILLS & COMMANDS/ })).toBe(undefined)
@@ -1146,8 +1153,9 @@ test('the i hotkey skips an approval row to the first item with a prompt', async
   let asking = false
   on('tool.check', () => ({ decision: asking ? 'ask' : 'allow' }))
   on('tool.call', async (_, e) => {
-    if (e.command === 'git push') await clock.sleep(1000)
-    return e.command === 'git push' ? { result: {} } : { result: {}, text: 'src/a.ts: 3 problems', isError: true }
+    const isPush = e.tool === 'Bash' && e.command === 'git push'
+    if (isPush) await clock.sleep(1000)
+    return isPush ? { result: {} } : { result: {}, text: 'src/a.ts: 3 problems', isError: true }
   })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -1188,7 +1196,7 @@ test('fable says why it is unavailable', async ($, on) => {
   on('model.complete', () => ({ value: { isAnswered: false, reason: 'api-error', status: 400, error: 'invalid_request', usage: zero } }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /\(unavailable: invalid_request 400\)/ })).toBeTruthy()

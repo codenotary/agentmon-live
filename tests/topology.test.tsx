@@ -1,10 +1,13 @@
-import type { On } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { CANVAS_ROWS, Cells, canvasFits, paintTopology } from '../hooks/canvas'
 import { tankRows, toolsBarWidth } from '../hooks/flow'
 import { LANGUAGES } from '../hooks/i18n'
 import { topology } from '../hooks/topology'
+
+// The kit declares the hook-adding `on` without exporting its type.
+type On = Parameters<TestBody>[1]
 
 const PANE = {
   plugin: 'agent-radar',
