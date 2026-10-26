@@ -33,6 +33,7 @@ const MATERIAL_ROOM = 12000
 const REQUEST_ROOM = 2000
 
 let statusQueued = false
+let isTicking = false
 
 function category(tool: string, call: object): Category {
   if (tool === 'Bash' && gitCommand(String((call as { command?: unknown }).command ?? ''))) return 'git'
@@ -67,6 +68,19 @@ async function refreshStatus($: EngineInterface) {
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   const running = list.filter(isLive).length
   $.ui.status(cfg.t.statusLine(m.effort || '?', running, list.length, listening(adv.isOn), total, counts.git ?? 0))
+}
+
+// Elapsed seconds under Running now move on their own: redraw once a second while a call or a subagent runs.
+function tick($: EngineInterface) {
+  if (isTicking) return
+  isTicking = true
+  $.clock.after(1000, async () => {
+    isTicking = false
+    const [doing, list] = await Promise.all([read($, active), read($, agents)])
+    if (doing.length === 0 && !list.some(isLive)) return
+    $.ui.invalidate('ui.render')
+    tick($)
+  })
 }
 
 // Tool calls come in bursts; redraw the status line at most twice a second.
@@ -246,7 +260,7 @@ export const register: Register = (on, options) => {
     const startedAt = await $.clock.now()
     // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
     await Promise.all([
-      update($, active, list => [...list, { id: callId, who, tool: e.tool, what, startedAt }]),
+      update($, active, list => [...list, { id: callId, who, tool: e.tool, what, startedAt }]).then(() => tick($)),
       tab && update($, calls, list => [...list, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
       kind && update($, checks, list => [...list.filter(c => c.kind !== kind), { kind, command: what, who, at: startedAt, result: 'running' as const }]),
     ])
@@ -328,6 +342,7 @@ export const register: Register = (on, options) => {
       startedAt: await $.clock.now(),
     }
     await update($, agents, list => trimAgents([...list, card]))
+    tick($)
     await addLog($, { who: e.subagentType, what: e.description, result: t.started })
     await refreshStatus($)
     return r

@@ -412,7 +412,7 @@ test('a call shows in its tab while it runs', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', async () => {
-    await clock.sleep(1000)
+    await clock.sleep(3000)
     return { result: {} }
   })
 
@@ -421,7 +421,11 @@ test('a call shows in its tab while it runs', async ($, on) => {
   await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^⟳ git push$/ })).toBeTruthy()
-  await clock.advance(1000)
+  expect(await ui.find({ type: 'Text', text: /main session · 0 s$/ })).toBeTruthy()
+  // The elapsed time moves on by itself while the call runs.
+  await clock.advance(1500)
+  expect(await ui.find({ type: 'Text', text: /main session · [12] s$/ })).toBeTruthy()
+  await clock.advance(1500)
   await call
   expect(await ui.find({ type: 'Text', text: /^git push$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^last · Bash git push/ })).toBeTruthy()
@@ -603,6 +607,34 @@ test('check now asks Fable at once, past the cooldown', async ($, on) => {
   expect(prompts.length).toBe(2)
   expect(prompts[0]).toMatch(/^Look at the work so far/)
   expect(await ui.find({ type: 'Text', text: /^✓ check ok$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('an advisor answer that arrives after a reload is dropped', async ($, on) => {
+  const clock = mock.clock(on)
+  const toasts: string[] = []
+  engine(on)
+  on('session.messages', () => ({ value: [{ role: 'assistant', text: 'the plan', toolUses: [] }] }))
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('model.complete', async () => {
+    await clock.sleep(5000)
+    return { value: { isAnswered: true, text: 'Stale objection.', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
+  })
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'ExitPlanMode' })
+  await clock.settle()
+  // A reload or an option change runs session.start again.
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(5000)
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Stale objection/ })).toBe(undefined)
+  expect(toasts).toEqual([])
   await ui.unmount()
 })
 
