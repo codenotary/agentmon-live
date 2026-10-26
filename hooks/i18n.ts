@@ -43,6 +43,7 @@ const en = {
   plan: 'Plan',
   task: 'Task',
   mainSession: 'main session',
+  you: 'you',
   compacted: (trigger: string) => `context compacted (${trigger})`,
   started: 'started',
   testsPassed: 'tests passed',

@@ -124,6 +124,14 @@ export function hidesExit(command: string): boolean {
   return /[^|]\|[^|]/.test(command) && !/pipefail/.test(command)
 }
 
+// With the exit status hidden (`npm test | tail`), the output's own summary says how the check went.
+// A failure count wins; a silent typecheck or lint passed; anything else stays unknown.
+export function outcomeOf(output: string, kind: CheckKind): 'ok' | 'failed' | 'unknown' {
+  if (/\b[1-9]\d*\s+(?:tests?\s+)?(?:fail(?:ed|ures?|ing)?|errors?|problems?)\b|✘|✖|error TS\d+|^error\b/im.test(output) || /\bFAIL(?:ED)?\b/.test(output)) return 'failed'
+  if (/\b0\s+(?:fail(?:ed|ures?)?|errors?|problems?)\b|\b\d+\s+(?:tests?\s+)?pass(?:ed|ing)?\b|✔|\bpassed\b|\bno (?:errors|problems)\b/i.test(output)) return 'ok'
+  return output.trim() === '' && (kind === 'typecheck' || kind === 'lint') ? 'ok' : 'unknown'
+}
+
 // /home/me/repo/hooks/state.ts -> hooks/state.ts
 export function shortPath(path: string): string {
   return path.split('/').slice(-2).join('/')

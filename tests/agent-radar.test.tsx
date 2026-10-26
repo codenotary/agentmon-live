@@ -1,8 +1,9 @@
 import type { On } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ago, findCheck, hidesExit, resetTime, smoothBar, spinner } from '../hooks/format'
+import { ago, findCheck, hidesExit, outcomeOf, resetTime, smoothBar, spinner } from '../hooks/format'
 import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
+import { rank } from '../hooks/state'
 
 const PANE = {
   plugin: 'agent-radar',
@@ -398,6 +399,17 @@ test('shell commands are told apart by the check they run', () => {
   expect(hidesExit('npm test | tail -5')).toBe(true)
   expect(hidesExit('set -o pipefail; npm test | tail')).toBe(false)
   expect(hidesExit('npm test || echo x')).toBe(false)
+  expect(outcomeOf(' 40 pass\n 0 fail\nRan 40 tests across 1 file.', 'test')).toBe('ok')
+  expect(outcomeOf(' 39 pass\n 1 fail', 'test')).toBe('failed')
+  expect(outcomeOf('Tests: 2 failed, 10 passed', 'test')).toBe('failed')
+  expect(outcomeOf('FAIL src/a.test.ts', 'test')).toBe('failed')
+  expect(outcomeOf('===== 12 passed in 0.3s =====', 'test')).toBe('ok')
+  expect(outcomeOf("src/a.ts(3,1): error TS2304: Cannot find name 'x'.", 'typecheck')).toBe('failed')
+  expect(outcomeOf('', 'typecheck')).toBe('ok')
+  expect(outcomeOf('✖ 3 problems (3 errors, 0 warnings)', 'lint')).toBe('failed')
+  expect(outcomeOf('✔ Validation passed', 'lint')).toBe('ok')
+  expect(outcomeOf('', 'test')).toBe('unknown')
+  expect(outcomeOf('done', 'build')).toBe('unknown')
 })
 
 test('bars fill in eighths and the spinner turns', () => {
@@ -428,7 +440,7 @@ test('checks show their outcome and go stale after an edit', async ($, on) => {
 
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+npm test/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /^typecheck\s+unknown / })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^typecheck\s+ OK / })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^ FAILED  lint npm run lint/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /STALE/ })).toBe(undefined)
   await clock.advance(1000)
@@ -823,5 +835,53 @@ test('a dropped advisor answer still counts its tokens, and a reload keeps unava
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /tokens 100 \/ 20/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /\(unavailable\)/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('loaded skills show who loaded them and how often', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('skill.prompt', (_, e) => ({ text: e.text }))
+  // The Skill tool loads the skill's text while it runs, as a session does.
+  on('tool.call', async (_, e) => {
+    if (e.tool === 'Skill') await $.skill.prompt({ skill: e.skill, text: 'body', frontmatter: {}, source: 'plugin', pluginName: 'superpowers' })
+    return { result: {} }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  await $.tool.call({ tool: 'Skill', skill: 'brainstorming' })
+  await $.tool.call({ tool: 'Skill', skill: 'brainstorming', agentId: 'a1' })
+  await $.skill.prompt({ skill: 'review', text: 'body', frontmatter: {}, source: 'userSettings' })
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /SKILLS & COMMANDS · 2/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^superpowers:brainstorming\s+×2 · Explore · / })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^review\s+×1 · you · / })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('sections are ranked: urgent first, then the recently active, then the usual order', () => {
+  const s = (key: string, isUrgent: boolean, at: number) => ({ key, isUrgent, at })
+  const order = (list: ReturnType<typeof s>[]) => rank(list, 1_000_000).map(x => x.key)
+  expect(order([s('tasks', false, 0), s('advisor', false, 0), s('usage', false, 0)])).toEqual(['tasks', 'advisor', 'usage'])
+  expect(order([s('tasks', false, 0), s('changes', false, 990_000), s('skills', false, 999_000)])).toEqual(['skills', 'changes', 'tasks'])
+  expect(order([s('tasks', false, 999_000), s('usage', true, 0)])).toEqual(['usage', 'tasks'])
+})
+
+test('a failed check moves its section to the top', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  on('tool.call', (_, e) => ('command' in e && /lint/.test(String(e.command)) ? { result: {}, text: 'lint errors', isError: true } : { result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
+  const titles = async () => (await ui.findAll({ type: 'Text', text: /^● [A-Z& ]+$/ })).map(x => x.text.trim())
+  const ui = await $.ui.mount(PANE)
+  expect((await titles()).slice(0, 2)).toEqual(['● TASKS', '● FABLE'])
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
+  // Needs attention stays above every section.
+  expect((await titles()).slice(0, 2)).toEqual(['● NEEDS ATTENTION', '● CHANGES & VERIFICATION'])
   await ui.unmount()
 })

@@ -62,7 +62,11 @@ export type Advisor = {
 export type Active = { id: string; who: string; tool: string; what: string; startedAt: number; isAsking?: boolean }
 
 // The session's own task list (TaskCreate/TaskUpdate or TodoWrite), as the calls left it.
-export type Task = { id: string; subject: string; activeForm?: string; status: 'pending' | 'in_progress' | 'completed' }
+// `at` is when a call last changed it.
+export type Task = { id: string; subject: string; activeForm?: string; status: 'pending' | 'in_progress' | 'completed'; at?: number }
+
+// A skill or prompt command whose text the session loaded: how often, by whom last, and when.
+export type SkillUse = { name: string; count: number; who: string; at: number }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -81,6 +85,7 @@ declare module 'claude-code' {
       lastCall: LastCall | null
       layout: Layout
       tasks: Task[]
+      skills: SkillUse[]
     }
   }
 }

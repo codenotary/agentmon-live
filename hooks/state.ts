@@ -27,6 +27,7 @@ export const INIT = {
   lastCall: null,
   layout: { isHistoryOpen: true, isDetailed: false },
   tasks: [],
+  skills: [],
 }
 
 // The `/agent-radar advisor` toggle and the advisorMode option both have to allow Fable.
@@ -36,6 +37,20 @@ export function listening(isOn: boolean): boolean {
 
 export function isLive(a: Card): boolean {
   return a.status === 'running' || a.status === 'waiting'
+}
+
+// A section of the pane below Running now: `isUrgent` when something there needs the person, `at` its last activity.
+export type Ranked = { key: string; isUrgent: boolean; at: number }
+
+// Sections move up by what needs attention: urgent ones first, then those active in the last two minutes,
+// newest first, then the rest in their usual order. Ties keep the usual order, so the pane does not jitter.
+export const RECENT_MS = 120_000
+export function rank<T extends Ranked>(sections: T[], now: number): T[] {
+  const tier = (s: Ranked) => (s.isUrgent ? 0 : now - s.at < RECENT_MS ? 1 : 2)
+  return sections
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => tier(a.s) - tier(b.s) || (tier(a.s) === 1 ? b.s.at - a.s.at : 0) || a.i - b.i)
+    .map(x => x.s)
 }
 
 export function trimAgents(list: Card[]): Card[] {

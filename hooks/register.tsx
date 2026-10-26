@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Card, Check, LogLine, Task } from '../types'
 import { advise } from './advisor'
-import { brief, decimal, describe, findCheck, gitCommand, hidesExit, testsOf } from './format'
+import { brief, decimal, describe, findCheck, gitCommand, hidesExit, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { drawPane } from './render'
@@ -25,6 +25,7 @@ const checks = atom({ plugin: 'agent-radar', key: 'checks' } as const, INIT.chec
 const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
 const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
 const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
+const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
 // A finished turn with fewer main-loop tool calls, no edit and no subagent is too small to be worth a Fable call.
@@ -97,18 +98,19 @@ function queueStatus($: EngineInterface) {
 // The session's task list as its own calls change it; `deleted` removes a task.
 async function trackTasks($: EngineInterface, call: { tool: string }, result: unknown) {
   const e = call as { tool: string; todos?: { content: string; status: Task['status']; activeForm: string }[]; subject?: string; activeForm?: string; taskId?: string; status?: Task['status'] | 'deleted' }
+  const at = await $.clock.now()
   if (e.tool === 'TodoWrite' && e.todos) {
     const todos = e.todos
-    await update($, tasks, () => todos.map((d, i) => ({ id: String(i), subject: d.content, activeForm: d.activeForm, status: d.status })).slice(-50))
+    await update($, tasks, () => todos.map((d, i) => ({ id: String(i), subject: d.content, activeForm: d.activeForm, status: d.status, at })).slice(-50))
   } else if (e.tool === 'TaskCreate') {
     const id = (result as { task?: { id?: string } } | undefined)?.task?.id
-    if (id) await update($, tasks, list => [...list, { id, subject: e.subject ?? '', activeForm: e.activeForm, status: 'pending' as const }].slice(-50))
+    if (id) await update($, tasks, list => [...list, { id, subject: e.subject ?? '', activeForm: e.activeForm, status: 'pending' as const, at }].slice(-50))
   } else if (e.tool === 'TaskUpdate' && e.taskId) {
     const { taskId, status, subject, activeForm } = e
     await update($, tasks, list =>
       status === 'deleted'
         ? list.filter(k => k.id !== taskId)
-        : list.map(k => (k.id === taskId ? { ...k, status: status ?? k.status, subject: subject ?? k.subject, activeForm: activeForm ?? k.activeForm } : k)),
+        : list.map(k => (k.id === taskId ? { ...k, status: status ?? k.status, subject: subject ?? k.subject, activeForm: activeForm ?? k.activeForm, at } : k)),
     )
   }
 }
@@ -148,6 +150,8 @@ export const register: Register = (on, options) => {
   const filesByAgent = new Map<string, Set<string>>()
   const seenStep = new Map<string, string>()
   let callCount = 0
+  // Who runs the Skill call under way, for the `skill.prompt` it raises; unset when the person typed the command.
+  let skillWho: string | undefined
   // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
   const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set() }
   const workRef = () => t.filesTools(turn.edited.size, turn.tools) + (turn.delegated ? ` · ${turn.delegated} subagents` : '')
@@ -295,9 +299,11 @@ export const register: Register = (on, options) => {
       check && update($, checks, list => [...list.filter(c => c.kind !== check.kind), { kind: check.kind, command: check.part.slice(0, 200), who, at: startedAt, result: 'running' as const }]),
     ])
     let ran
+    if (e.tool === 'Skill') skillWho = who
     try {
       ran = await next(e)
     } finally {
+      if (e.tool === 'Skill') skillWho = undefined
       await update($, active, list => list.filter(a => a.id !== callId))
     }
     const failed = ran.deny !== undefined || ran.isError
@@ -310,8 +316,8 @@ export const register: Register = (on, options) => {
       await update($, calls, list => list.map(c => (c.id === callId ? { ...c, result, error } : c)))
     }
     if (kind) {
-      // A denied or aborted run says nothing about the code; a pipe hides the exit status.
-      const result: Check['result'] = ran.deny !== undefined ? 'unknown' : ran.isError ? 'failed' : hidesExit(command) ? 'unknown' : 'ok'
+      // A denied or aborted run says nothing about the code; past a pipe the output decides.
+      const result: Check['result'] = ran.deny !== undefined ? 'unknown' : ran.isError ? 'failed' : hidesExit(command) ? outcomeOf(String(ran.text ?? ''), kind) : 'ok'
       await update($, checks, list => list.map(c => (c.kind === kind && c.at === startedAt ? { ...c, result } : c)))
     }
     if (!failed) await trackTasks($, e, ran.result)
@@ -350,6 +356,18 @@ export const register: Register = (on, options) => {
       await addLog($, { who: t.mainSession, what: t.compacted(e.trigger), result: '' })
     }
     return r
+  })
+
+  // A skill's text is loaded, by the Skill tool or by a slash command the person typed.
+  on('skill.prompt', async ($, e, next) => {
+    const name = e.pluginName && !e.skill.includes(':') ? `${e.pluginName}:${e.skill}` : e.skill
+    const who = skillWho ?? t.you
+    const at = await $.clock.now()
+    await update($, skills, list => {
+      const had = list.find(s => s.name === name)
+      return [...list.filter(s => s !== had), { name, count: (had?.count ?? 0) + 1, who, at }].slice(-30)
+    })
+    return next(e)
   })
 
   on('agent.spawn', async ($, e, next) => {

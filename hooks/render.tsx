@@ -5,7 +5,7 @@ import type { Card, Check } from '../types'
 import { ago, clockTime, effortBar, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
-import { cfg, INIT, isLive, listening, liveStatus, VIEWS } from './state'
+import { cfg, INIT, isLive, listening, liveStatus, rank, VIEWS } from './state'
 
 const main = atom({ plugin: 'agent-radar', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agent-radar', key: 'tools' } as const, INIT.tools)
@@ -20,6 +20,7 @@ const checks = atom({ plugin: 'agent-radar', key: 'checks' } as const, INIT.chec
 const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
 const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
 const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
+const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
 const layout = atom({ plugin: 'agent-radar', key: 'layout' } as const, INIT.layout)
 
 const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 'red', running: 'cyan', unknown: 'gray' }
@@ -28,7 +29,7 @@ const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 're
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
   const { Box, Button, Text } = $.ui.resolve(e)
-  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned] = await Promise.all([
+  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded] = await Promise.all([
     read($, main),
     read($, tools),
     read($, agents),
@@ -47,6 +48,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, lastCall),
     read($, layout),
     read($, tasks),
+    read($, skills),
   ])
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
@@ -179,6 +181,19 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             {'  '}{k.status === 'completed' ? '✓' : k.status === 'in_progress' ? '▸' : '·'} {k.subject}
           </Text>
         ))}
+    </Box>
+  )
+
+  // Skills and prompt commands whose text the session loaded, the latest first.
+  const skillBox = loaded.length > 0 && (
+    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
+      {title(`${t.cat.skills} · ${loaded.length}`, 'yellow')}
+      {loaded.slice(lay.isDetailed ? -30 : -5).reverse().map(s => (
+        <Text>
+          {fit(s.name, whatRoom + 1)}
+          <Text dimColor>×{s.count} · {s.who.slice(0, 16)} · {t.ago(secs(s.at))}</Text>
+        </Text>
+      ))}
     </Box>
   )
 
@@ -335,6 +350,20 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Box>
   )
 
+  // What each section last did and whether it needs the person now; `rank` orders them by it. Listed in the usual order.
+  const latest = (...at: number[]) => Math.max(0, ...at)
+  const lastNote = adv.notes.at(-1)
+  const sections = rank(
+    [
+      { key: 'tasks', node: taskBox, isUrgent: false, at: latest(...planned.map(k => k.at ?? 0)) },
+      { key: 'skills', node: skillBox, isUrgent: false, at: latest(...loaded.map(s => s.at)) },
+      { key: 'advisor', node: advisorBox, isUrgent: lastNote?.ok === false && now - latest(...Object.values(adv.lastAt ?? {})) < 10 * 60_000, at: latest(...Object.values(adv.lastAt ?? {})) },
+      { key: 'changes', node: changes, isUrgent: checked.some(c => c.result === 'failed' && !isStale(c)), at: latest(touched.editedAt, ...checked.map(c => c.at)) },
+      { key: 'usage', node: usageBox, isUrgent: (pct ?? 0) >= 80 || usage.rateLimits.some(r => r.percentUsed >= 80), at: 0 },
+    ].filter(s => s.node),
+    now,
+  )
+
   return (
     <Box flexDirection="column">
       <Text bold>
@@ -349,11 +378,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Box>
       )}
       {runningNow}
-      {taskBox}
-      <Box flexDirection={isWide ? 'row' : 'column'} gap={isWide ? 1 : 0}>
-        {advisorBox}
-        {changes}
-        {usageBox}
+      <Box flexDirection={isWide ? 'row' : 'column'} flexWrap="wrap" gap={isWide ? 1 : 0}>
+        {sections.map(s => s.node)}
       </Box>
       <Box gap={2}>
         <Button key="fold:history" plain hotkey="h" onPress={() => update($, layout, l => ({ ...l, isHistoryOpen: !l.isHistoryOpen }))}>
