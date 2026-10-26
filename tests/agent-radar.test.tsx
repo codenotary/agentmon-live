@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
 
@@ -125,9 +125,84 @@ test('git commands get their own row and log line', async ($, on) => {
 
   const ui = await $.ui.mount(PANE)
   expect((await ui.find({ type: 'Text', text: /total 2/ }))?.text).toBe('total 2')
-  expect(await ui.find({ type: 'Text', text: /^last git/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^git status$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /git \[1\]/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /EXECUTES/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('fable box stays one line until fable is asked', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: 0 }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^calls/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /speaks up only when needed/ })).toBeTruthy()
+  expect(await ui.find({ key: 'view:git' })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('mcp calls get a row and their own detail tab', async ($, on) => {
+  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', () => ({ value: undefined }))
+  on('clock.now', () => ({ value: 0 }))
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__sentry__search_issues', query: 'crash' })
+  await $.tool.call({ tool: 'Bash', command: 'ls -la' })
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^MCP/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /sentry search_issues/ })).toBe(undefined)
+  await ui.press({ key: 'view:mcp' })
+  expect(await ui.find({ type: 'Text', text: /^sentry search_issues crash$/ })).toBeTruthy()
+  await ui.press({ key: 'view:shell' })
+  expect(await ui.find({ type: 'Text', text: /^ls -la$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('fable verdicts show as ok and nok', async ($, on) => {
+  const clock = mock.clock(on)
+  const answers = ['OK', 'The tests were never run.']
+  const toasts: string[] = []
+  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.messages', () => ({ value: [{ role: 'assistant', text: 'the plan', toolUses: [] }] }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('model.complete', () => ({
+    value: { isAnswered: true, text: answers.shift() ?? 'OK', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } },
+  }))
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'ExitPlanMode' })
+  await clock.settle()
+  await $.tool.call({ tool: 'ExitPlanMode' })
+  await clock.settle()
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^✓ plan ok$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^✗ plan nok/ })).toBeTruthy()
+  expect(toasts).toEqual(['Fable: The tests were never run.'])
   await ui.unmount()
 })
 

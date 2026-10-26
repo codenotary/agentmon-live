@@ -17,11 +17,16 @@ export type Card = {
 
 export type LogLine = { at: number; who: string; what: string; result: string; isGit?: boolean }
 
-export type Note = { kind: 'plan' | 'error' | 'done'; text: string }
+// `ok` is missing on notes kept by older versions, which kept only objections.
+export type Note = { kind: 'plan' | 'error' | 'done'; ok?: boolean; text: string }
+
+export type View = 'git' | 'shell' | 'mcp'
+
+export type Call = { at: number; who: string; view: View; what: string; result: string }
 
 export type Stats = { errors: Record<string, number>; compactions: number }
 
-export type Advisor = { isOn: boolean; calls: number; last: string; notes: Note[] }
+export type Advisor = { isOn: boolean; calls: number; notes: Note[] }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -32,6 +37,8 @@ declare module 'claude-code' {
       log: LogLine[]
       advisor: Advisor
       stats: Stats
+      calls: Call[]
+      view: View
     }
   }
 }

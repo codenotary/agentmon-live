@@ -1,12 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Card, LogLine, Note } from '../types'
+import type { Call, Card, LogLine, Note, View } from '../types'
 import { CATEGORIES, LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 
 const PANE = 'agent-radar'
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
+const VIEWS: View[] = ['git', 'shell', 'mcp']
 // A finished turn with fewer main-loop tool calls is too small to be worth a Fable call.
 const MIN_TOOLS_FOR_DONE_CHECK = 3
 
@@ -23,10 +24,11 @@ const log = atom({ plugin: 'agent-radar', key: 'log' } as const, [])
 const advisor = atom({ plugin: 'agent-radar', key: 'advisor' } as const, {
   isOn: true,
   calls: 0,
-  last: '–',
   notes: [],
 })
 const stats = atom({ plugin: 'agent-radar', key: 'stats' } as const, { errors: {}, compactions: 0 })
+const calls = atom({ plugin: 'agent-radar', key: 'calls' } as const, [])
+const view = atom({ plugin: 'agent-radar', key: 'view' } as const, 'git')
 
 // `git status`, `cd x && git push`, `git -C dir log`: the git part of a shell command, else undefined.
 export function gitCommand(command: string): string | undefined {
@@ -44,6 +46,7 @@ function category(tool: string, call: object): Category {
   if (/^Skill$/.test(tool)) return 'skills'
   if (/playwright|browser|chrome/i.test(tool)) return 'browser'
   if (/computer/i.test(tool)) return 'computer'
+  if (/^mcp__/.test(tool)) return 'mcp'
   return 'other'
 }
 
@@ -62,6 +65,14 @@ function decimal(n: number): string {
 
 export function kilo(n: number): string {
   return n >= 1000 ? `${decimal(n / 1000)}k` : String(n)
+}
+
+// Which detail tab lists a call, if any. MCP wins over the category, so a browser MCP tool shows there too.
+function viewOf(tool: string, cat: Category): View | undefined {
+  if (cat === 'git') return 'git'
+  if (/^mcp__/.test(tool)) return 'mcp'
+  if (cat === 'shell') return 'shell'
+  return undefined
 }
 
 // The one argument that says what a call did: its file, command, pattern, ...
@@ -137,7 +148,7 @@ function advise($: EngineInterface, kind: Note['kind'], question: string, materi
   $.clock.after(0, async () => {
     const adv = await read($, advisor)
     if (!adv.isOn) return
-    await update($, advisor, a => ({ ...a, calls: a.calls + 1, last: `${t.kind[kind]}: ${question}` }))
+    await update($, advisor, a => ({ ...a, calls: a.calls + 1 }))
     const r = await $.model.complete({
       model: advisorModel,
       effort: 'low',
@@ -147,9 +158,9 @@ function advise($: EngineInterface, kind: Note['kind'], question: string, materi
     })
     if (!r.isAnswered) return
     const text = r.text.trim()
-    if (/^OK\b/i.test(text)) return
-    await update($, advisor, a => ({ ...a, notes: [...a.notes, { kind, text }].slice(-6) }))
-    $.ui.toast(`Fable: ${text}`)
+    const ok = /^OK\b/i.test(text)
+    await update($, advisor, a => ({ ...a, notes: [...a.notes, { kind, ok, text: ok ? '' : text }].slice(-6) }))
+    if (!ok) $.ui.toast(`Fable: ${text}`)
   })
 }
 
@@ -173,7 +184,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'agent-radar',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argClear}]`,
+      argumentHint: `[${t.argAdvisor}|${t.argClear}|${VIEWS.join('|')}]`,
     })
     const model = await $.session.model()
     await update($, main, m => ({ ...m, model }))
@@ -199,14 +210,21 @@ export const register: Register = (on, options) => {
       await refreshStatus($)
       return { text: t.advisorToggled(a.isOn) }
     }
+    const v = VIEWS.find(x => x === arg.toLowerCase())
+    if (v) {
+      await update($, view, () => v)
+      await $.ui.open({ id: PANE, title: 'Agent Radar' })
+      return { text: `Agent Radar: ${t.cat[v]}` }
+    }
     if (CLEAR_ARGS.includes(arg)) {
       await Promise.all([
         update($, tools, () => ({})),
         update($, agents, () => []),
         update($, log, () => []),
         update($, stats, () => ({ errors: {}, compactions: 0 })),
+        update($, calls, () => []),
       ])
-      await update($, advisor, a => ({ ...a, notes: [], last: '–' }))
+      await update($, advisor, a => ({ ...a, notes: [] }))
       await refreshStatus($)
       return { text: t.cleared }
     }
@@ -248,6 +266,7 @@ export const register: Register = (on, options) => {
     if (e.tool === 'Agent' && e.effort && e.tool_use_id) effortByCall.set(e.tool_use_id, e.effort)
     const cat = category(e.tool, e)
     const git = cat === 'git' ? gitCommand(String((e as { command?: unknown }).command)) : undefined
+    const tab = viewOf(e.tool, cat)
     await update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 }))
     const path = (e as { file_path?: string }).file_path
     if (e.agentId !== undefined) {
@@ -269,10 +288,15 @@ export const register: Register = (on, options) => {
 
     const ran = await next(e)
     if (ran.isError) await update($, stats, s => ({ ...s, errors: { ...s.errors, [cat]: (s.errors[cat] ?? 0) + 1 } }))
-    if (git) {
+    if (tab) {
       const id = e.agentId
       const who = id === undefined ? t.mainSession : ((await read($, agents)).find(a => a.id === id)?.type ?? id)
-      await addLog($, { who, what: git, isGit: true, result: ran.deny !== undefined || ran.isError ? t.failed : 'ok' })
+      const result = ran.deny !== undefined || ran.isError ? t.failed : 'ok'
+      // mcp__server__tool -> server tool
+      const what = git ?? (tab === 'mcp' ? `${e.tool.split('__').slice(1).join(' ')} ${brief(e)}`.trim() : brief(e))
+      const at = await $.clock.now()
+      await update($, calls, list => [...list, { at, who, view: tab, what, result }].slice(-60))
+      if (git) await addLog($, { who, what: git, isGit: true, result })
     }
     if (e.agentId === undefined && ran.deny === undefined) {
       trail = [...trail, `${e.tool} ${brief(e)} -> ${ran.isError ? `${t.failed}: ${String(ran.text ?? '').slice(0, 300)}` : 'ok'}`].slice(-40)
@@ -351,8 +375,8 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
-    const [m, counts, list, lines, adv, usage, st, now] = await Promise.all([
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const [m, counts, list, lines, adv, usage, st, now, recent, tab] = await Promise.all([
       read($, main),
       read($, tools),
       read($, agents),
@@ -361,6 +385,8 @@ export const register: Register = (on, options) => {
       $.session.usage(),
       read($, stats),
       $.clock.now(),
+      read($, calls),
+      read($, view),
     ])
     const cols = e.props.bodyColumns
     const isWide = cols >= 100
@@ -373,20 +399,25 @@ export const register: Register = (on, options) => {
     const rows: (readonly [Category, number])[] = CATEGORIES.map(c => [c, counts[c] ?? 0] as const)
     if (counts.other) rows.push(['other', counts.other])
     const whatRoom = Math.max(10, Math.min(40, cols - 50))
-    const gitLines = lines.filter(l => l.isGit).slice(-3)
+    const shown = recent.filter(c => c.view === tab).slice(-5)
 
     const advisorBox = (
       <Box flexDirection="column" borderStyle="single" borderColor="magenta" paddingX={1} width={isWide ? 30 : undefined}>
-        <Text color="magenta" bold>fable</Text>
-        {t.advisorLines.map(l => (l.startsWith(' ') ? <Text dimColor>{l}</Text> : <Text>{l}</Text>))}
-        <Text dimColor>{t.advisorAbout}</Text>
-        <Text dimColor>{t.last}</Text>
-        <Text>» {adv.last}</Text>
-        {adv.notes.slice(-3).map(n => (
-          <Text color="yellow">! {t.kind[n.kind]}: {n.text}</Text>
-        ))}
-        <Text>{t.calls}  {adv.calls} {adv.isOn ? '' : `(${t.off})`}</Text>
-        <Text>{t.context}  {kilo(usage.context.tokens ?? 0)}</Text>
+        <Text>
+          <Text color="magenta" bold>fable</Text> {adv.isOn ? '' : <Text dimColor>({t.off})</Text>}
+        </Text>
+        {adv.calls === 0 ? (
+          <Text dimColor>{t.advisorAbout}</Text>
+        ) : (
+          adv.notes.slice(-5).map(n =>
+            n.ok ? (
+              <Text color="green">✓ {t.kind[n.kind]} {t.ok}</Text>
+            ) : (
+              <Text color="red">✗ {t.kind[n.kind]} {t.nok}: <Text color="yellow">{n.text}</Text></Text>
+            ),
+          )
+        )}
+        {adv.calls > 0 && <Text dimColor>{t.calls}  {adv.calls}</Text>}
       </Box>
     )
 
@@ -436,11 +467,21 @@ export const register: Register = (on, options) => {
             <Text color={pct > 80 ? 'red' : 'green'}>{'█'.repeat(Math.round((pct / 100) * barRoom)).padEnd(barRoom)}</Text>
             {String(pct).padStart(4)} % <Text dimColor>{t.compactedTimes(st.compactions)}</Text>
           </Text>
-          {gitLines.map(l => (
+          {total > 0 && (
+            <Box gap={2}>
+              {VIEWS.map(v => (
+                <Button key={`view:${v}`} plain hotkey={v[0]} dimColor={v !== tab} onPress={() => update($, view, () => v)}>
+                  {t.cat[v]}
+                </Button>
+              ))}
+            </Box>
+          )}
+          {total > 0 && shown.length === 0 && <Text dimColor>{t.empty}</Text>}
+          {shown.map(c => (
             <Text>
-              <Text color="yellow" bold>{fit(t.lastGit, 17)}</Text>
-              <Text color={l.result === 'ok' ? 'yellow' : 'red'}>{l.what.slice(0, barRoom + 20)}</Text>
-              <Text dimColor> {l.who.slice(0, 16)}</Text>
+              <Text dimColor>{clockTime(c.at)} </Text>
+              <Text color={c.result !== 'ok' ? 'red' : c.view === 'git' ? 'yellow' : undefined}>{c.what.slice(0, barRoom + 20)}</Text>
+              <Text dimColor> {c.who.slice(0, 16)}</Text>
             </Text>
           ))}
         </Box>

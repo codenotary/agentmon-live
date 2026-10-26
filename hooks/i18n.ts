@@ -1,4 +1,4 @@
-export const CATEGORIES = ['git', 'read', 'search', 'web', 'shell', 'edit', 'agents', 'skills', 'browser', 'computer'] as const
+export const CATEGORIES = ['git', 'read', 'search', 'web', 'shell', 'edit', 'agents', 'skills', 'browser', 'computer', 'mcp'] as const
 export type Category = (typeof CATEGORIES)[number] | 'other'
 
 const en = {
@@ -14,6 +14,7 @@ const en = {
     skills: 'skills & commands',
     browser: 'browser',
     computer: 'computer use',
+    mcp: 'MCP',
     other: 'other',
   } as Record<Category, string>,
   status: { running: 'running', done: 'done', error: 'error', cancelled: 'cancelled' },
@@ -47,9 +48,7 @@ const en = {
   doneAfter: (secs: string) => `done after ${secs} s`,
   filesTools: (files: number, tools: number) => `${files} files · ${tools} tools`,
   files: 'files',
-  advisorLines: ['◇ plan going out', '  is it right?', '◇ error reported', '  going in circles?', '◇ reported as done', '  anything left out?'],
   advisorAbout: 'reads everything, speaks up only when needed. never writes code.',
-  last: 'last:',
   calls: 'calls',
   off: 'off',
   context: 'context',
@@ -59,6 +58,7 @@ const en = {
   total: 'total',
   errors: (n: number) => `${n} failed`,
   ok: 'ok',
+  nok: 'nok',
   compactedTimes: (n: number) => `${n}× compacted`,
   delegated: (model: string, running: number) => `delegated · ${model} · ${running} running`,
   noSubagents: '  no subagents yet',
@@ -67,7 +67,6 @@ const en = {
   executes: 'EXECUTES',
   watches: 'FABLE WATCHES',
   sessionLog: 'session log',
-  lastGit: 'last git',
   empty: 'empty',
 }
 
@@ -86,6 +85,7 @@ const de: Strings = {
     skills: 'Skills & Befehle',
     browser: 'Browser',
     computer: 'Computer Use',
+    mcp: 'MCP',
     other: 'sonstige',
   },
   status: { running: 'läuft', done: 'fertig', error: 'fehler', cancelled: 'abgebrochen' },
@@ -119,9 +119,7 @@ const de: Strings = {
   doneAfter: secs => `fertig nach ${secs} s`,
   filesTools: (files, tools) => `${files} Dateien · ${tools} Werkzeuge`,
   files: 'Dateien',
-  advisorLines: ['◇ Plan geht raus', '  richtig so?', '◇ Fehler gemeldet', '  läuft im Kreis?', '◇ als fertig gemeldet', '  etwas ausgelassen?'],
   advisorAbout: 'liest alles mit, meldet sich nur, wenn es nötig ist. schreibt nie Code.',
-  last: 'zuletzt:',
   calls: 'Aufrufe',
   off: 'aus',
   context: 'Kontext',
@@ -131,6 +129,7 @@ const de: Strings = {
   total: 'gesamt',
   errors: n => `${n} fehler`,
   ok: 'ok',
+  nok: 'nok',
   compactedTimes: n => `${n}× verdichtet`,
   delegated: (model, running) => `delegiert · ${model} · ${running} laufen`,
   noSubagents: '  noch keine Subagenten',
@@ -139,7 +138,6 @@ const de: Strings = {
   executes: 'FÜHRT AUS',
   watches: 'FABLE WACHT',
   sessionLog: 'Sitzungsprotokoll',
-  lastGit: 'letztes git',
   empty: 'leer',
 }
 
@@ -156,6 +154,7 @@ const fr: Strings = {
     skills: 'skills & commandes',
     browser: 'navigateur',
     computer: 'computer use',
+    mcp: 'MCP',
     other: 'autres',
   },
   status: { running: 'en cours', done: 'terminé', error: 'erreur', cancelled: 'annulé' },
@@ -189,9 +188,7 @@ const fr: Strings = {
   doneAfter: secs => `terminé en ${secs} s`,
   filesTools: (files, tools) => `${files} fichiers · ${tools} outils`,
   files: 'fichiers',
-  advisorLines: ['◇ le plan part', '  est-il juste ?', '◇ erreur signalée', '  tourne en rond ?', '◇ annoncé terminé', '  quelque chose oublié ?'],
   advisorAbout: 'lit tout, ne parle que si nécessaire. n’écrit jamais de code.',
-  last: 'dernier :',
   calls: 'appels',
   off: 'off',
   context: 'contexte',
@@ -201,6 +198,7 @@ const fr: Strings = {
   total: 'total',
   errors: n => `${n} échec`,
   ok: 'ok',
+  nok: 'nok',
   compactedTimes: n => `${n}× compacté`,
   delegated: (model, running) => `délégué · ${model} · ${running} en cours`,
   noSubagents: '  pas encore de sous-agents',
@@ -209,7 +207,6 @@ const fr: Strings = {
   executes: 'EXÉCUTE',
   watches: 'FABLE VEILLE',
   sessionLog: 'journal de session',
-  lastGit: 'dernier git',
   empty: 'vide',
 }
 
@@ -226,6 +223,7 @@ const es: Strings = {
     skills: 'skills y comandos',
     browser: 'navegador',
     computer: 'computer use',
+    mcp: 'MCP',
     other: 'otros',
   },
   status: { running: 'en curso', done: 'hecho', error: 'error', cancelled: 'cancelado' },
@@ -259,9 +257,7 @@ const es: Strings = {
   doneAfter: secs => `hecho en ${secs} s`,
   filesTools: (files, tools) => `${files} archivos · ${tools} herramientas`,
   files: 'archivos',
-  advisorLines: ['◇ el plan sale', '  ¿es correcto?', '◇ error reportado', '  ¿da vueltas?', '◇ reportado hecho', '  ¿algo omitido?'],
   advisorAbout: 'lo lee todo, solo habla cuando hace falta. nunca escribe código.',
-  last: 'último:',
   calls: 'llamadas',
   off: 'off',
   context: 'contexto',
@@ -271,6 +267,7 @@ const es: Strings = {
   total: 'total',
   errors: n => `${n} fallos`,
   ok: 'ok',
+  nok: 'nok',
   compactedTimes: n => `${n}× compactado`,
   delegated: (model, running) => `delegado · ${model} · ${running} en curso`,
   noSubagents: '  aún no hay subagentes',
@@ -279,7 +276,6 @@ const es: Strings = {
   executes: 'EJECUTA',
   watches: 'FABLE VIGILA',
   sessionLog: 'registro de sesión',
-  lastGit: 'último git',
   empty: 'vacío',
 }
 
@@ -296,6 +292,7 @@ const zh: Strings = {
     skills: '技能与命令',
     browser: '浏览器',
     computer: '电脑操作',
+    mcp: 'MCP',
     other: '其他',
   },
   status: { running: '运行中', done: '完成', error: '错误', cancelled: '已取消' },
@@ -328,9 +325,7 @@ const zh: Strings = {
   doneAfter: secs => `${secs} 秒后完成`,
   filesTools: (files, tools) => `${files} 个文件 · ${tools} 次工具调用`,
   files: '个文件',
-  advisorLines: ['◇ 计划发出', '  正确吗？', '◇ 报告错误', '  在打转吗？', '◇ 报告完成', '  有遗漏吗？'],
   advisorAbout: '全程阅读，只在必要时发言。从不写代码。',
-  last: '最近：',
   calls: '调用',
   off: '关闭',
   context: '上下文',
@@ -340,6 +335,7 @@ const zh: Strings = {
   total: '总计',
   errors: n => `${n} 失败`,
   ok: 'ok',
+  nok: 'nok',
   compactedTimes: n => `已压缩 ${n} 次`,
   delegated: (model, running) => `已委派 · ${model} · ${running} 运行中`,
   noSubagents: '  暂无子代理',
@@ -348,7 +344,6 @@ const zh: Strings = {
   executes: '执行',
   watches: 'FABLE 监督',
   sessionLog: '会话日志',
-  lastGit: '最近 git',
   empty: '空',
 }
 
@@ -365,6 +360,7 @@ const ja: Strings = {
     skills: 'スキルとコマンド',
     browser: 'ブラウザ',
     computer: 'コンピュータ操作',
+    mcp: 'MCP',
     other: 'その他',
   },
   status: { running: '実行中', done: '完了', error: 'エラー', cancelled: '中止' },
@@ -398,9 +394,7 @@ const ja: Strings = {
   doneAfter: secs => `${secs} 秒で完了`,
   filesTools: (files, tools) => `${files} ファイル · ${tools} ツール`,
   files: 'ファイル',
-  advisorLines: ['◇ 計画を提出', '  正しい？', '◇ エラー報告', '  堂々巡り？', '◇ 完了報告', '  抜けはない？'],
   advisorAbout: 'すべて読み、必要なときだけ発言。コードは書かない。',
-  last: '直近：',
   calls: '呼出',
   off: 'オフ',
   context: 'コンテキスト',
@@ -410,6 +404,7 @@ const ja: Strings = {
   total: '合計',
   errors: n => `${n} 失敗`,
   ok: 'ok',
+  nok: 'nok',
   compactedTimes: n => `${n}× 圧縮`,
   delegated: (model, running) => `委任 · ${model} · ${running} 実行中`,
   noSubagents: '  サブエージェントなし',
@@ -418,7 +413,6 @@ const ja: Strings = {
   executes: '実行',
   watches: 'FABLE 監視',
   sessionLog: 'セッションログ',
-  lastGit: '直近 git',
   empty: '空',
 }
 
