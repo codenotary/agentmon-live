@@ -27,7 +27,15 @@ export function kilo(n: number): string {
 export function brief(call: object): string {
   const a = call as Record<string, unknown>
   const arg = ['file_path', 'command', 'pattern', 'url', 'query', 'description', 'skill'].map(k => a[k]).find(v => typeof v === 'string')
-  return typeof arg === 'string' ? arg.replace(/\s+/g, ' ').slice(0, 100) : ''
+  return typeof arg === 'string' ? mask(arg.replace(/\s+/g, ' ')).slice(0, 100) : ''
+}
+
+const SECRET_NAME = /((?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40})(\s*[=:]\s*|\s+)(["']?)((?:bearer|basic)\s+)?[^\s"']+/gi
+const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|ghp_\w{20,}|github_pat_\w{20,}|xox[bp]-[\w-]{10,}|AKIA[0-9A-Z]{16})/g
+
+// brief() goes to the advisor model and the pane; the name's tail is bounded so long words cannot make it quadratic.
+export function mask(s: string): string {
+  return s.replace(SECRET_NAME, (_, name, sep, quote, scheme) => `${name}${sep}${quote}${scheme ?? ''}***`).replace(SECRET_SHAPE, '***')
 }
 
 // What a call shows in the detail tabs and under Running now: `git push`, `npm test`, `sentry search_issues crash`.
@@ -78,13 +86,20 @@ export function resetTime(ms: number, now: number): string {
 }
 
 // A failure anywhere wins over a pass count: "3 passed, 2 failed" is a FAIL.
+const ANSWER_FAIL = /\b([1-9]\d*)\s+(?:tests?\s+)?fail(?:ed|ing)?\b/i
+
 export function testsOf(answer: string): string | undefined {
-  if (/\b([1-9]\d*)\s+(?:tests?\s+)?fail(?:ed|ing)?\b/i.test(answer)) return 'FAIL'
+  if (ANSWER_FAIL.test(answer)) return 'FAIL'
   const pass =
     answer.match(/(\d+)\s+(?:tests?|Tests)\s+(?:passed|bestanden|passing)/i) ??
     answer.match(/\bPASS(?:ED)?\b\D{0,12}(\d+)\s+tests?/i)
   if (pass) return cfg.t.testsPass(pass[1] ?? '')
   return undefined
+}
+
+// The line of an answer that made it a FAIL, so the person can judge whether it is real.
+export function failLine(answer: string): string | undefined {
+  return answer.split('\n').find(l => ANSWER_FAIL.test(l))?.trim().slice(0, 200)
 }
 
 const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?`
@@ -101,7 +116,13 @@ const CHECKS: [CheckKind, RegExp][] = [
 // `cat <<EOF … npm test … EOF`, `echo "x; npm test"` or `grep lint x` is no check. Wrappers (`npx`, `uv run`,
 // `python -m`, a path) are skipped.
 export function findCheck(command: string): { kind: CheckKind; part: string } | undefined {
-  const plain = command.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '')
+  return findChecks(command)[0]
+}
+
+// Every check a command runs, in command order, one entry per kind: `npm run lint && npm test` is lint, then test.
+export function findChecks(command: string): { kind: CheckKind; part: string }[] {
+  // The heredoc regex is quadratic on many unterminated `<<A`; a real command never needs more than this.
+  const plain = command.slice(0, 20_000).replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '')
   // Quoted text turns to spaces of the same length, so a part found in `blank` is cut from `plain` at the same place.
   const blank = plain.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, q => q[0] + ' '.repeat(q.length - 2) + q[0])
   const parts: { head: string; part: string }[] = []
@@ -112,11 +133,12 @@ export function findCheck(command: string): { kind: CheckKind; part: string } | 
     start = m.index + m[0].length
     if (m[0] === '') break
   }
-  for (const [kind, re] of CHECKS) {
-    const found = parts.find(p => re.test(p.head))
-    if (found) return { kind, part: found.part }
+  const found: { kind: CheckKind; part: string }[] = []
+  for (const p of parts) {
+    const kind = CHECKS.find(([, re]) => re.test(p.head))?.[0]
+    if (kind && !found.some(f => f.kind === kind)) found.push({ kind, part: p.part })
   }
-  return undefined
+  return found
 }
 
 // A pipe hides the check's own exit status unless pipefail is set, so success there is only `unknown`.
@@ -124,13 +146,23 @@ export function hidesExit(command: string): boolean {
   return /[^|]\|[^|]/.test(command) && !/pipefail/.test(command)
 }
 
-// With the exit status hidden (`npm test | tail`), the output's own summary says how the check went.
-// A failure count wins; a silent typecheck or lint passed; anything else stays unknown.
+const FAIL_COUNT = /\b[1-9]\d*\s+(?:tests?\s+)?fail(?:ed|ures?|ing)?\b|\bfail(?:ed|ures?)?:?\s+[1-9]/i
+// `fail 0` is node's test runner summary.
+const PASSES = /\b0\s+(?:fail(?:ed|ures?)?|errors?|problems?)\b|\bfail(?:ed|ures?)?:?\s+0\b|\b\d+\s+(?:tests?\s+)?pass(?:ed|ing)?\b|✔|\bpassed\b|\bno (?:errors|problems)\b/i
+
+// With the exit hidden (`npm test | tail`) the summary decides, bottom up, so a passing test named "2 errors" is no failure.
 export function outcomeOf(output: string, kind: CheckKind): 'ok' | 'failed' | 'unknown' {
-  if (/\b[1-9]\d*\s+(?:tests?\s+)?(?:fail(?:ed|ures?|ing)?|errors?|problems?)\b|✘|✖|error TS\d+|^error\b/im.test(output) || /\bFAIL(?:ED)?\b/.test(output)) return 'failed'
-  if (/\b0\s+(?:fail(?:ed|ures?)?|errors?|problems?)\b|\b\d+\s+(?:tests?\s+)?pass(?:ed|ing)?\b|✔|\bpassed\b|\bno (?:errors|problems)\b/i.test(output)) return 'ok'
-  return output.trim() === '' && (kind === 'typecheck' || kind === 'lint') ? 'ok' : 'unknown'
+  // The summary is at the end; the cap keeps the scans cheap on huge logs.
+  const out = output.slice(-20_000)
+  for (const line of out.split('\n').filter(l => l.trim()).slice(-15).reverse()) {
+    if (FAIL_COUNT.test(line) || /^\s*FAIL\b/.test(line)) return 'failed'
+    if (PASSES.test(line)) return 'ok'
+  }
+  if (/\b[1-9]\d*\s+(?:tests?\s+)?(?:fail(?:ed|ures?|ing)?|errors?|problems?)\b|✘|✖|error TS\d+|^error\b/im.test(out) || /\bFAIL(?:ED)?\b/.test(out)) return 'failed'
+  if (PASSES.test(out)) return 'ok'
+  return out.trim() === '' && (kind === 'typecheck' || kind === 'lint') ? 'ok' : 'unknown'
 }
+
 
 // /home/me/repo/hooks/state.ts -> hooks/state.ts
 export function shortPath(path: string): string {

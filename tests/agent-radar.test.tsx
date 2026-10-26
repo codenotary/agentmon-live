@@ -100,13 +100,13 @@ test('pane counts tool calls and shows a spawned subagent', async ($, on) => {
 })
 
 test('pane counts failed calls and compactions', async ($, on) => {
+  const clock = mock.clock(on)
   on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.status', () => ({ value: undefined }))
-  on('clock.now', () => ({ value: 0 }))
   on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
   on('session.compact', () => ({ messages: [{ role: 'user', text: 'Zusammenfassung', toolUses: [] }] }))
 
@@ -114,6 +114,7 @@ test('pane counts failed calls and compactions', async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: 'false' })
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'hallo', toolUses: [] }] })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^1 failed$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /1× compacted/ })).toBeTruthy()
@@ -121,18 +122,19 @@ test('pane counts failed calls and compactions', async ($, on) => {
 })
 
 test('german option localizes the pane', { options: { language: 'de' } }, async ($, on) => {
+  const clock = mock.clock(on)
   on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.status', () => ({ value: undefined }))
-  on('clock.now', () => ({ value: 0 }))
   on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'Bash', command: 'false' })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect((await ui.find({ type: 'Text', text: /gesamt 1/ }))?.text).toBe('gesamt 1')
   expect(await ui.find({ type: 'Text', text: /^1 fehler$/ })).toBeTruthy()
@@ -140,20 +142,21 @@ test('german option localizes the pane', { options: { language: 'de' } }, async 
   await ui.unmount()
 })
 
-test('git commands get their own row and log line', async ($, on) => {
+test('git commands get their own row and no log line', async ($, on) => {
+  const clock = mock.clock(on)
   on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.status', () => ({ value: undefined }))
-  on('clock.now', () => ({ value: 0 }))
   on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'Bash', command: 'git status' })
   await $.tool.call({ tool: 'Bash', command: 'ls' })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect((await ui.find({ type: 'Text', text: /total 2/ }))?.text).toBe('total 2')
   expect(await ui.find({ type: 'Text', text: /^git status$/ })).toBeTruthy()
@@ -183,19 +186,20 @@ test('fable box stays one line until fable is asked', async ($, on) => {
 })
 
 test('mcp calls get a row and their own detail tab', async ($, on) => {
+  const clock = mock.clock(on)
   on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.status', () => ({ value: undefined }))
-  on('clock.now', () => ({ value: 0 }))
   on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'mcp__sentry__search_issues', query: 'crash' })
   await $.tool.call({ tool: 'Bash', command: 'ls -la' })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^MCP/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /sentry search_issues/ })).toBe(undefined)
@@ -348,13 +352,14 @@ test('a call waiting for approval needs attention until it runs', async ($, on) 
 })
 
 test('three failed calls in a row need attention', async ($, on) => {
+  const clock = mock.clock(on)
   engine(on)
-  on('clock.now', () => ({ value: 0 }))
   on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: 'false' })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /3 errors in a row/ })).toBeTruthy()
   await ui.unmount()
@@ -438,6 +443,7 @@ test('checks show their outcome and go stale after an edit', async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: 'npx tsc --noEmit | tail -3' })
   await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+npm test/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^typecheck\s+ OK / })).toBeTruthy()
@@ -445,6 +451,7 @@ test('checks show their outcome and go stale after an edit', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /STALE/ })).toBe(undefined)
   await clock.advance(1000)
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' })
+  await clock.settle()
   expect(await ui.find({ type: 'Text', text: /^1 edited · 1 read/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^  src\/a\.ts$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+ STALE / })).toBeTruthy()
@@ -495,13 +502,14 @@ test('usage says unavailable rather than zero, and shows rate limits', async ($,
 })
 
 test('history folds and details unfold long text', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {} }))
   const long = `git commit -m "${'x'.repeat(80)}"`
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'Bash', command: long })
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^git commit -m "x+…$/ })).toBeTruthy()
   await ui.press({ key: 'details' })
@@ -513,12 +521,13 @@ test('history folds and details unfold long text', async ($, on) => {
 })
 
 test('a narrow pane still draws every section', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
   const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 50 } })
   expect(await ui.find({ type: 'Text', text: /NEEDS ATTENTION/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /CHANGES & VERIFICATION/ })).toBeTruthy()
@@ -589,7 +598,8 @@ test('a long trail is trimmed from its oldest lines, never from the request', as
 test('repeated and rapid checks are suppressed and the budget holds', { options: { advisorBudget: 3 } }, async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []
-  const plans = ['plan A', 'plan B', 'plan B', 'plan B', 'plan C', 'plan D']
+  // A skipped call never builds its material, so it reads no plan.
+  const plans = ['plan A', 'plan B', 'plan B', 'plan C', 'plan D']
   engine(on)
   fable(on, [], prompts)
   on('session.messages', () => ({ value: [{ role: 'assistant', text: plans.shift() ?? '', toolUses: [] }] }))
@@ -627,7 +637,7 @@ test('a failing advisor model leaves the dashboard working', async ($, on) => {
   await $.tool.call({ tool: 'ExitPlanMode' })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
-  expect(await ui.find({ type: 'Text', text: /\(unavailable\)/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /\(unavailable: error\)/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /total 1/ })).toBeTruthy()
   await ui.unmount()
 })
@@ -744,13 +754,14 @@ const TODOS = [
 ] as const
 
 test('the task list shows progress and the task in progress', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /TASKS 1\/3/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /Writing tests/ })).toBeTruthy()
@@ -761,7 +772,7 @@ test('the task list shows progress and the task in progress', async ($, on) => {
 })
 
 test('task calls create, finish and delete tasks; a failed update changes nothing', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   engine(on)
   let next = 0
   on('tool.call', (_, e) => {
@@ -778,6 +789,7 @@ test('task calls create, finish and delete tasks; a failed update changes nothin
   await $.tool.call({ tool: 'TaskUpdate', taskId: '3', status: 'deleted' })
   await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'pending' })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /TASKS 1\/2/ })).toBeTruthy()
   await ui.unmount()
@@ -839,7 +851,7 @@ test('a dropped advisor answer still counts its tokens, and a reload keeps unava
 })
 
 test('loaded skills show who loaded them and how often', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   engine(on)
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
   on('skill.prompt', (_, e) => ({ text: e.text }))
@@ -855,6 +867,7 @@ test('loaded skills show who loaded them and how often', async ($, on) => {
   await $.tool.call({ tool: 'Skill', skill: 'brainstorming', agentId: 'a1' })
   await $.skill.prompt({ skill: 'review', text: 'body', frontmatter: {}, source: 'userSettings' })
 
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /SKILLS & COMMANDS · 2/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^superpowers:brainstorming\s+×2 · Explore · / })).toBeTruthy()
@@ -871,23 +884,25 @@ test('sections are ranked: urgent first, then the recently active, then the usua
 })
 
 test('a failed check moves its section to the top', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   engine(on)
   on('tool.call', (_, e) => ('command' in e && /lint/.test(String(e.command)) ? { result: {}, text: 'lint errors', isError: true } : { result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
   const titles = async () => (await ui.findAll({ type: 'Text', text: /^● [A-Z& ]+$/ })).map(x => x.text.trim())
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect((await titles()).slice(0, 2)).toEqual(['● TASKS', '● FABLE'])
   await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
+  await clock.settle()
   // Needs attention stays above every section.
   expect((await titles()).slice(0, 2)).toEqual(['● NEEDS ATTENTION', '● CHANGES & VERIFICATION'])
   await ui.unmount()
 })
 
 test('the header names the loaded version and commit', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   engine(on)
   const files: Record<string, string> = {
     '.claude-plugin/plugin.json': '{ "name": "agent-radar", "version": "0.6.0" }',
@@ -900,6 +915,7 @@ test('the header names the loaded version and commit', async ($, on) => {
   })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^ 0\.6\.0 · 3366336$/ })).toBeTruthy()
   await ui.unmount()
@@ -918,5 +934,200 @@ test('a few subagents get cards side by side; many get one line each', async ($,
   for (let i = 3; i < 10; i++) await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}` })
   expect(await ui.findAll({ type: 'Text', text: /^Haiku 5\.5 · / })).toHaveLength(0)
   expect(await ui.findAll({ type: 'Text', text: /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Explore\s+Haiku 5\.5\s+Mod lesen/ })).toHaveLength(10)
+  await ui.unmount()
+})
+
+test('only the main loop keeps the task list; todo ids never meet task ids; an unsuccessful update changes nothing', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('tool.call', (_, e) => {
+    if (e.tool === 'TaskCreate') return { result: { task: { id: '1', subject: e.subject } } }
+    if (e.tool === 'TaskUpdate' && e.status === 'pending') return { result: { success: false, taskId: '1', updatedFields: [] } }
+    return { result: {} }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
+  await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'Sub work', status: 'pending', activeForm: 'Subbing' }], agentId: 'a1' })
+  await $.tool.call({ tool: 'TaskCreate', subject: 'D', description: 'd' })
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'completed' })
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'pending' })
+  await clock.settle()
+
+  const ui = await $.ui.mount(PANE)
+  // "Read the mod" and D are done; "Write tests" (TodoWrite's second row) is not completed by task 1.
+  expect(await ui.find({ type: 'Text', text: /TASKS 2\/4/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('two Skill calls at once each name their own caller', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('skill.prompt', (_, e) => ({ text: e.text }))
+  on('tool.call', async (_, e) => {
+    if (e.tool === 'Skill') {
+      // The main loop's skill loads after the subagent's call has come and gone.
+      if (e.agentId === undefined) await clock.sleep(1000)
+      await $.skill.prompt({ skill: String(e.skill).replace(/^superpowers:/, ''), text: 'body', frontmatter: {}, source: 'plugin', pluginName: 'superpowers' })
+    }
+    return { result: {} }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  const mainCall = $.tool.call({ tool: 'Skill', skill: 'superpowers:brainstorming' })
+  await clock.settle()
+  await $.tool.call({ tool: 'Skill', skill: 'review', agentId: 'a1' })
+  await clock.advance(1000)
+  await mainCall
+  await clock.settle()
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^superpowers:brainstorming\s+×1 · main session · / })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^superpowers:review\s+×1 · Explore · / })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a compound command gets a row per check; a failure blames the last one', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  let fails = false
+  on('tool.call', () => (fails ? { result: {}, text: 'test failed', isError: true } : { result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint && npm test' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^lint\s+ OK\s+npm run lint/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+npm test/ })).toBeTruthy()
+  fails = true
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint && npm test' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /^lint\s+unknown npm run lint/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /FAILED\s+test npm test/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('clear empties the task list and the skills', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  on('skill.prompt', (_, e) => ({ text: e.text }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
+  await $.skill.prompt({ skill: 'review', text: 'body', frontmatter: {}, source: 'userSettings' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /TASKS 1\/3/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /SKILLS & COMMANDS/ })).toBeTruthy()
+  await $.command.run({ command: 'agent-radar', args: 'clear' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /TASKS/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /SKILLS & COMMANDS/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('in a worktree the header names only the version', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('fs.read', (_, e) => {
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{ "name": "agent-radar", "version": "0.6.0" }' }
+    // `.git` is a file: whatever a reader makes of `.git/HEAD`, it is the `gitdir:` line, never a commit.
+    if (e.path.includes('/.git')) return { value: 'gitdir: /repo/.git/worktrees/w\n' }
+    throw new Error('ENOENT')
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^ 0\.6\.0$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a reported FAIL can be investigated, dismissed, and leaves at the next turn', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  const filled: string[] = []
+  on('prompt.fill', (_, e) => {
+    filled.push(e.text)
+    return { isFilled: true }
+  })
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'fix it', turnId: 'm1' })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  await $.turn.complete({ ...DONE, agentId: 'a1', answer: 'Done.\n50 pass and 2 fail in tests/other.test.tsx' })
+  await clock.settle()
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /\(reported: 50 pass and 2 fail/ })).toBeTruthy()
+  await ui.press({ key: 'investigate:0' })
+  expect(filled.at(-1)).toContain('50 pass and 2 fail in tests/other.test.tsx')
+  expect(filled.at(-1)).toContain('Explore ("Mod lesen")')
+  await ui.press({ key: 'attention:dismiss' })
+  expect(await ui.find({ type: 'Text', text: /NEEDS ATTENTION/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('a subagent FAIL drops out of needs attention once the main session starts its next turn', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'fix it', turnId: 'm1' })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  await $.turn.complete({ ...DONE, agentId: 'a1', answer: '2 tests failed' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /NEEDS ATTENTION/ })).toBeTruthy()
+  await clock.advance(1000)
+  await $.turn.start({ text: 'next', turnId: 'm2' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /NEEDS ATTENTION/ })).toBe(undefined)
+  // The card keeps it.
+  expect(await ui.find({ type: 'Text', text: /^FAIL reported/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a failed check drafts a prompt with its output', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  const filled: string[] = []
+  on('prompt.fill', (_, e) => {
+    filled.push(e.text)
+    return { isFilled: true }
+  })
+  on('tool.call', () => ({ result: {}, text: 'src/a.ts: 3 problems', isError: true }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'investigate:0' })
+  expect(filled.at(-1)).toMatch(/^The last lint check failed: `npm run lint`\.\n\nIts output:\nsrc\/a\.ts: 3 problems/)
+  await ui.unmount()
+})
+
+test('fable says why it is unavailable', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  const zero = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
+  on('model.complete', () => ({ value: { isAnswered: false, reason: 'api-error', status: 400, error: 'invalid_request', usage: zero } }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /\(unavailable: invalid_request 400\)/ })).toBeTruthy()
   await ui.unmount()
 })

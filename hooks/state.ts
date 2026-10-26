@@ -65,3 +65,10 @@ export function liveStatus(status: AgentStatus): Card['status'] {
   if (status === 'completed') return 'done'
   return status === 'failed' ? 'error' : 'cancelled'
 }
+
+// The engine's word on each agent: a card it no longer lists finished while no module listened.
+export function reconcile(list: Card[], live: { id: string; status: AgentStatus }[] | undefined): Card[] {
+  if (live === undefined) return list
+  const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
+  return list.map(a => (isLive(a) ? { ...a, status: statusOf.get(a.id) ?? 'cancelled' } : a))
+}

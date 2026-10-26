@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, RenderInput } from 'claude-code'
+import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import type { Card, Check } from '../types'
 import { ago, clockTime, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
@@ -88,32 +88,64 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   )
   const checkLabel = (c: Check) => (c.result === 'running' ? t.status.running : c.result === 'unknown' ? t.unknown : c.result === 'ok' ? t.ok : t.failed)
 
-  const attention = [
-    ...doing.filter(a => a.isAsking).map(a => (
-      <Text>
-        {chip(t.approval, 'yellow')} <Text bold>{a.tool}</Text> {cut(a.what, whatRoom)}
-      </Text>
-    )),
-    ...((st.streak ?? 0) >= 3 ? [<Text>{chip(t.status.error, 'red')} {t.errorsInRow(st.streak ?? 0)}</Text>] : []),
-    ...checked.filter(c => c.result === 'failed').map(c => (
-      <Text>
-        {chip(t.failed, 'red')} <Text bold>{t.check[c.kind]}</Text> {cut(c.command, whatRoom)}
-      </Text>
-    )),
-    ...list
-      .filter(a => a.tests === 'FAIL' || a.status === 'error')
-      .map(a => (
+  // Each item: its row, a key to put it away by (none: it cannot be dismissed), and a prompt to look into it.
+  type Item = { key?: string; row: RenderChildren; prompt?: string }
+  const errorOf = (c: Check) => recent.find(x => x.at === c.at && x.error)?.error
+  const items: Item[] = [
+    ...doing.filter(a => a.isAsking).map(a => ({
+      row: (
         <Text>
-          {chip(a.tests === 'FAIL' ? 'FAIL' : t.status.error, 'red')} <Text bold>{a.type}</Text> {cut(a.task, 22)}
-          {a.tests === 'FAIL' && <Text dimColor> ({t.reported})</Text>}
+          {chip(t.approval, 'yellow')} <Text bold>{a.tool}</Text> {cut(a.what, whatRoom)}
         </Text>
-      )),
-    ...list.filter(a => a.status === 'waiting').map(a => (
-      <Text>
-        {chip(t.status.waiting, 'yellow')} <Text bold>{a.type}</Text> {cut(a.task, 22)}
-      </Text>
-    )),
+      ),
+    })),
+    ...((st.streak ?? 0) >= 3
+      ? [{ key: `streak:${m.turnAt ?? 0}:${st.streak}`, row: <Text>{chip(t.status.error, 'red')} {t.errorsInRow(st.streak ?? 0)}</Text>, prompt: t.investigateErrors(st.streak ?? 0) }]
+      : []),
+    ...checked.filter(c => c.result === 'failed').map(c => ({
+      key: `check:${c.kind}:${c.at}`,
+      row: (
+        <Text>
+          {chip(t.failed, 'red')} <Text bold>{t.check[c.kind]}</Text> {cut(c.command, whatRoom)}
+        </Text>
+      ),
+      prompt: t.investigateCheck(t.check[c.kind], c.command, (errorOf(c) ?? '').slice(0, 600)),
+    })),
+    // A subagent's failure needs the person until the main session's next turn, which has read its answer.
+    ...list
+      .filter(a => (a.tests === 'FAIL' || a.status === 'error') && (a.endedAt ?? 0) >= (m.turnAt ?? 0))
+      .map(a => ({
+        key: `agent:${a.id}:${a.endedAt ?? 0}`,
+        row: (
+          <Text>
+            {chip(a.tests === 'FAIL' ? 'FAIL' : t.status.error, 'red')} <Text bold>{a.type}</Text> {cut(a.task, 22)}
+            {a.tests === 'FAIL' && <Text dimColor> ({t.reported}{a.testsWhy ? `: ${cut(a.testsWhy, whatRoom)}` : ''})</Text>}
+          </Text>
+        ),
+        prompt: t.investigateAgent(a.type, a.task, a.tests === 'FAIL' ? (a.testsWhy ?? 'FAIL') : t.status.error),
+      })),
+    ...list.filter(a => a.status === 'waiting').map(a => ({
+      row: (
+        <Text>
+          {chip(t.status.waiting, 'yellow')} <Text bold>{a.type}</Text> {cut(a.task, 22)}
+        </Text>
+      ),
+    })),
   ]
+  const dismissed = new Set(lay.dismissed ?? [])
+  const shownItems = items.filter(x => !x.key || !dismissed.has(x.key))
+  const dismissable = shownItems.flatMap(x => (x.key ? [x.key] : []))
+  // Investigate drafts a prompt in the prompt box; nothing is sent until the person sends it.
+  const attention = shownItems.map((x, i) => (
+    <Box gap={1}>
+      {x.row}
+      {x.prompt && (
+        <Button key={`investigate:${i}`} plain hotkey={i === 0 ? 'i' : undefined} onPress={() => $.prompt.fill({ text: x.prompt ?? '' })}>
+          {t.investigate}
+        </Button>
+      )}
+    </Box>
+  ))
 
   // A subagent card is 30 columns and six rows, so three sit side by side in a narrow pane.
   const CARD = 30
@@ -122,7 +154,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const card = (a: Card) => (
     <Box flexDirection="column" borderStyle="round" borderColor={isLive(a) ? 'cyan' : 'blue'} paddingX={1} width={CARD}>
       <Text>
-        <Text bold>{cut(a.type, CARD - 16)}</Text> {statusChip(a)}
+        <Text bold>{cut(a.type, CARD - 7 - (a.tests === 'FAIL' ? 4 : t.status[a.status].length))}</Text> {statusChip(a)}
       </Text>
       <Text color="blue">
         {modelName(a.model)} <Text dimColor>· {a.effort || '?'}</Text>
@@ -266,7 +298,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const advisorState =
     !isListening ? `(${t.off})`
     : adv.state === 'checking' ? t.checking
-    : adv.state === 'unavailable' ? `(${t.unavailable})`
+    : adv.state === 'unavailable' ? `(${t.unavailable}${adv.why ? `: ${adv.why}` : ''})`
     : adv.state === 'budget' ? `(${t.budgetUsed})`
     : cfg.advisorMode === 'plan' ? `(${t.planOnly})`
     : ''
@@ -362,7 +394,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           <Text>
             <Text dimColor>{clockTime(l.at)} </Text>
             <Text color="blue">{fit(l.who, 17)}</Text>
-            <Text color={l.isGit ? 'yellow' : undefined}>{fit(cut(l.what, whatRoom), whatRoom + 1)}</Text>{l.result}
+            <Text>{fit(cut(l.what, whatRoom), whatRoom + 1)}</Text>{l.result}
           </Text>
         ))}
       </Box>
@@ -394,7 +426,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
       {attention.length > 0 && (
         <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>
-          {title(t.attention, 'red')}
+          <Box justifyContent="space-between">
+            {title(t.attention, 'red')}
+            {dismissable.length > 0 && (
+              <Button key="attention:dismiss" plain hotkey="x" onPress={() => update($, layout, l => ({ ...l, dismissed: [...(l.dismissed ?? []), ...dismissable].slice(-50) }))}>
+                {t.dismiss}
+              </Button>
+            )}
+          </Box>
           {attention}
         </Box>
       )}

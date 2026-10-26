@@ -20,7 +20,8 @@ export function fingerprint(s: string): string {
 
 // Fable reads along and speaks up only when something looks off.
 // `ref` is the evidence an objection points back to; `isManual` is the person's own "check now".
-export function advise($: EngineInterface, kind: Note['kind'], question: string, material: string, ref: string, isManual = false) {
+// `material` may be a thunk, so it is only built once Fable is actually going to be asked.
+export function advise($: EngineInterface, kind: Note['kind'], question: string, material: string | (() => Promise<string>), ref: string, isManual = false) {
   $.clock.after(0, async () => {
     const adv = await read($, advisor)
     if (!listening(adv.isOn) || adv.state === 'checking') return
@@ -29,13 +30,17 @@ export function advise($: EngineInterface, kind: Note['kind'], question: string,
       return
     }
     const now = await $.clock.now()
-    const key = `${kind}|${fingerprint(material)}`
     const lastAt = adv.lastAt?.[kind]
-    if (!isManual && (adv.lastKey === key || (lastAt !== undefined && now - lastAt < COOLDOWN_MS))) return
+    if (!isManual && lastAt !== undefined && now - lastAt < COOLDOWN_MS) return
+    const body = typeof material === 'string' ? material : await material()
+    const key = `${kind}|${fingerprint(body)}`
+    if (!isManual && adv.lastKey === key) return
+    // Session text is data, not instructions: it cannot close its own wrapper.
+    const wrapped = `<session_material>\n${body.replace(/<\/session_material/gi, '<\\/session_material')}\n</session_material>`
     const epoch = adv.epoch ?? 0
     await update($, advisor, a => ({ ...a, calls: a.calls + 1, state: 'checking' as const, lastKey: key, lastAt: { ...a.lastAt, [kind]: now } }))
     const r = await $.model
-      .complete({ model: cfg.advisorModel, effort: 'low', maxTokens: 300, timeoutMs: TIMEOUT_MS, system: cfg.t.advisorSystem, prompt: `${question}\n\n${material}` })
+      .complete({ model: cfg.advisorModel, effort: 'low', maxTokens: 300, timeoutMs: TIMEOUT_MS, system: cfg.t.advisorSystem, prompt: `${question}\n\n${wrapped}` })
       .catch(() => undefined)
     // Tokens spent count even when the answer below is dropped.
     const usage = r?.isAnswered ? r.usage : undefined
@@ -51,10 +56,11 @@ export function advise($: EngineInterface, kind: Note['kind'], question: string,
     // A clear, reload or toggle while Fable thought makes this answer stale; the clear already reset the state.
     if ((cur.epoch ?? 0) !== epoch) return
     if (!r?.isAnswered) {
-      await update($, advisor, a => ({ ...a, state: 'unavailable' as const }))
+      const why = !r ? 'error' : r.reason === 'api-error' ? `${r.error}${r.status ? ` ${r.status}` : ''}` : r.reason
+      await update($, advisor, a => ({ ...a, state: 'unavailable' as const, why }))
       return
     }
-    await update($, advisor, a => ({ ...a, state: 'idle' as const }))
+    await update($, advisor, a => ({ ...a, state: 'idle' as const, why: undefined }))
     if (!listening(cur.isOn)) return
     const text = r.text.trim()
     const ok = /^OK\b/i.test(text)

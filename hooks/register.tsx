@@ -1,13 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Card, Check, LogLine, Task } from '../types'
+import type { Card, Check, CheckKind, LogLine, Task } from '../types'
 import { advise } from './advisor'
-import { brief, decimal, describe, findCheck, gitCommand, hidesExit, outcomeOf, testsOf } from './format'
+import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { drawPane } from './render'
-import { cfg, INIT, isLive, listening, liveStatus, PANE, trimAgents, VIEWS } from './state'
+import { cfg, INIT, isLive, listening, reconcile, PANE, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
 
 export { brief, fit, gitCommand, kilo, modelName, testsOf } from './format'
@@ -36,6 +36,9 @@ const REQUEST_ROOM = 2000
 
 let statusQueued = false
 let isTicking = false
+let reconciledAt = 0
+// How often the redraw loop asks the engine which agents still run.
+const RECONCILE_MS = 5000
 
 function category(tool: string, call: object): Category {
   if (tool === 'Bash' && gitCommand(String((call as { command?: unknown }).command ?? ''))) return 'git'
@@ -78,8 +81,14 @@ function tick($: EngineInterface) {
   isTicking = true
   $.clock.after(500, async () => {
     isTicking = false
-    const [doing, list] = await Promise.all([read($, active), read($, agents)])
+    const [doing, list, now] = await Promise.all([read($, active), read($, agents), $.clock.now()])
     if (doing.length === 0 && !list.some(isLive)) return
+    // A card whose turn.complete never came would keep this loop running; the engine's list settles it.
+    if (list.some(isLive) && now - reconciledAt >= RECONCILE_MS) {
+      reconciledAt = now
+      const live = await $.agent.list().catch(() => undefined)
+      if (live) await update($, agents, all => reconcile(all, live))
+    }
     $.ui.invalidate('ui.render')
     tick($)
   })
@@ -103,19 +112,28 @@ async function build($: EngineInterface): Promise<string> {
   const version = String((manifest ? (JSON.parse(manifest) as { version?: unknown }) : {}).version ?? '')
   const head = (await read('.git/HEAD')).trim()
   const ref = head.match(/^ref: (\S+)$/)?.[1]
-  const sha = ref
-    ? (await read(`.git/${ref}`)).trim() || ((await read('.git/packed-refs')).match(new RegExp(`^([0-9a-f]{40}) ${ref}$`, 'm'))?.[1] ?? '')
-    : head
-  return [version, sha.slice(0, 7)].filter(Boolean).join(' · ')
+  // A ref with `..` would read outside .git.
+  const sha =
+    ref === undefined
+      ? head
+      : ref.includes('..')
+        ? ''
+        : (await read(`.git/${ref}`)).trim() ||
+          ((await read('.git/packed-refs')).split('\n').find(line => line.endsWith(` ${ref}`))?.split(' ')[0] ?? '')
+  // A worktree's `.git` is a file (`gitdir: …`), so what reads here need not be a commit.
+  return [version, /^[0-9a-f]{40}$/.test(sha) ? sha.slice(0, 7) : ''].filter(Boolean).join(' · ')
 }
 
 // The session's task list as its own calls change it; `deleted` removes a task.
 async function trackTasks($: EngineInterface, call: { tool: string }, result: unknown) {
   const e = call as { tool: string; todos?: { content: string; status: Task['status']; activeForm: string }[]; subject?: string; activeForm?: string; taskId?: string; status?: Task['status'] | 'deleted' }
+  // A TaskUpdate can answer without an error and still say it changed nothing.
+  if ((result as { success?: unknown } | undefined)?.success === false) return
   const at = await $.clock.now()
   if (e.tool === 'TodoWrite' && e.todos) {
     const todos = e.todos
-    await update($, tasks, () => todos.map((d, i) => ({ id: String(i), subject: d.content, activeForm: d.activeForm, status: d.status, at })).slice(-50))
+    // Prefixed so TodoWrite rows never collide with TaskCreate's ids ("1", "2"…).
+    await update($, tasks, () => todos.map((d, i) => ({ id: `todo-${i}`, subject: d.content, activeForm: d.activeForm, status: d.status, at })).slice(-50))
   } else if (e.tool === 'TaskCreate') {
     const id = (result as { task?: { id?: string } } | undefined)?.task?.id
     if (id) await update($, tasks, list => [...list, { id, subject: e.subject ?? '', activeForm: e.activeForm, status: 'pending' as const, at }].slice(-50))
@@ -143,7 +161,7 @@ const t = cfg.t
     c => `- ${c.kind}: ${c.result}${c.result !== 'running' && touched.editedAt > c.at ? ` (${t.stale})` : ''} · ${c.command}`,
   )
   const request = turn.prompt.slice(0, REQUEST_ROOM)
-  const changed = [...turn.edited].join('\n')
+  const changed = [...turn.edited].slice(-50).join('\n')
   const openLines = planned.filter(k => k.status !== 'completed').map(k => `- ${k.status}: ${k.subject}`)
   const evidence = t.evidence(agentLines.join('\n'), checkLines.join('\n'), openLines.join('\n'))
   const room = MATERIAL_ROOM - t.material(request, '', changed).length - evidence.length
@@ -164,8 +182,8 @@ export const register: Register = (on, options) => {
   const filesByAgent = new Map<string, Set<string>>()
   const seenStep = new Map<string, string>()
   let callCount = 0
-  // Who runs the Skill call under way, for the `skill.prompt` it raises; unset when the person typed the command.
-  let skillWho: string | undefined
+  // Who runs each Skill call under way, for the `skill.prompt` it raises; none matches when the person typed the command.
+  const skillRuns: { skill: string; who: string }[] = []
   // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
   const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set() }
   const workRef = () => t.filesTools(turn.edited.size, turn.tools) + (turn.delegated ? ` · ${turn.delegated} subagents` : '')
@@ -178,17 +196,13 @@ export const register: Register = (on, options) => {
     })
     const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
     await update($, main, m => ({ ...m, model }))
-    // The engine's word on each agent: a card it no longer lists finished while no module listened.
-    const statusOf = new Map(live?.map(a => [a.id, liveStatus(a.status)]))
-    const settle = (a: Card): Card =>
-      live === undefined || !isLive(a) ? a : { ...a, status: statusOf.get(a.id) ?? 'cancelled' }
     // State from an older version or another language holds keys this one does not draw; drop them.
     const known = (k: string) => k in t.cat
     const keep = (r: Record<string, number>) => Object.fromEntries(Object.entries(r).filter(([k]) => known(k)))
     await Promise.all([
       update($, tools, keep),
       update($, stats, s => ({ ...s, errors: keep(s.errors) })),
-      update($, agents, list => trimAgents(list.filter(a => a.status in t.status).map(settle))),
+      update($, agents, list => trimAgents(reconcile(list.filter(a => a.status in t.status), live))),
       // A load starts a new advisor epoch, so an answer the last load asked for is dropped.
       update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind in t.kind), epoch: (a.epoch ?? 0) + 1, state: a.state === 'checking' ? ('idle' as const) : a.state })),
       // Calls in flight when the module reloaded will never report back.
@@ -196,9 +210,12 @@ export const register: Register = (on, options) => {
       update($, calls, list => list.map(c => (c.result === 'running' ? { ...c, result: t.unknown } : c))),
       update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
-    cfg.build = await build($).catch(() => '')
     void $.ui.open({ id: PANE, title: 'Agent Radar' })
-    await refreshStatus($)
+    // Reading the build and the status line need not hold up the session.
+    $.clock.after(0, async () => {
+      cfg.build = await build($).catch(() => '')
+      await refreshStatus($)
+    })
 
     return next(e)
   })
@@ -211,7 +228,7 @@ export const register: Register = (on, options) => {
       return { text: t.advisorToggled(a.isOn) }
     }
     if (arg === t.argCheck || arg === 'check') {
-      advise($, 'check', t.askCheck, await material($, turn), workRef(), true)
+      advise($, 'check', t.askCheck, () => material($, turn), workRef(), true)
       return { text: t.checking }
     }
     const v = VIEWS.find(x => x === arg.toLowerCase())
@@ -231,7 +248,14 @@ export const register: Register = (on, options) => {
         update($, checks, () => []),
         update($, files, () => ({ read: [], edited: [], editedAt: 0 })),
         update($, lastCall, () => null),
+        update($, tasks, () => []),
+        update($, skills, () => []),
       ])
+      // The request stays: the turn under way still answers it.
+      turn.tools = 0
+      turn.delegated = 0
+      turn.trail = []
+      turn.edited = new Set()
       await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const, lastKey: undefined, lastAt: {} }))
       await refreshStatus($)
       return { text: t.cleared }
@@ -248,7 +272,9 @@ export const register: Register = (on, options) => {
       turn.startedAt = await $.clock.now()
       turn.trail = []
       turn.edited = new Set()
-      await update($, stats, s => ({ ...s, streak: 0 }))
+      effortByCall.clear()
+      const turnAt = turn.startedAt
+      await Promise.all([update($, stats, s => ({ ...s, streak: 0 })), update($, main, v => ({ ...v, turnAt }))])
     } else {
       // A finished agent that gets a new message runs again.
       const id = e.agentId
@@ -265,7 +291,7 @@ export const register: Register = (on, options) => {
       seenStep.set(key, seen)
       const effort = e.effort === undefined ? '' : String(e.effort)
       if (e.agentId === undefined) {
-        await update($, main, () => ({ model: e.model, effort }))
+        await update($, main, v => ({ ...v, model: e.model, effort }))
       } else {
         const id = e.agentId
         await update($, agents, list =>
@@ -283,75 +309,96 @@ export const register: Register = (on, options) => {
     const tab = viewOf(e.tool, cat)
     const what = describe(e.tool, e)
     const callId = e.tool_use_id ?? `call-${++callCount}`
-    const caller = e.agentId === undefined ? undefined : (await read($, agents)).find(a => a.id === e.agentId)
+    const [list, m, startedAt] = await Promise.all([read($, agents), read($, main), $.clock.now()])
+    const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)
     const who = e.agentId === undefined ? t.mainSession : (caller?.type ?? e.agentId)
-    const model = e.agentId === undefined ? (await read($, main)).model : caller?.model
-    await update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 }))
+    const model = e.agentId === undefined ? m.model : caller?.model
     const path = (e as { file_path?: string }).file_path
-    if (e.agentId !== undefined) {
-      const id = e.agentId
+    const id = e.agentId
+    let agentFiles = 0
+    if (id !== undefined) {
       const files = filesByAgent.get(id) ?? new Set<string>()
       if (path) files.add(path)
       filesByAgent.set(id, files)
-      await update($, agents, list => list.map(a => (a.id === id ? { ...a, tools: a.tools + 1, files: files.size } : a)))
+      agentFiles = files.size
     } else {
       turn.tools += 1
     }
-    queueStatus($)
 
     if (e.tool === 'ExitPlanMode' && e.agentId === undefined && cfg.advisorMode !== 'off') {
-      const plan = (await $.session.messages()).filter(m => m.role === 'assistant').at(-1)?.text ?? ''
-      advise($, 'plan', t.askPlan, `${t.task}: ${turn.prompt.slice(0, REQUEST_ROOM)}\n\n${t.plan}:\n${plan.slice(0, MATERIAL_ROOM)}`, t.plan)
+      const prompt = turn.prompt
+      advise($, 'plan', t.askPlan, async () => {
+        const plan = (await $.session.messages()).filter(x => x.role === 'assistant').at(-1)?.text ?? ''
+        return `${t.task}: ${prompt.slice(0, REQUEST_ROOM)}\n\n${t.plan}:\n${plan.slice(0, MATERIAL_ROOM)}`
+      }, t.plan)
     }
 
     const command = e.tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
-    const check = cat === 'shell' ? findCheck(command) : undefined
-    const kind = check?.kind
-    const startedAt = await $.clock.now()
+    // One row per kind; the row names the part that ran the check, not a script the same command ran first.
+    const kinds = cat === 'shell' ? findChecks(command) : []
+    const found = [...new Map(kinds.map(c => [c.kind, c])).values()]
+    const lastKind = kinds.at(-1)?.kind
+    const isMine = (c: Check) => c.at === startedAt && found.some(f => f.kind === c.kind)
     // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
     await Promise.all([
-      update($, active, list => [...list, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => tick($)),
-      tab && update($, calls, list => [...list, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
-      // The row names the part that ran the check, not a script the same command ran first.
-      check && update($, checks, list => [...list.filter(c => c.kind !== check.kind), { kind: check.kind, command: check.part.slice(0, 200), who, at: startedAt, result: 'running' as const }]),
+      update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
+      id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, files: agentFiles } : a))),
+      update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => tick($)),
+      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
+      found.length > 0 &&
+        update($, checks, all => [
+          ...all.filter(c => !found.some(f => f.kind === c.kind)),
+          ...found.map(f => ({ kind: f.kind, command: f.part.slice(0, 200), who, at: startedAt, result: 'running' as const })),
+        ]),
     ])
-    let ran
-    if (e.tool === 'Skill') skillWho = who
+    queueStatus($)
+
+    const run = e.tool === 'Skill' ? { skill: String((e as { skill?: unknown }).skill ?? ''), who } : undefined
+    if (run) skillRuns.push(run)
+    let ran: Awaited<ReturnType<typeof next>> | undefined
     try {
       ran = await next(e)
     } finally {
-      if (e.tool === 'Skill') skillWho = undefined
-      await update($, active, list => list.filter(a => a.id !== callId))
+      if (run) skillRuns.splice(skillRuns.indexOf(run), 1)
+      // A call that threw never reports back.
+      await Promise.all([
+        update($, active, all => all.filter(a => a.id !== callId)),
+        ran === undefined && tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: t.unknown } : c))),
+        ran === undefined && found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: 'unknown' as const } : c))),
+      ])
     }
-    const failed = ran.deny !== undefined || ran.isError
-    const error = failed ? String(ran.deny ?? ran.text ?? '').slice(0, 2000) : undefined
-    const at = await $.clock.now()
-    await update($, lastCall, () => ({ tool: e.tool, what, who, model, at }))
-    if (ran.isError) await update($, stats, s => ({ ...s, errors: { ...s.errors, [cat]: (s.errors[cat] ?? 0) + 1 } }))
-    if (tab) {
-      const result = failed ? t.failed : 'ok'
-      await update($, calls, list => list.map(c => (c.id === callId ? { ...c, result, error } : c)))
-    }
-    if (kind) {
-      // A denied or aborted run says nothing about the code; past a pipe the output decides.
-      const result: Check['result'] = ran.deny !== undefined ? 'unknown' : ran.isError ? 'failed' : hidesExit(command) ? outcomeOf(String(ran.text ?? (ran.result as { stdout?: string } | undefined)?.stdout ?? ''), kind) : 'ok'
-      await update($, checks, list => list.map(c => (c.kind === kind && c.at === startedAt ? { ...c, result } : c)))
-    }
-    if (!failed) await trackTasks($, e, ran.result)
-    if (path && !failed && (cat === 'edit' || cat === 'read')) {
-      if (cat === 'edit') turn.edited.add(path)
-      await update($, files, f =>
-        cat === 'edit'
-          ? { ...f, edited: [...f.edited.filter(p => p !== path), path].slice(-200), editedAt: at }
-          : { ...f, read: [...f.read.filter(p => p !== path), path].slice(-200) },
-      )
-    }
-    if (e.agentId === undefined && ran.deny === undefined) {
-      turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${ran.isError ? `${t.failed}: ${String(ran.text ?? '').slice(0, 300)}` : 'ok'}`].slice(-40)
-      const s = await update($, stats, v => ({ ...v, streak: ran.isError ? (v.streak ?? 0) + 1 : 0 }))
-      if (s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, await material($, turn), `${e.tool} ${brief(e)}`.trim())
-    }
-    return ran
+    const r = ran
+    // The rest is bookkeeping; the result goes back to the model at once.
+    $.clock.after(0, async () => {
+      const failed = r.deny !== undefined || r.isError
+      const error = failed ? mask(String(r.deny ?? r.text ?? '')).slice(0, 2000) : undefined
+      const at = await $.clock.now()
+      const output = String(r.text ?? (r.result as { stdout?: string } | undefined)?.stdout ?? '')
+      // A denied or aborted run says nothing about the code; a failed one failed at its last check; past a pipe the output decides.
+      const resultOf = (kind: CheckKind): Check['result'] =>
+        r.deny !== undefined ? 'unknown' : r.isError ? (kind === lastKind ? 'failed' : 'unknown') : hidesExit(command) ? outcomeOf(output, kind) : 'ok'
+      await Promise.all([
+        update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
+        r.isError && update($, stats, s => ({ ...s, errors: { ...s.errors, [cat]: (s.errors[cat] ?? 0) + 1 } })),
+        tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
+        found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind) } : c))),
+        !failed && e.agentId === undefined && trackTasks($, e, r.result),
+      ])
+      if (path && !failed && (cat === 'edit' || cat === 'read')) {
+        if (cat === 'edit') turn.edited.add(path)
+        await update($, files, f =>
+          cat === 'edit'
+            ? { ...f, edited: [...f.edited.filter(p => p !== path), path].slice(-200), editedAt: at }
+            : { ...f, read: [...f.read.filter(p => p !== path), path].slice(-200) },
+        )
+      }
+      if (e.agentId === undefined && r.deny === undefined) {
+        turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)
+        const s = await update($, stats, v => ({ ...v, streak: r.isError ? (v.streak ?? 0) + 1 : 0 }))
+        if (s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, () => material($, turn), `${e.tool} ${brief(e)}`.trim())
+      }
+    })
+    return r
   })
 
   // An `ask` verdict means the call now waits for the person; `tool.call` above already listed it as active.
@@ -378,11 +425,14 @@ export const register: Register = (on, options) => {
   // A skill's text is loaded, by the Skill tool or by a slash command the person typed.
   on('skill.prompt', async ($, e, next) => {
     const name = e.pluginName && !e.skill.includes(':') ? `${e.pluginName}:${e.skill}` : e.skill
-    const who = skillWho ?? t.you
-    const at = await $.clock.now()
-    await update($, skills, list => {
-      const had = list.find(s => s.name === name)
-      return [...list.filter(s => s !== had), { name, count: (had?.count ?? 0) + 1, who, at }].slice(-30)
+    const bare = (s: string) => s.slice(s.indexOf(':') + 1)
+    const who = skillRuns.find(s => s.skill === e.skill || bare(s.skill) === bare(e.skill))?.who ?? t.you
+    $.clock.after(0, async () => {
+      const at = await $.clock.now()
+      await update($, skills, list => {
+        const had = list.find(s => s.name === name)
+        return [...list.filter(s => s !== had), { name, count: (had?.count ?? 0) + 1, who, at }].slice(-30)
+      })
     })
     return next(e)
   })
@@ -418,9 +468,12 @@ export const register: Register = (on, options) => {
       const id = e.agentId
       const u = e.usage
       const tests = testsOf(e.answer)
+      const why = tests === 'FAIL' ? failLine(e.answer) : undefined
+      const endedAt = await $.clock.now()
       turn.delegated += 1
       const status: Card['status'] = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'cancelled' : 'error'
       seenStep.delete(id)
+      filesByAgent.delete(id)
       const list = await update($, agents, all =>
         trimAgents(all.map(a =>
           a.id === id
@@ -430,6 +483,8 @@ export const register: Register = (on, options) => {
                 input: u ? u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens : a.input,
                 output: u?.output_tokens ?? a.output,
                 tests: tests ?? a.tests,
+                testsWhy: tests ? why : a.testsWhy,
+                endedAt,
               }
             : a,
         )),
@@ -447,14 +502,15 @@ export const register: Register = (on, options) => {
       cfg.advisorMode === 'all' &&
       (turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0)
     ) {
-      advise($, 'done', t.askDone, `${await material($, turn)}\n\n${t.finalAnswer}:\n${e.answer.slice(-4000)}`, workRef())
+      const answer = e.answer
+      advise($, 'done', t.askDone, async () => `${await material($, turn)}\n\n${t.finalAnswer}:\n${answer.slice(-4000)}`, workRef())
     }
     return next(e)
   })
 
   // The pane's "check now" button; taken here, where this turn's material is at hand.
   on('ui.press', { plugin: 'agent-radar', element: 'advisor:check' }, async ($, e) => {
-    advise($, 'check', t.askCheck, await material($, turn), workRef(), true)
+    advise($, 'check', t.askCheck, () => material($, turn), workRef(), true)
     return { element: e.element }
   })
 

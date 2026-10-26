@@ -1,4 +1,5 @@
-export type Main = { model: string; effort: string }
+// `turnAt` is when the main session's current turn started.
+export type Main = { model: string; effort: string; turnAt?: number }
 
 export type Card = {
   id: string
@@ -12,10 +13,13 @@ export type Card = {
   input: number
   output: number
   tests?: string
+  // The line of the agent's answer that made it a FAIL, and when the agent last finished.
+  testsWhy?: string
+  endedAt?: number
   startedAt: number
 }
 
-export type LogLine = { at: number; who: string; what: string; result: string; isGit?: boolean }
+export type LogLine = { at: number; who: string; what: string; result: string }
 
 // `ok` is missing on notes kept by older versions, which kept only objections.
 // `ref` names the evidence an objection rests on: the failed call, the files, the plan.
@@ -38,7 +42,8 @@ export type Files = { read: string[]; edited: string[]; editedAt: number }
 export type LastCall = { tool: string; what: string; who: string; model?: string; at: number }
 
 // What the pane shows folded or in full.
-export type Layout = { isHistoryOpen: boolean; isDetailed: boolean }
+// `dismissed` holds the keys of Needs attention items the person put away.
+export type Layout = { isHistoryOpen: boolean; isDetailed: boolean; dismissed?: string[] }
 
 // `streak` counts the main loop's failed calls in a row this turn.
 export type Stats = { errors: Record<string, number>; compactions: number; streak?: number }
@@ -51,6 +56,8 @@ export type Advisor = {
   epoch?: number
   // `budget` once the session's calls are used up; `unavailable` after the model failed to answer.
   state?: 'idle' | 'checking' | 'unavailable' | 'budget'
+  // Why the last call got no answer: the API error and status, `aborted` or `empty-reply`.
+  why?: string
   // What the last call was asked, and when each kind last ran: for duplicate suppression and the cooldown.
   lastKey?: string
   lastAt?: Record<string, number>
