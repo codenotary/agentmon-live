@@ -60,6 +60,8 @@ those options for the plugin in my user settings. Tell me to restart Claude Code
 | `/agent-radar advisor` | Turns Fable on or off |
 | `/agent-radar check` | Asks Fable now |
 | `/agent-radar git`, `shell`, `mcp` | Shows that detail tab |
+| `/agent-radar flow`, `radar` | Switches the view (`v` in the pane) |
+| `/agent-radar details` | Shows cut-off texts whole (`d` in the pane) |
 | `/agent-radar clear` | Resets counters, finished cards, log and Fable's notes; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
 The pane opens by itself at session start when the terminal is wide enough.
@@ -102,6 +104,28 @@ npx -p typescript tsc --noEmit -p .
 | `hooks/i18n.ts` | All text, one block per language |
 | `types/index.d.ts` | State contract |
 | `tests/agent-radar.test.tsx` | Tests |
+
+### See the pane from a script
+
+`claude plugin test` checks what the pane draws but never paints it. `scripts/pane-run.sh` runs a second Claude Code with this repo's mod (cheap model, a throwaway project with one failing and one passing check) in a hidden 220×60 tmux window, drives it from a scenario and saves the real screen:
+
+```sh
+scripts/pane-run.sh tests/scenarios/basics.txt      # add --keep to tmux attach afterwards
+```
+
+Captures land in `tests/pane-snaps/<scenario>/`: `<name>.txt` (whole screen), `<name>.pane.txt` (the pane alone), `<name>.ansi` (with colours). A scenario is one step per line:
+
+| Step | Does |
+| --- | --- |
+| `allow <tool rules>` | Tools the session may use without asking, e.g. `Bash(npm test:*) Read` |
+| `option <name> <value>` | A mod option for the run; Fable is off unless a scenario sets `option advisorMode all` |
+| `prompt <text>`, `cmd /<command>` | Types the line and presses Enter |
+| `keys <tmux keys>` | Sends keys, e.g. `Escape` |
+| `wait idle [secs]` | Until the turn is over |
+| `wait text <regex> [secs]`, `wait gone <regex> [secs]` | Until the screen shows, or no longer shows, a match |
+| `sleep <secs>`, `snap <name>` | Pauses; saves the screen |
+
+Each run costs a few calls on the cheap model. Needs `tmux` and `python3`.
 
 To add a language, add a block to `LANGUAGES` in `hooks/i18n.ts` (the `Strings` type lists every key) and its code to the `language` options in `.claude-plugin/plugin.json`.
 

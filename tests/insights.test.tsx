@@ -200,7 +200,8 @@ test('focus and insights draw on desktop too', async ($, on) => {
   })
   await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
   await $.turn.start({ text: 'go', turnId: 'm1' })
-  const call = $.tool.call({ tool: 'Grep', pattern: 'x', path: '/repo/src/api' })
+  // Grep is not in this build's typed tool list; the engine still raises it.
+  const call = $.tool.call({ tool: 'Grep', pattern: 'x', path: '/repo/src/api' } as never)
   await clock.advance(7000)
   await call
   await $.turn.complete({ answer: 'ok', durationMs: 7000, isAborted: false, turnId: 'm1', reason: 'answer' })

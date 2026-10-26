@@ -1,13 +1,14 @@
 import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { CANVAS_ROWS, Cells, canvasFits, paintTopology } from '../hooks/canvas'
 import { tankRows, toolsBarWidth } from '../hooks/flow'
 import { LANGUAGES } from '../hooks/i18n'
 import { topology } from '../hooks/topology'
 
 // The kit declares the hook-adding `on` without exporting its type.
 type On = Parameters<TestBody>[1]
+// What the engine stamps on a command the person typed.
+const TYPED = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 
 const PANE = {
   plugin: 'agent-radar',
@@ -52,54 +53,17 @@ test('topology counts the last minute as the rate and maps agents', () => {
   expect(topo.session.uptimeMs).toBe(100_000)
 })
 
-test('cells encode one triplet per cell and tanks fill from the bottom', () => {
-  const c = new Cells(4, 3)
-  c.text(1, 1, 'AB')
-  const words = new Uint32Array(Uint8Array.from(atob(c.encode()), ch => ch.charCodeAt(0)).buffer)
-  expect(words.length).toBe(4 * 3 * 3)
-  expect(words[(1 * 4 + 1) * 3]).toBe(0x41)
-  expect(words[(1 * 4 + 2) * 3]).toBe(0x42)
-  expect(tankRows(0.5, 4, 1)).toEqual(['·', '·', '█', '█'])
-  const t = new Cells(1, 6)
-  t.tank(0, 0, 1, 6, 0.5, 0xffffff)
-  // Inside rows 1..4: the bottom two full, the top two empty.
-  expect([1, 2, 3, 4].map(y => String.fromCodePoint(t.words[y * 3]!))).toEqual([' ', ' ', '█', '█'])
+test('tanks fill from the bottom', () => {
+  expect(tankRows(0.5, 4)).toEqual([0, 0, 8, 8])
+  expect(tankRows(0.1, 2)).toEqual([0, 2])
 })
 
-test('the canvas paints within its size', () => {
-  const topo = topology({ main: { model: 'claude-opus-5-5', effort: 'medium' }, counts: { shell: 2 }, errors: {}, compactions: 0, agents: [], usage: USAGE, advisor: ADVISOR, isListening: true, checks: [], flow: [], now: 1000 })
-  const c = paintTopology(topo, 100, 0, LANGUAGES.en!)
-  expect(c.words.length).toBe(100 * CANVAS_ROWS * 3)
-  const row = (y: number) => Array.from({ length: 100 }, (_, x) => String.fromCodePoint(c.words[(y * 100 + x) * 3]!)).join('')
-  expect(row(0)).toContain('SESSION')
-  expect(row(0)).toContain('TOOLS')
+test('a flow tools row fits its box at every width', () => {
+  // Name 12, count 5 and ' 999/min' beside the bar, inside the box's inner width.
+  for (const inner of [30, 67, 107]) expect(12 + toolsBarWidth(inner) + 5 + ' 999/min'.length).toBeLessThanOrEqual(inner)
 })
 
-test('the canvas holds only printable width-1 cells, even in Chinese', () => {
-  const agents = [{ id: 'a', type: '探索\u200b\u0301\x7f\x85', model: 'claude-haiku-5-5', effort: '', task: 't', status: 'running' as const, files: 0, tools: 0, input: 0, output: 0, startedAt: 0 }]
-  const topo = topology({ main: { model: 'claude-opus-5-5', effort: 'high' }, counts: { shell: 2, git: 1 }, errors: {}, compactions: 1, agents, usage: USAGE, advisor: ADVISOR, isListening: true, checks: [], flow: [], now: 1000 })
-  const c = paintTopology(topo, 100, 1, LANGUAGES.zh!)
-  for (let i = 0; i < c.words.length; i += 3) {
-    const ch = String.fromCodePoint(c.words[i]!)
-    expect(c.words[i]! >= 0x20 && c.words[i]! <= 0xffff && !/[\x7f-\x9f\p{M}\p{Cf}\p{Cs}\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u.test(ch)).toBe(true)
-  }
-  const row = (y: number) => Array.from({ length: 100 }, (_, x) => String.fromCodePoint(c.words[(y * 100 + x) * 3]!)).join('')
-  expect(row(0)).toContain('SESSION')
-})
-
-test('the canvas fits only when its narrowest layout does', () => {
-  expect(canvasFits(60, 2)).toBe(false)
-  expect(canvasFits(100, 2)).toBe(true)
-})
-
-test('the flow tools row fits the wide layout at 100 columns', () => {
-  // Session 26, pipes 22, the tools box border and padding 4, gaps 2; tanks stack below at this width.
-  const row = 14 + toolsBarWidth(100) + 5 + ' 999/min'.length
-  expect(26 + 22 + 4 + 2 + row).toBeLessThanOrEqual(100)
-  expect(toolsBarWidth(140)).toBe(20)
-})
-
-test('v cycles radar, flow and canvas on the terminal', async ($, on) => {
+test('v switches between the dashboard and the flow view', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {} }))
@@ -113,14 +77,11 @@ test('v cycles radar, flow and canvas on the terminal', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /^● TOOLS$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /1\/min/ })).toBeTruthy()
   await ui.press({ key: 'view' })
-  expect(await ui.find({ type: 'Raster' })).toBeTruthy()
-  await ui.press({ key: 'view' })
-  expect(await ui.find({ type: 'Raster' })).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /CHANGES & VERIFICATION|USAGE/ })).toBeTruthy()
   await ui.unmount()
 })
 
-test('desktop skips the canvas', async ($, on) => {
+test('the desktop gets the same two views', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {} }))
@@ -148,5 +109,22 @@ test('needs attention stays on top in the flow view', async ($, on) => {
   const titles = (await ui.findAll({ type: 'Text', text: /^● [A-Z& ·]+$/ })).map(x => x.text.trim())
   expect(titles[0]).toBe('● FOCUS · NEEDS ATTENTION')
   expect(titles[1]).toBe('● SESSION')
+  await ui.unmount()
+})
+
+test('the command reaches the views and details without focusing the pane', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await $.command.run({ ...TYPED, command: 'agent-radar', args: 'flow' })).toEqual({ text: 'Agent Radar: flow' })
+  expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBeTruthy()
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'radar' })
+  expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBe(undefined)
+  expect(await $.command.run({ ...TYPED, command: 'agent-radar', args: 'details' })).toEqual({ text: 'Agent Radar: details on' })
+  expect(await ui.find({ type: 'Button', text: /● details/ })).toBeTruthy()
   await ui.unmount()
 })

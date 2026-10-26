@@ -90,8 +90,15 @@ export function resetTime(ms: number, now: number): string {
 // A failure anywhere wins over a pass count: "3 passed, 2 failed" is a FAIL.
 const ANSWER_FAIL = /\b([1-9]\d*)\s+(?:tests?\s+)?fail(?:ed|ing)?\b/i
 
+// Quoted text and code are what an agent read, not what it ran: a file that says '1 failing' is no failed test.
+const prose = (s: string) =>
+  s
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/"[^"\n]*"|(?<!\w)'[^'\n]*'(?!\w)/g, ' ')
+
 export function testsOf(answer: string): string | undefined {
-  if (ANSWER_FAIL.test(answer)) return 'FAIL'
+  if (ANSWER_FAIL.test(prose(answer))) return 'FAIL'
   const pass =
     answer.match(/(\d+)\s+(?:tests?|Tests)\s+(?:passed|bestanden|passing)/i) ??
     answer.match(/\bPASS(?:ED)?\b\D{0,12}(\d+)\s+tests?/i)
@@ -101,7 +108,7 @@ export function testsOf(answer: string): string | undefined {
 
 // The line of an answer that made it a FAIL, so the person can judge whether it is real.
 export function failLine(answer: string): string | undefined {
-  return answer.split('\n').find(l => ANSWER_FAIL.test(l))?.trim().slice(0, 200)
+  return answer.split('\n').find(l => ANSWER_FAIL.test(prose(l)))?.trim().slice(0, 200)
 }
 
 const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?`

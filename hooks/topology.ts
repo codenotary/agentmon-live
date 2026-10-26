@@ -8,7 +8,7 @@ export type Topo = {
   limits: { kind: string; percent: number; resetsAt?: number }[]
   tools: { cat: Category; total: number; perMin: number; errors: number }[]
   agents: { type: string; model: string; status: Card['status']; isFail: boolean }[]
-  fable: { state: 'off' | NonNullable<Advisor['state']>; verdicts: boolean[] }
+  fable: { state: 'off' | NonNullable<Advisor['state']>; why?: string; calls: number; verdicts: boolean[] }
   checks: { kind: Check['kind']; result: Check['result'] }[]
   callsPerMin: number
 }
@@ -49,6 +49,8 @@ export function topology(input: {
     agents: input.agents.map(a => ({ type: a.type, model: a.model, status: a.status, isFail: a.tests === 'FAIL' || a.status === 'error' })),
     fable: {
       state: !input.isListening ? 'off' : (input.advisor.state ?? 'idle'),
+      why: input.advisor.state === 'unavailable' ? input.advisor.why : undefined,
+      calls: input.advisor.calls,
       verdicts: input.advisor.notes.slice(-3).map(n => n.ok !== false),
     },
     checks: input.checks.map(c => ({ kind: c.kind, result: c.result })),
@@ -65,7 +67,7 @@ export const isRunning = (a: Topo['agents'][number]) => a.status === 'running' |
 export const isHigh = (p: number) => p >= 80
 export const isMid = (p: number) => p >= 50
 
-// How full each row of a gauge is, in eighths (0..8), bottom row first: tanks on the canvas and in the flow share it.
+// How full each row of a gauge is, in eighths (0..8), bottom row first.
 export function fillEighths(fraction: number, rows: number): number[] {
   const level = Math.max(0, Math.min(1, fraction)) * rows * 8
   return Array.from({ length: rows }, (_, r) => Math.max(0, Math.min(8, Math.round(level - r * 8))))

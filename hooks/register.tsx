@@ -29,6 +29,7 @@ const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
 const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
 const flow = atom({ plugin: 'agent-radar', key: 'flow' } as const, INIT.flow)
 const insights = atom({ plugin: 'agent-radar', key: 'insights' } as const, INIT.insights)
+const layout = atom({ plugin: 'agent-radar', key: 'layout' } as const, INIT.layout)
 
 // A call slower than this joins the slowest list; a result bigger than this the biggest.
 const SLOW_MIN_MS = 5000
@@ -283,7 +284,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'agent-radar',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|flow|radar|details]`,
     })
     cwd = e.cwd
     const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
@@ -324,6 +325,17 @@ export const register: Register = (on, options) => {
     if (arg === t.argCheck || arg === 'check') {
       advise($, 'check', t.askCheck, () => material($, turn), workRef(), true)
       return { text: t.checking }
+    }
+    // The pane's views and details from the prompt, so a script reaches them without focusing the pane.
+    if (arg === 'flow' || arg === 'radar') {
+      const mode: 'flow' | 'radar' = arg
+      await update($, layout, l => ({ ...l, mode }))
+      await $.ui.open({ id: PANE, title: 'Agent Radar' })
+      return { text: `Agent Radar: ${t.modes[mode]}` }
+    }
+    if (arg === 'details') {
+      const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
+      return { text: `Agent Radar: ${t.details} ${l.isDetailed ? 'on' : 'off'}` }
     }
     const v = VIEWS.find(x => x === arg.toLowerCase())
     if (v) {
