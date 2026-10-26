@@ -21,3 +21,6 @@ Thumbs.db
 *.swo
 .idea/
 .vscode/
+
+# Pane captures from scripts/pane-run.sh
+tests/pane-snaps/

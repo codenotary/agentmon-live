@@ -1,0 +1,8 @@
+# Two subagents side by side while they run, then finished.
+allow Agent Read Glob Grep
+prompt Start two Explore subagents in parallel: one lists the files here, one reads package.json. Then answer in one sentence.
+wait text RUNNING 90
+snap running
+wait idle
+wait gone RUNNING 180
+snap finished

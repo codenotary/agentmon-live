@@ -447,9 +447,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     <Box flexDirection="column">
       <Text bold>
         AGENT RADAR · <Text color="#d97757">{modelName(m.model).toUpperCase()} {t.plans}</Text>
-        {m.effort && <Text color="#d97757" bold={false}> ({m.effort})</Text>} ·{' '}
-        {workerModel && <Text color="blue">{modelName(workerModel).toUpperCase()} {t.executes} · </Text>}
-        {listening(adv.isOn) && <Text color="magenta">{t.watches}</Text>}
+        {m.effort && <Text color="#d97757" bold={false}> ({m.effort})</Text>}
+        {workerModel && <Text color="blue"> · {modelName(workerModel).toUpperCase()} {t.executes}</Text>}
+        {listening(adv.isOn) && <Text color="magenta"> · {t.watches}</Text>}
         {cfg.build && <Text dimColor bold={false}> {cfg.build}</Text>}
       </Text>
       {attention.length > 0 && (

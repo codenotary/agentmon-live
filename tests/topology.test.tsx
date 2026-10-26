@@ -7,6 +7,8 @@ import { topology } from '../hooks/topology'
 
 // The kit declares the hook-adding `on` without exporting its type.
 type On = Parameters<TestBody>[1]
+// What the engine stamps on a command the person typed.
+const TYPED = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 
 const PANE = {
   plugin: 'agent-radar',
@@ -107,5 +109,22 @@ test('needs attention stays on top in the flow view', async ($, on) => {
   const titles = (await ui.findAll({ type: 'Text', text: /^● [A-Z& ·]+$/ })).map(x => x.text.trim())
   expect(titles[0]).toBe('● NEEDS ATTENTION')
   expect(titles[1]).toBe('● SESSION')
+  await ui.unmount()
+})
+
+test('the command reaches the views and details without focusing the pane', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await $.command.run({ ...TYPED, command: 'agent-radar', args: 'flow' })).toEqual({ text: 'Agent Radar: flow' })
+  expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBeTruthy()
+  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'radar' })
+  expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBe(undefined)
+  expect(await $.command.run({ ...TYPED, command: 'agent-radar', args: 'details' })).toEqual({ text: 'Agent Radar: details on' })
+  expect(await ui.find({ type: 'Button', text: /● details/ })).toBeTruthy()
   await ui.unmount()
 })

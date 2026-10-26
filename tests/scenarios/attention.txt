@@ -1,0 +1,5 @@
+# A failing check in Needs attention, with its investigate button.
+allow Bash(npm test:*)
+prompt Run `npm test` once and reply with its last line only.
+wait idle
+snap attention
