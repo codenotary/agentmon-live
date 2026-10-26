@@ -63,10 +63,11 @@ export const de: Strings = {
   checkNow: 'jetzt prüfen',
   checking: 'prüft…',
   budgetUsed: 'Budget verbraucht',
-  evidence: (agents, checks) =>
-    `\n\nSubagenten:\n${agents || '(keine)'}\n\nPrüfungen:\n${checks || '(keine)'}`,
+  evidence: (agents, checks, open) =>
+    `\n\nSubagenten:\n${agents || '(keine)'}\n\nPrüfungen:\n${checks || '(keine)'}${open && `\n\nOffene Aufgaben:\n${open}`}`,
   advisorTokens: (i, o) => `Tokens ${i} / ${o}`,
   changes: 'Änderungen & Prüfung',
+  tasks: 'Aufgaben',
   edited: n => `${n} bearbeitet`,
   readFiles: n => `${n} gelesen`,
   stale: 'veraltet',
@@ -159,10 +160,11 @@ export const fr: Strings = {
   checkNow: 'contrôler',
   checking: 'contrôle…',
   budgetUsed: 'budget épuisé',
-  evidence: (agents, checks) =>
-    `\n\nSous-agents:\n${agents || '(aucun)'}\n\nVérifications:\n${checks || '(aucun)'}`,
+  evidence: (agents, checks, open) =>
+    `\n\nSous-agents:\n${agents || '(aucun)'}\n\nVérifications:\n${checks || '(aucun)'}${open && `\n\nTâches ouvertes:\n${open}`}`,
   advisorTokens: (i, o) => `jetons ${i} / ${o}`,
   changes: 'modifications & vérification',
+  tasks: 'tâches',
   edited: n => `${n} modifiés`,
   readFiles: n => `${n} lus`,
   stale: 'périmé',
@@ -255,10 +257,11 @@ export const es: Strings = {
   checkNow: 'revisar ahora',
   checking: 'revisando…',
   budgetUsed: 'presupuesto agotado',
-  evidence: (agents, checks) =>
-    `\n\nSubagentes:\n${agents || '(ninguno)'}\n\nComprobaciones:\n${checks || '(ninguno)'}`,
+  evidence: (agents, checks, open) =>
+    `\n\nSubagentes:\n${agents || '(ninguno)'}\n\nComprobaciones:\n${checks || '(ninguno)'}${open && `\n\nTareas abiertas:\n${open}`}`,
   advisorTokens: (i, o) => `tokens ${i} / ${o}`,
   changes: 'cambios y verificación',
+  tasks: 'tareas',
   edited: n => `${n} editados`,
   readFiles: n => `${n} leídos`,
   stale: 'desfasado',
@@ -350,10 +353,11 @@ export const zh: Strings = {
   checkNow: '立即检查',
   checking: '检查中…',
   budgetUsed: '预算已用完',
-  evidence: (agents, checks) =>
-    `\n\n子代理:\n${agents || '（无）'}\n\n检查项:\n${checks || '（无）'}`,
+  evidence: (agents, checks, open) =>
+    `\n\n子代理:\n${agents || '（无）'}\n\n检查项:\n${checks || '（无）'}${open && `\n\n未完成任务:\n${open}`}`,
   advisorTokens: (i, o) => `令牌 ${i} / ${o}`,
   changes: '更改与验证',
+  tasks: '任务',
   edited: n => `${n} 已编辑`,
   readFiles: n => `${n} 已读取`,
   stale: '过期',
@@ -446,10 +450,11 @@ export const ja: Strings = {
   checkNow: '今すぐチェック',
   checking: 'チェック中…',
   budgetUsed: '予算到達',
-  evidence: (agents, checks) =>
-    `\n\nサブエージェント:\n${agents || '（なし）'}\n\nチェック:\n${checks || '（なし）'}`,
+  evidence: (agents, checks, open) =>
+    `\n\nサブエージェント:\n${agents || '（なし）'}\n\nチェック:\n${checks || '（なし）'}${open && `\n\n未完了のタスク:\n${open}`}`,
   advisorTokens: (i, o) => `トークン ${i} / ${o}`,
   changes: '変更と検証',
+  tasks: 'タスク',
   edited: n => `${n} 編集`,
   readFiles: n => `${n} 読込`,
   stale: '古い',

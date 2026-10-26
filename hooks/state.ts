@@ -26,6 +26,7 @@ export const INIT = {
   files: { read: [], edited: [], editedAt: 0 },
   lastCall: null,
   layout: { isHistoryOpen: true, isDetailed: false },
+  tasks: [],
 }
 
 // The `/agent-radar advisor` toggle and the advisorMode option both have to allow Fable.

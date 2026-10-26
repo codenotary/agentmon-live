@@ -19,6 +19,7 @@ const active = atom({ plugin: 'agent-radar', key: 'active' } as const, INIT.acti
 const checks = atom({ plugin: 'agent-radar', key: 'checks' } as const, INIT.checks)
 const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
 const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
+const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
 const layout = atom({ plugin: 'agent-radar', key: 'layout' } as const, INIT.layout)
 
 const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 'red', running: 'cyan', unknown: 'gray' }
@@ -27,7 +28,7 @@ const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 're
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
   const { Box, Button, Text } = $.ui.resolve(e)
-  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay] = await Promise.all([
+  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned] = await Promise.all([
     read($, main),
     read($, tools),
     read($, agents),
@@ -45,6 +46,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, files),
     read($, lastCall),
     read($, layout),
+    read($, tasks),
   ])
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
@@ -154,6 +156,29 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           {list.filter(isLive).map(card)}
         </Box>
       )}
+    </Box>
+  )
+
+  // The session's task list: how far it is, what runs now, and every task with details on.
+  const doneTasks = planned.filter(k => k.status === 'completed').length
+  const current = planned.find(k => k.status === 'in_progress')
+  const taskBox = planned.length > 0 && (
+    <Box flexDirection="column">
+      <Text>
+        {title(t.tasks, 'green')} {doneTasks}/{planned.length} {bar(doneTasks / planned.length, 'green')}
+      </Text>
+      {current && (
+        <Text>
+          <Text color="cyan">{spinner(now)} </Text>
+          {cut(current.activeForm || current.subject, whatRoom + 20)}
+        </Text>
+      )}
+      {lay.isDetailed &&
+        planned.map(k => (
+          <Text dimColor={k.status === 'completed'}>
+            {'  '}{k.status === 'completed' ? '✓' : k.status === 'in_progress' ? '▸' : '·'} {k.subject}
+          </Text>
+        ))}
     </Box>
   )
 
@@ -332,6 +357,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Box>
       )}
       {runningNow}
+      {taskBox}
       <Box flexDirection={isWide ? 'row' : 'column'} gap={1}>
         {advisorBox}
         {changes}

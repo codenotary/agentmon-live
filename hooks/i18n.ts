@@ -66,10 +66,11 @@ const en = {
   checkNow: 'check now',
   checking: 'checking…',
   budgetUsed: 'budget used',
-  evidence: (agents: string, checks: string) =>
-    `\n\nSubagents:\n${agents || '(none)'}\n\nChecks:\n${checks || '(none)'}`,
+  evidence: (agents: string, checks: string, open: string) =>
+    `\n\nSubagents:\n${agents || '(none)'}\n\nChecks:\n${checks || '(none)'}${open && `\n\nOpen tasks:\n${open}`}`,
   advisorTokens: (i: string, o: string) => `tokens ${i} / ${o}`,
   changes: 'changes & verification',
+  tasks: 'tasks',
   edited: (n: number) => `${n} edited`,
   readFiles: (n: number) => `${n} read`,
   stale: 'stale',

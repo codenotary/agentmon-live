@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Card, Check, LogLine } from '../types'
+import type { Card, Check, LogLine, Task } from '../types'
 import { advise } from './advisor'
 import { brief, decimal, describe, findCheck, gitCommand, hidesExit, testsOf } from './format'
 import { LANGUAGES } from './i18n'
@@ -24,6 +24,7 @@ const active = atom({ plugin: 'agent-radar', key: 'active' } as const, INIT.acti
 const checks = atom({ plugin: 'agent-radar', key: 'checks' } as const, INIT.checks)
 const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
 const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
+const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
 // A finished turn with fewer main-loop tool calls, no edit and no subagent is too small to be worth a Fable call.
@@ -93,13 +94,32 @@ function queueStatus($: EngineInterface) {
   })
 }
 
+// The session's task list as its own calls change it; `deleted` removes a task.
+async function trackTasks($: EngineInterface, call: { tool: string }, result: unknown) {
+  const e = call as { tool: string; todos?: { content: string; status: Task['status']; activeForm: string }[]; subject?: string; activeForm?: string; taskId?: string; status?: Task['status'] | 'deleted' }
+  if (e.tool === 'TodoWrite' && e.todos) {
+    const todos = e.todos
+    await update($, tasks, () => todos.map((d, i) => ({ id: String(i), subject: d.content, activeForm: d.activeForm, status: d.status })).slice(-50))
+  } else if (e.tool === 'TaskCreate') {
+    const id = (result as { task?: { id?: string } } | undefined)?.task?.id
+    if (id) await update($, tasks, list => [...list, { id, subject: e.subject ?? '', activeForm: e.activeForm, status: 'pending' as const }].slice(-50))
+  } else if (e.tool === 'TaskUpdate' && e.taskId) {
+    const { taskId, status, subject, activeForm } = e
+    await update($, tasks, list =>
+      status === 'deleted'
+        ? list.filter(k => k.id !== taskId)
+        : list.map(k => (k.id === taskId ? { ...k, status: status ?? k.status, subject: subject ?? k.subject, activeForm: activeForm ?? k.activeForm } : k)),
+    )
+  }
+}
+
 // What the main loop did this turn, so Fable judges the work and not only the answer.
 type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string> }
 
 // The request, this turn's subagents and the observed checks are kept whole; the trail gives way.
 async function material($: EngineInterface, turn: Turn): Promise<string> {
 const t = cfg.t
-  const [list, checked, touched] = await Promise.all([read($, agents), read($, checks), read($, files)])
+  const [list, checked, touched, planned] = await Promise.all([read($, agents), read($, checks), read($, files), read($, tasks)])
   const agentLines = list
     .filter(a => isLive(a) || a.startedAt >= turn.startedAt)
     .map(a => `- ${a.type}: ${a.status}${a.tests ? ` · ${a.tests} (${t.reported})` : ''} · ${a.task}`)
@@ -108,7 +128,8 @@ const t = cfg.t
   )
   const request = turn.prompt.slice(0, REQUEST_ROOM)
   const changed = [...turn.edited].join('\n')
-  const evidence = t.evidence(agentLines.join('\n'), checkLines.join('\n'))
+  const openLines = planned.filter(k => k.status !== 'completed').map(k => `- ${k.status}: ${k.subject}`)
+  const evidence = t.evidence(agentLines.join('\n'), checkLines.join('\n'), openLines.join('\n'))
   const room = MATERIAL_ROOM - t.material(request, '', changed).length - evidence.length
   let lines = turn.trail
   while (lines.length > 0 && lines.join('\n').length > room) lines = lines.slice(1)
@@ -293,6 +314,7 @@ export const register: Register = (on, options) => {
       const result: Check['result'] = ran.deny !== undefined ? 'unknown' : ran.isError ? 'failed' : hidesExit(command) ? 'unknown' : 'ok'
       await update($, checks, list => list.map(c => (c.kind === kind && c.at === startedAt ? { ...c, result } : c)))
     }
+    if (!failed) await trackTasks($, e, ran.result)
     if (path && !failed && (cat === 'edit' || cat === 'read')) {
       if (cat === 'edit') turn.edited.add(path)
       await update($, files, f =>

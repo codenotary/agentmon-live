@@ -722,3 +722,68 @@ test('a reload settles calls, checks and subagents nobody will report back', asy
   expect(await ui.find({ type: 'Text', text: /^ UNKNOWN / })).toBeTruthy()
   await ui.unmount()
 })
+
+const TODOS = [
+  { content: 'Read the mod', status: 'completed', activeForm: 'Reading the mod' },
+  { content: 'Write tests', status: 'in_progress', activeForm: 'Writing tests' },
+  { content: 'Ship it', status: 'pending', activeForm: 'Shipping it' },
+] as const
+
+test('the task list shows progress and the task in progress', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /TASKS 1\/3/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Writing tests/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Ship it/ })).toBe(undefined)
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ type: 'Text', text: /· Ship it/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('task calls create, finish and delete tasks; a failed update changes nothing', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  let next = 0
+  on('tool.call', (_, e) => {
+    if (e.tool === 'TaskCreate') return { result: { task: { id: String(++next), subject: e.subject } } }
+    if (e.tool === 'TaskUpdate' && e.status === 'pending') return { result: {}, text: 'no such task', isError: true }
+    return { result: {} }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'TaskCreate', subject: 'A', description: 'a' })
+  await $.tool.call({ tool: 'TaskCreate', subject: 'B', description: 'b' })
+  await $.tool.call({ tool: 'TaskCreate', subject: 'C', description: 'c' })
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'completed' })
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '3', status: 'deleted' })
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'pending' })
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /TASKS 1\/2/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('the done check names open tasks', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, ['OK'], prompts)
+  on('tool.call', () => ({ result: {} }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'build it', turnId: 'm1' })
+  await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Read', file_path: `/f${i}` })
+  await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Done.' })
+  await clock.settle()
+
+  expect(prompts.at(-1)).toContain('Open tasks:\n- in_progress: Write tests\n- pending: Ship it')
+})

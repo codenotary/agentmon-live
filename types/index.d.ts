@@ -61,6 +61,9 @@ export type Advisor = {
 // A tool call that has started and not yet finished; `isAsking` while it waits for the person's approval.
 export type Active = { id: string; who: string; tool: string; what: string; startedAt: number; isAsking?: boolean }
 
+// The session's own task list (TaskCreate/TaskUpdate or TodoWrite), as the calls left it.
+export type Task = { id: string; subject: string; activeForm?: string; status: 'pending' | 'in_progress' | 'completed' }
+
 declare module 'claude-code' {
   interface PluginState {
     'agent-radar': {
@@ -77,6 +80,7 @@ declare module 'claude-code' {
       files: Files
       lastCall: LastCall | null
       layout: Layout
+      tasks: Task[]
     }
   }
 }
