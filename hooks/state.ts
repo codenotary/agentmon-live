@@ -28,6 +28,7 @@ export const INIT = {
   layout: { isHistoryOpen: true, isDetailed: false },
   tasks: [],
   skills: [],
+  flow: [],
 }
 
 // The `/agent-radar advisor` toggle and the advisorMode option both have to allow Fable.

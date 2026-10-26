@@ -5,7 +5,10 @@ import type { Card, Check } from '../types'
 import { ago, clockTime, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
+import { CANVAS_ROWS, paintTopology } from './canvas'
+import { drawFlow } from './flow'
 import { cfg, INIT, isLive, listening, liveStatus, rank, VIEWS } from './state'
+import { topology } from './topology'
 
 const main = atom({ plugin: 'agent-radar', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agent-radar', key: 'tools' } as const, INIT.tools)
@@ -21,6 +24,7 @@ const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
 const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
 const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
 const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
+const flow = atom({ plugin: 'agent-radar', key: 'flow' } as const, INIT.flow)
 const layout = atom({ plugin: 'agent-radar', key: 'layout' } as const, INIT.layout)
 
 const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 'red', running: 'cyan', unknown: 'gray' }
@@ -28,8 +32,9 @@ const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 're
 // Order, as the review asks: needs attention, running now, changes and verification, usage, then the folding history.
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
-  const { Box, Button, Text } = $.ui.resolve(e)
-  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded] = await Promise.all([
+  const ui = $.ui.resolve(e)
+  const { Box, Button, Text } = ui
+  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows] = await Promise.all([
     read($, main),
     read($, tools),
     read($, agents),
@@ -49,6 +54,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, layout),
     read($, tasks),
     read($, skills),
+    read($, flow),
   ])
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
@@ -415,6 +421,31 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     now,
   )
 
+  // The view switch: the canvas needs the terminal's Raster, elsewhere the cycle skips it.
+  const hasRaster = 'Raster' in ui
+  const modes = hasRaster ? (['radar', 'flow', 'canvas'] as const) : (['radar', 'flow'] as const)
+  const mode = lay.mode === 'canvas' && !hasRaster ? 'flow' : (lay.mode ?? 'radar')
+  const nextMode = modes[(modes.indexOf(mode as never) + 1) % modes.length]!
+  const viewButton = (
+    <Button key="view" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, mode: nextMode }))}>
+      {`${t.view}: ${t.modes[mode]}`}
+    </Button>
+  )
+  const topo =
+    mode === 'radar'
+      ? undefined
+      : topology({ main: m, counts, errors: st.errors, compactions: st.compactions, agents: list, usage, advisor: adv, isListening: listening(adv.isOn), checks: checked, flow: flows, now })
+  const phase = Math.floor(now / 500)
+  const labels = { session: t.session, tools: t.toolsWord, agents: t.agentsWord, context: t.contextWord, limits: t.limitsWord, fable: t.fable }
+  const canvasColumns = Math.max(40, Math.min(cols, 160))
+  const topoView =
+    topo &&
+    (mode === 'canvas' && 'Raster' in ui ? (
+      <ui.Raster key="topology" columns={canvasColumns} rows={CANVAS_ROWS} cells={paintTopology(topo, canvasColumns, phase, labels).encode()} />
+    ) : (
+      drawFlow(ui, topo, cols, phase, t)
+    ))
+
   return (
     <Box flexDirection="column">
       <Text bold>
@@ -437,11 +468,17 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           {attention}
         </Box>
       )}
-      {runningNow}
-      <Box flexDirection={isWide ? 'row' : 'column'} flexWrap="wrap" gap={isWide ? 1 : 0}>
-        {sections.map(s => s.node)}
-      </Box>
+      {topoView}
+      {mode === 'radar' && runningNow}
+      {mode === 'radar' && (
+        <Box flexDirection={isWide ? 'row' : 'column'} flexWrap="wrap" gap={isWide ? 1 : 0}>
+          {sections.map(s => s.node)}
+        </Box>
+      )}
+      {mode !== 'radar' && <Box gap={2}>{viewButton}</Box>}
+      {mode === 'radar' && (
       <Box gap={2}>
+        {viewButton}
         <Button key="fold:history" plain hotkey="h" onPress={() => update($, layout, l => ({ ...l, isHistoryOpen: !l.isHistoryOpen }))}>
           {`${lay.isHistoryOpen ? '▾' : '▸'} ${t.history}`}
         </Button>
@@ -449,7 +486,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           {`${lay.isDetailed ? '●' : '○'} ${t.details}`}
         </Button>
       </Box>
-      {lay.isHistoryOpen && history}
+      )}
+      {mode === 'radar' && lay.isHistoryOpen && history}
     </Box>
   )
 }

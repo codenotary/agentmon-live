@@ -26,6 +26,7 @@ const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
 const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
 const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
 const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
+const flow = atom({ plugin: 'agent-radar', key: 'flow' } as const, INIT.flow)
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
 // A finished turn with fewer main-loop tool calls, no edit and no subagent is too small to be worth a Fable call.
@@ -248,6 +249,7 @@ export const register: Register = (on, options) => {
         update($, checks, () => []),
         update($, files, () => ({ read: [], edited: [], editedAt: 0 })),
         update($, lastCall, () => null),
+        update($, flow, () => []),
         update($, tasks, () => []),
         update($, skills, () => []),
       ])
@@ -379,6 +381,7 @@ export const register: Register = (on, options) => {
         r.deny !== undefined ? 'unknown' : r.isError ? (kind === lastKind ? 'failed' : 'unknown') : hidesExit(command) ? outcomeOf(output, kind) : 'ok'
       await Promise.all([
         update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
+        update($, flow, all => [...all, { cat, at }].slice(-300)),
         r.isError && update($, stats, s => ({ ...s, errors: { ...s.errors, [cat]: (s.errors[cat] ?? 0) + 1 } })),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
         found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind) } : c))),
