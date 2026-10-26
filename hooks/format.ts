@@ -78,16 +78,18 @@ const CHECKS: [CheckKind, RegExp][] = [
   ['typecheck', new RegExp(String.raw`^(?:tsc|${RUN}(?:typecheck|type-check)|mypy|pyright|cargo check)\b`)],
   ['lint', new RegExp(String.raw`^(?:${RUN}lint|eslint|ruff|clippy|golangci-lint|flake8|biome (?:check|lint)|(?:claude )?plugin validate)\b`)],
   ['test', new RegExp(String.raw`^(?:${RUN}test|go test|cargo test|pytest|jest|vitest|mocha|(?:claude )?plugin test|make test)\b`)],
-  ['build', new RegExp(String.raw`^(?:${RUN}build|cargo build|go build|make|webpack|esbuild|vite build)\b`)],
+  ['build', new RegExp(String.raw`^(?:${RUN}build|cargo build|go build|make(?!\s+(?:clean|distclean|install|help)\b)|webpack|esbuild|vite build)\b`)],
 ]
 
 // Which kind of check a shell command runs, if any. Only the commands themselves count: heredoc bodies are
-// dropped and a runner must start a command, so `cat <<EOF … npm test … EOF` or `grep lint x` is no check.
+// dropped, quoted text blanked, and a runner must start a command, so `cat <<EOF … npm test … EOF`,
+// `echo "x; npm test"` or `grep lint x` is no check. Wrappers (`npx`, `uv run`, `python -m`, a path) are skipped.
 export function checkKind(command: string): CheckKind | undefined {
   const heads = command
     .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '')
+    .replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, "''")
     .split(/&&|\|\||;|\||\n/)
-    .map(s => s.trim().replace(/^(?:\w+=\S*\s+)*(?:(?:npx|bunx|sudo|time)\s+)*/, ''))
+    .map(s => s.trim().replace(/^(?:\w+=\S*\s+)*(?:(?:npx|bunx|sudo|time|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''))
   return CHECKS.find(([, re]) => heads.some(h => re.test(h)))?.[0]
 }
 
