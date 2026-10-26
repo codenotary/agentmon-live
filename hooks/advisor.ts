@@ -37,20 +37,24 @@ export function advise($: EngineInterface, kind: Note['kind'], question: string,
     const r = await $.model
       .complete({ model: cfg.advisorModel, effort: 'low', maxTokens: 300, timeoutMs: TIMEOUT_MS, system: cfg.t.advisorSystem, prompt: `${question}\n\n${material}` })
       .catch(() => undefined)
+    // Tokens spent count even when the answer below is dropped.
+    const usage = r?.isAnswered ? r.usage : undefined
+    const cur = await update($, advisor, a =>
+      usage
+        ? {
+            ...a,
+            tokensIn: (a.tokensIn ?? 0) + usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens,
+            tokensOut: (a.tokensOut ?? 0) + usage.output_tokens,
+          }
+        : a,
+    )
     // A clear, reload or toggle while Fable thought makes this answer stale; the clear already reset the state.
-    const cur = await read($, advisor)
     if ((cur.epoch ?? 0) !== epoch) return
     if (!r?.isAnswered) {
       await update($, advisor, a => ({ ...a, state: 'unavailable' as const }))
       return
     }
-    const usage = r.usage
-    await update($, advisor, a => ({
-      ...a,
-      state: 'idle' as const,
-      tokensIn: (a.tokensIn ?? 0) + usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens,
-      tokensOut: (a.tokensOut ?? 0) + usage.output_tokens,
-    }))
+    await update($, advisor, a => ({ ...a, state: 'idle' as const }))
     if (!listening(cur.isOn)) return
     const text = r.text.trim()
     const ok = /^OK\b/i.test(text)

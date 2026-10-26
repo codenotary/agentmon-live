@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderInput } from 'claude-code'
 
 import type { Card, Check } from '../types'
-import { clockTime, effortBar, fit, kilo, modelName, shortPath, smoothBar, spinner } from './format'
+import { ago, clockTime, effortBar, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, VIEWS } from './state'
@@ -58,11 +58,11 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const barRoom = Math.max(6, Math.min(24, cols - (isWide ? 62 : 32)))
   const running = list.filter(isLive).length
   const workerModel = list.at(-1)?.model
-  const rows: (readonly [Category, number])[] = CATEGORIES.map(c => [c, counts[c] ?? 0] as const)
-  if (counts.other) rows.push(['other', counts.other])
+  // Only categories the session used; a column of zeros says nothing.
+  const rows = [...CATEGORIES, 'other' as const].map(c => [c, counts[c] ?? 0] as const).filter(([, n]) => n > 0)
   const whatRoom = Math.max(10, Math.min(40, cols - 50))
   const shown = recent.filter(c => c.view === tab).slice(-5)
-  const secs = (from: number) => `${Math.max(0, Math.round((now - from) / 1000))} s`
+  const secs = (from: number) => ago(now - from)
   // Details off cuts long texts to the room they have; on, they are drawn whole.
   const cut = (s: string, n: number) => (lay.isDetailed || s.length <= n ? s : `${s.slice(0, n - 1)}…`)
   const isStale = (c: Check) => c.result !== 'running' && touched.editedAt > c.at
@@ -194,7 +194,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       {checked.map(c => (
         <Text>
           {fit(t.check[c.kind], 12)}
-          {chip(checkLabel(c), RESULT_COLOR[c.result])} {isStale(c) && <Text>{chip(t.stale, 'yellow')} </Text>}
+          {c.result === 'unknown' ? <Text dimColor>{t.unknown}</Text> : chip(checkLabel(c), RESULT_COLOR[c.result])} {isStale(c) && <Text>{chip(t.stale, 'yellow')} </Text>}
           <Text dimColor>{cut(c.command, whatRoom)}</Text>
         </Text>
       ))}
@@ -206,7 +206,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} flexGrow={1}>
       {title(t.usage)}
       <Text>
-        {fit(t.context, 17)}
+        {fit(t.context, 18)}
         {pct === undefined ? (
           <Text dimColor>{t.unavailable}</Text>
         ) : (
@@ -216,13 +216,13 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           </Text>
         )}
       </Text>
-      {usage.cost && <Text>{fit('cost', 17)}${usage.cost.usd.toFixed(2)}</Text>}
+      {usage.cost && <Text>{fit('cost', 18)}${usage.cost.usd.toFixed(2)}</Text>}
       {usage.rateLimits.map(r => (
         <Text>
-          {fit(r.kind, 17)}
+          {fit(r.kind, 18)}
           {bar(r.percentUsed / 100, r.percentUsed > 80 ? 'red' : 'yellow')}
           {String(Math.round(r.percentUsed)).padStart(4)} %{' '}
-          <Text dimColor>{r.resetsAt && !Number.isNaN(Date.parse(r.resetsAt)) ? t.resets(clockTime(Date.parse(r.resetsAt))) : ''}</Text>
+          <Text dimColor>{r.resetsAt && !Number.isNaN(Date.parse(r.resetsAt)) ? t.resets(resetTime(Date.parse(r.resetsAt), now)) : ''}</Text>
         </Text>
       ))}
     </Box>
@@ -281,13 +281,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const finished = list.filter(a => !isLive(a))
   const history = (
     <Box flexDirection="column">
-      <Box flexDirection="column" borderStyle="round" borderColor="#d97757" paddingX={1} alignSelf="center">
-        <Text color="#d97757">{modelName(m.model)} · {t.mainSession}</Text>
-        <Text>{t.plansAndShips}</Text>
-        <Text>
-          effort <Text color="#d97757">{effortBar(m.effort)}</Text> {m.effort || '?'}
-        </Text>
-      </Box>
       <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
         <Box justifyContent="space-between">
           {title(t.toolsHeader, 'green')}
@@ -295,10 +288,10 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Box>
         {rows.map(([c, n]) => (
           <Text>
-            <Text color={c === 'git' ? 'yellow' : undefined} bold={c === 'git'}>{fit(t.cat[c], 17)}</Text>
+            <Text color={c === 'git' ? 'yellow' : undefined} bold={c === 'git'}>{fit(t.cat[c], 18)}</Text>
             {bar(n / most, c === 'git' ? 'yellow' : 'green')}
-            {String(n).padStart(4)}{' '}
-            {st.errors[c] ? <Text color="red">{t.errors(st.errors[c])}</Text> : <Text color="green" dimColor={n === 0}>{t.ok}</Text>}
+            {String(n).padStart(4)}
+            {st.errors[c] ? <Text> <Text color="red">{t.errors(st.errors[c])}</Text></Text> : ''}
           </Text>
         ))}
         {total > 0 && (
@@ -326,9 +319,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Box>
       {workerModel && <Text color="blue">{'  '}{t.delegated(modelName(workerModel), running)}</Text>}
       <Box flexDirection={isWide ? 'row' : 'column'} flexWrap="wrap">
-        {list.length === 0 ? <Text dimColor>{t.noSubagents}</Text> : finished.slice(-4).map(card)}
+        {finished.slice(-4).map(card)}
       </Box>
-      {list.length > 0 && <Text color="#d97757">{t.backTo(modelName(m.model))}</Text>}
       <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
         <Text dimColor>{t.sessionLog}</Text>
         {lines.length === 0 && <Text dimColor>{t.empty}</Text>}
@@ -358,7 +350,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       )}
       {runningNow}
       {taskBox}
-      <Box flexDirection={isWide ? 'row' : 'column'} gap={1}>
+      <Box flexDirection={isWide ? 'row' : 'column'} gap={isWide ? 1 : 0}>
         {advisorBox}
         {changes}
         {usageBox}
@@ -372,7 +364,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Button>
       </Box>
       {lay.isHistoryOpen && history}
-      <Text dimColor>{t.statusLine(m.effort || '?', running, list.length, listening(adv.isOn), total, counts.git ?? 0)}</Text>
     </Box>
   )
 }

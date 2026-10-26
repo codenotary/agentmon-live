@@ -59,7 +59,22 @@ export function effortBar(effort: string): string {
 
 export function clockTime(ms: number): string {
   const d = new Date(ms)
-  return [d.getHours(), d.getMinutes(), d.getSeconds()].map(v => String(v).padStart(2, '0')).join(':')
+  return [d.getHours(), d.getMinutes()].map(v => String(v).padStart(2, '0')).join(':')
+}
+
+// An elapsed time a person reads at a glance: 45 s, 12 min, 2 h 5 min.
+export function ago(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s} s`
+  const m = Math.floor(s / 60)
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`
+}
+
+// A limit's reset: the time when it is today, else the weekday too (`Thu 15:00`).
+export function resetTime(ms: number, now: number): string {
+  const d = new Date(ms)
+  if (d.toDateString() === new Date(now).toDateString()) return clockTime(ms)
+  return `${d.toLocaleDateString(cfg.lang, { weekday: 'short' })} ${clockTime(ms)}`
 }
 
 // A failure anywhere wins over a pass count: "3 passed, 2 failed" is a FAIL.

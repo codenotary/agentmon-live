@@ -138,6 +138,7 @@ const t = cfg.t
 
 export const register: Register = (on, options) => {
   const t = (cfg.t = LANGUAGES[String(options.language)] ?? LANGUAGES.en!)
+  cfg.lang = String(options.language) in LANGUAGES ? String(options.language) : 'en'
   cfg.advisorModel = String(options.advisorModel || 'claude-fable-5-1')
   cfg.advisorMode = String(options.advisorMode || 'all')
   const budget = Number(options.advisorBudget ?? 30)
@@ -171,7 +172,7 @@ export const register: Register = (on, options) => {
       update($, stats, s => ({ ...s, errors: keep(s.errors) })),
       update($, agents, list => trimAgents(list.filter(a => a.status in t.status).map(settle))),
       // A load starts a new advisor epoch, so an answer the last load asked for is dropped.
-      update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind in t.kind), epoch: (a.epoch ?? 0) + 1, state: 'idle' as const })),
+      update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind in t.kind), epoch: (a.epoch ?? 0) + 1, state: a.state === 'checking' ? ('idle' as const) : a.state })),
       // Calls in flight when the module reloaded will never report back.
       update($, active, () => []),
       update($, calls, list => list.map(c => (c.result === 'running' ? { ...c, result: t.unknown } : c))),
@@ -307,7 +308,6 @@ export const register: Register = (on, options) => {
     if (tab) {
       const result = failed ? t.failed : 'ok'
       await update($, calls, list => list.map(c => (c.id === callId ? { ...c, result, error } : c)))
-      if (tab === 'git') await addLog($, { who, what, isGit: true, result })
     }
     if (kind) {
       // A denied or aborted run says nothing about the code; a pipe hides the exit status.

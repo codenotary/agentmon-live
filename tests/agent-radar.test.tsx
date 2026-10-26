@@ -1,7 +1,7 @@
 import type { On } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { findCheck, hidesExit, smoothBar, spinner } from '../hooks/format'
+import { ago, findCheck, hidesExit, resetTime, smoothBar, spinner } from '../hooks/format'
 import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
 
 const PANE = {
@@ -19,14 +19,19 @@ const PANE = {
   },
 } as const
 
-// The engine answers every test needs; a test adds its own hooks after.
+// The engine answers every test needs; a test adds its own hooks after. Returns the last status line set.
 function engine(on: On) {
+  let status = ''
   on('command.register', () => ({ value: { command: 'agent-radar' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
+  on('ui.status', (_, e) => {
+    status = e.text ?? ''
+    return { value: undefined }
+  })
+  return () => status
 }
 
 const SPAWN = {
@@ -151,7 +156,9 @@ test('git commands get their own row and log line', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   expect((await ui.find({ type: 'Text', text: /total 2/ }))?.text).toBe('total 2')
   expect(await ui.find({ type: 'Text', text: /^git status$/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /git \[1\]/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^git\s+▕.*▏\s+1$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^read files/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /^\d\d:\d\d main session\s+git status/ })).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /EXECUTES/ })).toBe(undefined)
   await ui.unmount()
 })
@@ -252,7 +259,7 @@ test('a resumed agent runs again', async ($, on) => {
 })
 
 test('running agents are never trimmed', async ($, on) => {
-  engine(on)
+  const status = engine(on)
   on('clock.now', () => ({ value: 0 }))
   let n = 0
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${n++}` }))
@@ -263,14 +270,12 @@ test('running agents are never trimmed', async ($, on) => {
     await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}` })
     if (i > 0) await $.turn.complete({ ...DONE, agentId: `a${i}` })
   }
-  const ui = await $.ui.mount(PANE)
-  expect(await ui.find({ type: 'Text', text: /subagents \[1\/13\]/ })).toBeTruthy()
-  await ui.unmount()
+  expect(status()).toMatch(/subagents \[1\/13\]/)
 })
 
 test('clear keeps running agents and drops history', async ($, on) => {
   mock.clock(on)
-  engine(on)
+  const status = engine(on)
   on('tool.call', () => ({ result: {} }))
   let n = 0
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${n++}` }))
@@ -283,9 +288,7 @@ test('clear keeps running agents and drops history', async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: 'ls' })
   await $.command.run({ command: 'agent-radar', args: 'clear' })
 
-  const ui = await $.ui.mount(PANE)
-  expect(await ui.find({ type: 'Text', text: /subagents \[1\/1\].*tools \[0\]/ })).toBeTruthy()
-  await ui.unmount()
+  expect(status()).toMatch(/subagents \[1\/1\].*tools \[0\]/)
 })
 
 test('an advisor answer that arrives after a clear is dropped', async ($, on) => {
@@ -425,7 +428,7 @@ test('checks show their outcome and go stale after an edit', async ($, on) => {
 
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+npm test/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /^typecheck\s+ UNKNOWN / })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^typecheck\s+unknown / })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^ FAILED  lint npm run lint/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /STALE/ })).toBe(undefined)
   await clock.advance(1000)
@@ -494,7 +497,6 @@ test('history folds and details unfold long text', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /TOOLS · CALLS/ })).toBeTruthy()
   await ui.press({ key: 'fold:history' })
   expect(await ui.find({ type: 'Text', text: /TOOLS · CALLS/ })).toBe(undefined)
-  expect(await ui.find({ type: 'Text', text: /subagents \[0\/0\]/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -681,7 +683,7 @@ for (const language of ['fr', 'es', 'zh', 'ja'] as const) {
     await $.tool.call({ tool: 'Bash', command: 'git status' })
 
     const ui = await $.ui.mount(PANE)
-    expect(await ui.find({ type: 'Text', text: /git \[1\]/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /^git\s+▕.*▏\s+1$/ })).toBeTruthy()
     await ui.unmount()
   })
 }
@@ -719,7 +721,7 @@ test('a reload settles calls, checks and subagents nobody will report back', asy
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^ RUNNING / })).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] / })).toBe(undefined)
-  expect(await ui.find({ type: 'Text', text: /^ UNKNOWN / })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^test\s+unknown / })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -786,4 +788,40 @@ test('the done check names open tasks', async ($, on) => {
   await clock.settle()
 
   expect(prompts.at(-1)).toContain('Open tasks:\n- in_progress: Write tests\n- pending: Ship it')
+})
+
+test('elapsed and reset times read at a glance', () => {
+  expect(ago(45_000)).toBe('45 s')
+  expect(ago(2_970_000)).toBe('49 min')
+  expect(ago(7_500_000)).toBe('2 h 5 min')
+  const now = new Date(2026, 9, 26, 12, 0).getTime()
+  expect(resetTime(new Date(2026, 9, 26, 21, 30).getTime(), now)).toBe('21:30')
+  expect(resetTime(new Date(2026, 9, 29, 15, 0).getTime(), now)).toMatch(/^\S+ 15:00$/)
+})
+
+test('a dropped advisor answer still counts its tokens, and a reload keeps unavailable', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  let answer = true
+  on('model.complete', async () => {
+    await clock.sleep(1000)
+    return answer
+      ? { value: { isAnswered: true, text: 'OK', usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
+      : { value: { isAnswered: false, usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await clock.settle()
+  await $.command.run({ command: 'agent-radar', args: 'clear' })
+  await clock.advance(1000)
+  answer = false
+  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await clock.advance(1000)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /tokens 100 \/ 20/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /\(unavailable\)/ })).toBeTruthy()
+  await ui.unmount()
 })
