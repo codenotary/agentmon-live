@@ -685,3 +685,40 @@ for (const language of ['fr', 'es', 'zh', 'ja'] as const) {
     await ui.unmount()
   })
 }
+
+test('a hung advisor call times out and leaves Fable usable', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  let timeoutMs: number | undefined
+  on('model.complete', (_, e) => {
+    timeoutMs = e.timeoutMs
+    return { value: { isAnswered: true, text: 'OK', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'agent-radar', args: 'check' })
+  await clock.settle()
+  expect(timeoutMs).toBe(30_000)
+})
+
+test('a reload settles calls, checks and subagents nobody will report back', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  let listed = [{ id: 'a1', description: 'Mod lesen', type: 'Explore', status: 'running' }]
+  on('agent.list', () => ({ value: listed }))
+  // The call never reports back: the module reloads while it runs.
+  on('tool.call', () => new Promise(() => {}))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  void $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 'u1' })
+  listed = []
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^ RUNNING / })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] / })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /^ UNKNOWN / })).toBeTruthy()
+  await ui.unmount()
+})

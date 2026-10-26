@@ -7,7 +7,7 @@ import { brief, decimal, describe, findCheck, gitCommand, hidesExit, testsOf } f
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { drawPane } from './render'
-import { cfg, INIT, isLive, listening, PANE, trimAgents, VIEWS } from './state'
+import { cfg, INIT, isLive, listening, liveStatus, PANE, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
 
 export { brief, fit, gitCommand, kilo, modelName, testsOf } from './format'
@@ -136,19 +136,25 @@ export const register: Register = (on, options) => {
       description: t.commandDescription,
       argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}]`,
     })
-    const model = await $.session.model()
+    const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
     await update($, main, m => ({ ...m, model }))
+    // The engine's word on each agent: a card it no longer lists finished while no module listened.
+    const statusOf = new Map(live?.map(a => [a.id, liveStatus(a.status)]))
+    const settle = (a: Card): Card =>
+      live === undefined || !isLive(a) ? a : { ...a, status: statusOf.get(a.id) ?? 'cancelled' }
     // State from an older version or another language holds keys this one does not draw; drop them.
     const known = (k: string) => k in t.cat
     const keep = (r: Record<string, number>) => Object.fromEntries(Object.entries(r).filter(([k]) => known(k)))
     await Promise.all([
       update($, tools, keep),
       update($, stats, s => ({ ...s, errors: keep(s.errors) })),
-      update($, agents, list => list.filter(a => a.status in t.status)),
+      update($, agents, list => trimAgents(list.filter(a => a.status in t.status).map(settle))),
       // A load starts a new advisor epoch, so an answer the last load asked for is dropped.
       update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind in t.kind), epoch: (a.epoch ?? 0) + 1, state: 'idle' as const })),
       // Calls in flight when the module reloaded will never report back.
       update($, active, () => []),
+      update($, calls, list => list.map(c => (c.result === 'running' ? { ...c, result: t.unknown } : c))),
+      update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
     void $.ui.open({ id: PANE, title: 'Agent Radar' })
     await refreshStatus($)

@@ -8,6 +8,8 @@ const advisor = atom({ plugin: 'agent-radar', key: 'advisor' } as const, INIT.ad
 
 // The same kind of automatic check runs at most once a minute; a manual check skips the wait.
 const COOLDOWN_MS = 60_000
+// A call that never returns would leave the advisor `checking`, and so silent, for the rest of the session.
+const TIMEOUT_MS = 30_000
 
 // A short fingerprint of what Fable is asked, so the same question is not sent twice in a row.
 export function fingerprint(s: string): string {
@@ -33,7 +35,7 @@ export function advise($: EngineInterface, kind: Note['kind'], question: string,
     const epoch = adv.epoch ?? 0
     await update($, advisor, a => ({ ...a, calls: a.calls + 1, state: 'checking' as const, lastKey: key, lastAt: { ...a.lastAt, [kind]: now } }))
     const r = await $.model
-      .complete({ model: cfg.advisorModel, effort: 'low', maxTokens: 300, system: cfg.t.advisorSystem, prompt: `${question}\n\n${material}` })
+      .complete({ model: cfg.advisorModel, effort: 'low', maxTokens: 300, timeoutMs: TIMEOUT_MS, system: cfg.t.advisorSystem, prompt: `${question}\n\n${material}` })
       .catch(() => undefined)
     // A clear, reload or toggle while Fable thought makes this answer stale; the clear already reset the state.
     const cur = await read($, advisor)
