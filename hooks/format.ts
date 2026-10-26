@@ -81,16 +81,27 @@ const CHECKS: [CheckKind, RegExp][] = [
   ['build', new RegExp(String.raw`^(?:${RUN}build|cargo build|go build|make(?!\s+(?:clean|distclean|install|help)\b)|webpack|esbuild|vite build)\b`)],
 ]
 
-// Which kind of check a shell command runs, if any. Only the commands themselves count: heredoc bodies are
-// dropped, quoted text blanked, and a runner must start a command, so `cat <<EOF … npm test … EOF`,
-// `echo "x; npm test"` or `grep lint x` is no check. Wrappers (`npx`, `uv run`, `python -m`, a path) are skipped.
-export function checkKind(command: string): CheckKind | undefined {
-  const heads = command
-    .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '')
-    .replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, "''")
-    .split(/&&|\|\||;|\||\n/)
-    .map(s => s.trim().replace(/^(?:\w+=\S*\s+)*(?:(?:npx|bunx|sudo|time|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''))
-  return CHECKS.find(([, re]) => heads.some(h => re.test(h)))?.[0]
+// Which check a shell command runs, if any, and the part of the command that runs it. Only the commands
+// themselves count: heredoc bodies are dropped, quoted text blanked, and a runner must start a command, so
+// `cat <<EOF … npm test … EOF`, `echo "x; npm test"` or `grep lint x` is no check. Wrappers (`npx`, `uv run`,
+// `python -m`, a path) are skipped.
+export function findCheck(command: string): { kind: CheckKind; part: string } | undefined {
+  const plain = command.replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '')
+  // Quoted text turns to spaces of the same length, so a part found in `blank` is cut from `plain` at the same place.
+  const blank = plain.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, q => q[0] + ' '.repeat(q.length - 2) + q[0])
+  const parts: { head: string; part: string }[] = []
+  let start = 0
+  for (const m of blank.matchAll(/&&|\|\||;|\||\n|$/g)) {
+    const head = blank.slice(start, m.index).trim()
+    parts.push({ head: head.replace(/^(?:\w+=\S*\s+)*(?:(?:npx|bunx|sudo|time|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''), part: plain.slice(start, m.index).trim() })
+    start = m.index + m[0].length
+    if (m[0] === '') break
+  }
+  for (const [kind, re] of CHECKS) {
+    const found = parts.find(p => re.test(p.head))
+    if (found) return { kind, part: found.part }
+  }
+  return undefined
 }
 
 // A pipe hides the check's own exit status unless pipefail is set, so success there is only `unknown`.

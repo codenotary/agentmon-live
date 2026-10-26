@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Card, Check, LogLine } from '../types'
 import { advise } from './advisor'
-import { brief, checkKind, decimal, describe, gitCommand, hidesExit, testsOf } from './format'
+import { brief, decimal, describe, findCheck, gitCommand, hidesExit, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { drawPane } from './render'
@@ -256,13 +256,15 @@ export const register: Register = (on, options) => {
     }
 
     const command = e.tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
-    const kind = cat === 'shell' ? checkKind(command) : undefined
+    const check = cat === 'shell' ? findCheck(command) : undefined
+    const kind = check?.kind
     const startedAt = await $.clock.now()
     // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
     await Promise.all([
       update($, active, list => [...list, { id: callId, who, tool: e.tool, what, startedAt }]).then(() => tick($)),
       tab && update($, calls, list => [...list, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
-      kind && update($, checks, list => [...list.filter(c => c.kind !== kind), { kind, command: what, who, at: startedAt, result: 'running' as const }]),
+      // The row names the part that ran the check, not a script the same command ran first.
+      check && update($, checks, list => [...list.filter(c => c.kind !== check.kind), { kind: check.kind, command: check.part.slice(0, 200), who, at: startedAt, result: 'running' as const }]),
     ])
     let ran
     try {

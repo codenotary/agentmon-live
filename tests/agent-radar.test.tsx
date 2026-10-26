@@ -1,7 +1,7 @@
 import type { On } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { checkKind, hidesExit, smoothBar, spinner } from '../hooks/format'
+import { findCheck, hidesExit, smoothBar, spinner } from '../hooks/format'
 import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
 
 const PANE = {
@@ -372,24 +372,26 @@ test('the engine\'s agent status wins over the card', async ($, on) => {
 })
 
 test('shell commands are told apart by the check they run', () => {
-  expect(checkKind('npm test')).toBe('test')
-  expect(checkKind('claude plugin test .')).toBe('test')
-  expect(checkKind('ls tests')).toBe(undefined)
-  expect(checkKind('npx tsc --noEmit')).toBe('typecheck')
-  expect(checkKind('npm run lint')).toBe('lint')
-  expect(checkKind('cargo build --release')).toBe('build')
-  expect(checkKind('cd repo && FOO=1 npx tsc --noEmit')).toBe('typecheck')
-  expect(checkKind("python3 - <<'EOF'\nrun('npm test')\nnpm run lint\nEOF\necho done")).toBe(undefined)
-  expect(checkKind("cat > x <<EOF\nnpm test\nEOF\nnpm run build")).toBe('build')
-  expect(checkKind('grep -rn lint hooks')).toBe(undefined)
-  expect(checkKind('echo "npm test"')).toBe(undefined)
-  expect(checkKind('python -m pytest -q')).toBe('test')
-  expect(checkKind('cd api && uv run pytest tests/')).toBe('test')
-  expect(checkKind('./node_modules/.bin/jest --ci')).toBe('test')
-  expect(checkKind('echo "x; npm test"')).toBe(undefined)
-  expect(checkKind('pytest "tests/a b.py"')).toBe('test')
-  expect(checkKind('make clean')).toBe(undefined)
-  expect(checkKind('make -j8')).toBe('build')
+  expect(findCheck('npm test')?.kind).toBe('test')
+  expect(findCheck('claude plugin test .')?.kind).toBe('test')
+  expect(findCheck('ls tests')?.kind).toBe(undefined)
+  expect(findCheck('npx tsc --noEmit')?.kind).toBe('typecheck')
+  expect(findCheck('npm run lint')?.kind).toBe('lint')
+  expect(findCheck('cargo build --release')?.kind).toBe('build')
+  expect(findCheck('cd repo && FOO=1 npx tsc --noEmit')?.kind).toBe('typecheck')
+  expect(findCheck("python3 - <<'EOF'\nrun('npm test')\nnpm run lint\nEOF\necho done")?.kind).toBe(undefined)
+  expect(findCheck("cat > x <<EOF\nnpm test\nEOF\nnpm run build")?.kind).toBe('build')
+  expect(findCheck('grep -rn lint hooks')?.kind).toBe(undefined)
+  expect(findCheck('echo "npm test"')?.kind).toBe(undefined)
+  expect(findCheck('python -m pytest -q')?.kind).toBe('test')
+  expect(findCheck('cd api && uv run pytest tests/')?.kind).toBe('test')
+  expect(findCheck('./node_modules/.bin/jest --ci')?.kind).toBe('test')
+  expect(findCheck('echo "x; npm test"')?.kind).toBe(undefined)
+  expect(findCheck('pytest "tests/a b.py"')?.kind).toBe('test')
+  expect(findCheck('make clean')?.kind).toBe(undefined)
+  expect(findCheck('make -j8')?.kind).toBe('build')
+  expect(findCheck("python3 - <<'EOF'\np='x'\nEOF\nclaude plugin test . 2>&1 | tail -2")).toEqual({ kind: 'test', part: 'claude plugin test . 2>&1' })
+  expect(findCheck('cd api && uv run pytest "tests/a b.py" | tail')).toEqual({ kind: 'test', part: 'uv run pytest "tests/a b.py"' })
   expect(hidesExit('npm test | tail -5')).toBe(true)
   expect(hidesExit('set -o pipefail; npm test | tail')).toBe(false)
   expect(hidesExit('npm test || echo x')).toBe(false)
