@@ -1,0 +1,5 @@
+# A source file grows past the size guide: Focus flags it.
+allow Bash(node:*) Read Edit
+prompt Run this exact command: node -e "require('fs').mkdirSync('src',{recursive:true});require('fs').writeFileSync('src/big.ts',Array.from({length:1000},(_,i)=>'export const v'+i+' = '+i+'\n').join(''))" . Then use the Edit tool once: replace the first line `export const v0 = 0` with `export const v0 = 0 // grows`. Reply in one short sentence.
+wait idle
+snap focus

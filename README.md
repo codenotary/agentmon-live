@@ -76,10 +76,25 @@ Set in `/config`, under the plugin:
 | `advisorModel` | any model id | `claude-fable-5-1` |
 | `advisorMode` | `all` (plan, error streak and done checks), `plan` (plan check only), `off` | `all` |
 | `advisorBudget` | most Fable calls per session; `0` for no limit | `30` |
+| `sizeLimit` | bytes a maintained source file may reach before Focus suggests splitting it; `0` turns the guide off | `20000` |
+| `sizeExclude` | comma-separated globs the size guide skips, on top of the built-in ones | empty |
 
 ### Cost
 
 Each Fable check is one small model call (low effort, at most 300 output tokens, about 12,000 characters of material). The done check runs only after real work; the cooldown, duplicate suppression and `advisorBudget` cap the rest. The pane shows Fable's own tokens. Set `advisorMode` to `plan` or `off` to cut calls further.
+
+### File-size guide
+
+Big files are hard to take in, for people and for agents alike. When an Edit or Write, by the main session or a subagent, leaves a maintained source file over `sizeLimit` bytes (20,000 by default, about 5,000 tokens; a size heuristic, not a token count), Focus says so. Its `investigate` draft asks to split the file along distinct responsibilities with clear interfaces between the parts, and not to split arbitrarily or add abstractions just to get under the number. A file that was already over the limit is flagged only when it grows; a new file over the limit is flagged at once. It only warns; nothing is blocked.
+
+Only source files count (`.ts`, `.py`, `.go`, `.rs` and the like), and only inside the project. Built-in exclusions skip lockfiles (`package-lock.json`, `yarn.lock`, `Cargo.lock`, `go.sum`, …), generated code (`*.min.*`, `*.map`, `*.generated.*`, `*.pb.go`, `generated/`), vendored code (`node_modules/`, `vendor/`, `third_party/`), build output (`dist/`, `build/`, `out/`, `target/`, `.next/`, `coverage/`) and fixtures (`fixtures/`, `__snapshots__/`, `testdata/`, `*.snap`). Add your own with `sizeExclude`.
+
+For a file that should stay whole, add it to `.agent-radar-size` at the project root, one glob per line with the reason after `#`. A line without a reason is ignored, so every exception says why:
+
+```
+src/schema.ts      # one table per type; kept together on purpose
+src/legacy/*.ts    # ported code, split after the migration
+```
 
 ## Develop
 

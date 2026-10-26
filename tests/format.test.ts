@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { brief, describe, failLine, findCheck, findChecks, mask, outcomeOf, testsOf } from '../hooks/format'
+import { brief, describe, failLine, findCheck, findChecks, mask, outcomeOf, percent, testsOf } from '../hooks/format'
 
 test('findCheck on a 200 KB command of unterminated heredocs stays fast', () => {
   const command = 'npm test\n' + '<<A\n'.repeat(50_000)
@@ -49,4 +49,12 @@ test('a fail count an agent quoted from a file is no failed test', () => {
   expect(testsOf('```\n3 failing\n```\nThe file holds a sample report.')).toBe(undefined)
   expect(testsOf("I ran the suite: 2 tests failed, so it isn't done.")).toBe('FAIL')
   expect(failLine('quoted: "1 failing"\n3 failed in tests/a.ts')).toBe('3 failed in tests/a.ts')
+})
+
+test('a share never claims 100 % unless it is', () => {
+  expect(percent(553_000, 555_000)).toBe('99.6')
+  expect(percent(554_999, 555_000)).toBe('99.9')
+  expect(percent(555_000, 555_000)).toBe('100')
+  expect(percent(1, 3)).toBe('33')
+  expect(percent(0, 10)).toBe('0')
 })

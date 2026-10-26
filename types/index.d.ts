@@ -75,6 +75,8 @@ export type Insights = {
   breakdown?: { name: string; tokens: number }[]
   mcpTokens?: number
   memoryTokens?: number
+  // Watched source files this session: the size before the first edit (absent for a new file) and now.
+  sizes: Record<string, { first?: number; now: number }>
 }
 
 export type LogLine = { at: number; who: string; what: string; result: string }

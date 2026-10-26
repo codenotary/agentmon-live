@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import type { Card, Check } from '../types'
-import { ago, clockTime, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
+import { ago, clockTime, fit, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { drawFlow } from './flow'
@@ -469,7 +469,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const turnWall = ins.turn ? now - ins.turn.startedAt : (ins.last?.wallMs ?? 0)
   const ctxNow = ins.ctx.at(-1)
   const ctxDelta = ins.last?.ctxStart !== undefined && ins.last.ctxEnd !== undefined ? ins.last.ctxEnd - ins.last.ctxStart : undefined
-  const cachePct = ins.cacheTotal > 0 ? Math.round((ins.cacheRead / ins.cacheTotal) * 100) : undefined
+  const cachePct = ins.cacheTotal > 0 ? percent(ins.cacheRead, ins.cacheTotal) : undefined
   const allIn = ins.tokens.mainIn + ins.tokens.agentsIn
   const top = (r: Record<string, number>, n: number, min: number) =>
     Object.entries(r)
@@ -528,7 +528,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       )}
       {allIn > 0 && (
         <Text dimColor>
-          {ti.tokens(kilo(allIn), ins.tokens.mainIn > 0 ? Math.round((ins.tokens.mainCached / ins.tokens.mainIn) * 100) : 0, kilo(ins.tokens.mainOut + ins.tokens.agentsOut), Math.round((ins.tokens.agentsIn / allIn) * 100))}
+          {ti.tokens(kilo(allIn), ins.tokens.mainIn > 0 ? percent(ins.tokens.mainCached, ins.tokens.mainIn) : '0', kilo(ins.tokens.mainOut + ins.tokens.agentsOut), Math.round((ins.tokens.agentsIn / allIn) * 100))}
         </Text>
       )}
       {ins.turnSwitches > 0 && areaList && <Text>{cut(ti.areas(ins.turnSwitches, areaList), whatRoom + 40)}</Text>}

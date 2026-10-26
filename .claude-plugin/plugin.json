@@ -40,6 +40,18 @@
       "title": "Advisor call budget",
       "description": "Most Fable calls per session; 0 means no limit",
       "default": 30
+    },
+    "sizeLimit": {
+      "type": "number",
+      "title": "File-size guide",
+      "description": "Bytes a maintained source file may reach before Focus suggests splitting it (about 5,000 tokens at 20000, a heuristic); 0 turns the guide off",
+      "default": 20000
+    },
+    "sizeExclude": {
+      "type": "string",
+      "title": "File-size exclusions",
+      "description": "Comma-separated globs the guide skips, added to the built-in lockfile, generated, vendored, build and fixture patterns",
+      "default": ""
     }
   },
   "license": "Apache-2.0",

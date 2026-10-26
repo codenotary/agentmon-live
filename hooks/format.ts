@@ -19,6 +19,13 @@ export function decimal(n: number): string {
   return n.toFixed(1).replace('.', cfg.t.decimal)
 }
 
+// A share in percent that never claims 100 % unless it is: from 99 % on, one decimal, rounded down.
+export function percent(part: number, whole: number): string {
+  const p = (part / whole) * 100
+  if (p >= 100) return '100'
+  return p >= 99 ? (Math.floor(p * 10) / 10).toFixed(1).replace('.', cfg.t.decimal) : String(Math.round(p))
+}
+
 export function kilo(n: number): string {
   return n >= 1000 ? `${decimal(n / 1000)}k` : String(n)
 }

@@ -7,6 +7,7 @@ import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, 
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, estTokens, pathOf, pushDuration } from './insights'
+import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, watched } from './sizeguard'
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
@@ -265,6 +266,7 @@ export const register: Register = (on, options) => {
   cfg.advisorMode = String(options.advisorMode || 'all')
   const budget = Number(options.advisorBudget ?? 30)
   cfg.advisorBudget = Number.isFinite(budget) && budget >= 0 ? budget : 30
+  configureSize(options.sizeLimit, options.sizeExclude)
   // Module variables reset on reload; the atoms above keep the shown state.
   const effortByCall = new Map<string, string>()
   const filesByAgent = new Map<string, Set<string>>()
@@ -287,6 +289,11 @@ export const register: Register = (on, options) => {
       argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|flow|radar|details]`,
     })
     cwd = e.cwd
+    // The project's own size exceptions, each with a reason.
+    void $.fs.read(`${cwd}/.agent-radar-size`).then(
+      text => configureSize(options.sizeLimit, options.sizeExclude, parseExceptions(text)),
+      () => undefined,
+    )
     const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
     await update($, main, m => ({ ...m, model }))
     // A turn under way when the module reloaded lost its clock; older state lacks fields.
@@ -344,6 +351,7 @@ export const register: Register = (on, options) => {
       return { text: `Agent Radar: ${t.cat[v]}` }
     }
     if (CLEAR_ARGS.includes(arg)) {
+      forgetSizes()
       // History goes; running and waiting agents and calls in flight stay.
       await Promise.all([
         update($, tools, () => ({})),
@@ -516,6 +524,10 @@ export const register: Register = (on, options) => {
     ])
     queueStatus($)
 
+    // The file-size guide needs the size before the first edit of a file.
+    const sized = /^(Edit|Write|NotebookEdit)$/.test(e.tool) && watched(pathOf(e), cwd) !== undefined ? pathOf(e) : undefined
+    if (sized) await noteSizeBefore($, sized)
+
     // Bookkeeping after the call must not add to a turn that started meanwhile.
     const turnAt = turn.startedAt
     const run = e.tool === 'Skill' ? { skill: String((e as { skill?: unknown }).skill ?? ''), who } : undefined
@@ -572,6 +584,7 @@ export const register: Register = (on, options) => {
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
         found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
+        !failed && sized && recordSize($, sized),
         touched &&
           update($, files, f =>
             cat === 'edit'

@@ -127,7 +127,7 @@ test('a turn is split into model, tool and approval time', async ($, on) => {
   // The approval wait does not count as Bash being slow; the read does make the slowest list.
   expect(await ui.find({ type: 'Text', text: /^\s+6\.0s Read/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^\s+40s Bash/ })).toBe(undefined)
-  expect(await ui.find({ type: 'Text', text: /now 40\.0k · cache 98%/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /now 40\.0k · cache 98% last request/ })).toBeTruthy()
 
   // Investigate drafts a question about allow rules.
   await ui.press({ key: 'investigate:0' })

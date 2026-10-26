@@ -124,16 +124,16 @@ const en = {
     session: (d: string, n: number) => `session ${d} · ${n} turns`,
     slowest: 'slowest',
     context: 'context',
-    ctxLine: (now: string, delta: string, cache: number | undefined, compactions: number) =>
-      `now ${now}${delta ? ` · ${delta} last turn` : ''}${cache === undefined ? '' : ` · cache ${cache}%`}${compactions ? ` · ${compactions}× compacted` : ''}`,
+    ctxLine: (now: string, delta: string, cache: string | undefined, compactions: number) =>
+      `now ${now}${delta ? ` · ${delta} last turn` : ''}${cache === undefined ? '' : ` · cache ${cache}% last request`}${compactions ? ` · ${compactions}× compacted` : ''}`,
     biggest: 'biggest results',
-    tokens: (i: string, cached: number, o: string, agents: number) =>
-      `tokens in ${i} (${cached}% cached) · out ${o}${agents ? ` · subagents ${agents}% of input` : ''}`,
+    tokens: (i: string, cached: string, o: string, agents: number) =>
+      `tokens in ${i} (${cached}% cached this session) · out ${o}${agents ? ` · subagents ${agents}% of input` : ''}`,
     areas: (n: number, list: string) => `${n} switches this turn · ${list}`,
     reread: 're-read',
     editedOften: 'edited',
     modelSwitches: (n: number) => `${n}× model or effort changed`,
-    tag: { slow: 'slow', silent: 'quiet', loop: 'loop', context: 'context', big: 'big', reread: 're-read', churn: 'churn', wait: 'waiting', cache: 'cache', switches: 'switching', sink: 'time', mcp: 'mcp' },
+    tag: { slow: 'slow', silent: 'quiet', loop: 'loop', context: 'context', big: 'big', reread: 're-read', churn: 'churn', wait: 'waiting', cache: 'cache', switches: 'switching', sink: 'time', mcp: 'mcp', size: 'size' },
     slow: (tool: string, what: string, d: string, usual?: string) => `${tool} ${what} running ${d}${usual ? ` · usually ${usual}` : ''}`,
     silent: (type: string, d: string, tools: number) => `${type} quiet for ${d} · ${tools} tools so far`,
     loop: (n: number, what: string) => `failed ${n}× in a row: ${what}`,
@@ -152,6 +152,9 @@ const en = {
     promptLoop: (n: number, what: string) => `The same call failed ${n} times in a row:\n${fenced(what)}\n\nStop retrying it. Find the cause first, then change the approach.`,
     promptContext: (pct: number) => `Context is ${pct}% full. Before it compacts, list in a few lines what is done, what is left and which files matter.`,
     promptReread: (file: string, n: number) => `You have read ${file} ${n} times. Work from what you already read, or read only the lines you need.`,
+    size: (file: string, kb: string, limitKb: string, tokensK: number) => `${file} ${kb} KB · over the ${limitKb} KB guide (≈${tokensK}k tokens)`,
+    promptSize: (path: string, kb: string, limit: number, tokensK: number) =>
+      `${path} is ${kb} KB, past the ${limit}-byte guide (about ${tokensK}k tokens; a size heuristic, not a token count).\n\nIf it holds distinct responsibilities, split it along them and keep clear interfaces between the parts. Do not split it arbitrarily or add abstractions just to get under the number. If it is one cohesive unit, say so and leave it as it is.`,
     promptChurn: (file: string, n: number) => `${file} has been edited ${n} times. Step back: what is the goal for this file, and is the approach converging?`,
     promptWait: (list: string) => `These calls waited for my approval most often: ${list}. Suggest permission allow rules for the safe ones; change nothing yet.`,
   },

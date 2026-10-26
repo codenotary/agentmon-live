@@ -1,5 +1,6 @@
 import type { Active, Card, Insights, TurnTime } from '../types'
-import { kilo, shortPath } from './format'
+import { decimal, kilo, shortPath } from './format'
+import { isOversized, sizeCfg } from './sizeguard'
 import { cfg } from './state'
 import { isHigh } from './topology'
 
@@ -226,6 +227,21 @@ export function focusList({ ins, doing, agents, percent, window, now }: FocusInp
   const churn = top(ins.edits, v => v)
   if (churn && churn[1] >= CHURN_EDITS) {
     out.push({ key: `churn:${churn[0]}:${churn[1]}`, score: 40, tag: t.tag.churn, color: 'yellow', text: t.churn(shortPath(churn[0]), churn[1]), prompt: t.promptChurn(churn[0], churn[1]) })
+  }
+
+  // A maintained source file past the size guide that grew this session, or a new one.
+  const kb = (n: number) => decimal(n / 1000)
+  const tokensK = Math.round(sizeCfg.limit / 4000)
+  for (const [path, s] of Object.entries(ins.sizes)) {
+    if (!isOversized(s)) continue
+    out.push({
+      key: `size:${path}:${s.now}`,
+      score: 42,
+      tag: t.tag.size,
+      color: 'yellow',
+      text: t.size(shortPath(path), kb(s.now), kb(sizeCfg.limit), tokensK),
+      prompt: t.promptSize(path, kb(s.now), sizeCfg.limit, tokensK),
+    })
   }
 
   if (last) {
