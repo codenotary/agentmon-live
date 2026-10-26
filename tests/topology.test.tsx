@@ -1,8 +1,9 @@
 import type { On } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { CANVAS_ROWS, Cells, paintTopology } from '../hooks/canvas'
-import { tankRows } from '../hooks/flow'
+import { CANVAS_ROWS, Cells, canvasFits, paintTopology } from '../hooks/canvas'
+import { tankRows, toolsBarWidth } from '../hooks/flow'
+import { LANGUAGES } from '../hooks/i18n'
 import { topology } from '../hooks/topology'
 
 const PANE = {
@@ -64,11 +65,35 @@ test('cells encode one triplet per cell and tanks fill from the bottom', () => {
 
 test('the canvas paints within its size', () => {
   const topo = topology({ main: { model: 'claude-opus-5-5', effort: 'medium' }, counts: { shell: 2 }, errors: {}, compactions: 0, agents: [], usage: USAGE, advisor: ADVISOR, isListening: true, checks: [], flow: [], now: 1000 })
-  const c = paintTopology(topo, 100, 0, { session: 'session', tools: 'tools', agents: 'agents', context: 'context', limits: 'limits', fable: 'fable' })
+  const c = paintTopology(topo, 100, 0, LANGUAGES.en!)
   expect(c.words.length).toBe(100 * CANVAS_ROWS * 3)
   const row = (y: number) => Array.from({ length: 100 }, (_, x) => String.fromCodePoint(c.words[(y * 100 + x) * 3]!)).join('')
   expect(row(0)).toContain('SESSION')
   expect(row(0)).toContain('TOOLS')
+})
+
+test('the canvas holds only printable width-1 cells, even in Chinese', () => {
+  const agents = [{ id: 'a', type: '探索\u200b\u0301\x7f\x85', model: 'claude-haiku-5-5', effort: '', task: 't', status: 'running' as const, files: 0, tools: 0, input: 0, output: 0, startedAt: 0 }]
+  const topo = topology({ main: { model: 'claude-opus-5-5', effort: 'high' }, counts: { shell: 2, git: 1 }, errors: {}, compactions: 1, agents, usage: USAGE, advisor: ADVISOR, isListening: true, checks: [], flow: [], now: 1000 })
+  const c = paintTopology(topo, 100, 1, LANGUAGES.zh!)
+  for (let i = 0; i < c.words.length; i += 3) {
+    const ch = String.fromCodePoint(c.words[i]!)
+    expect(c.words[i]! >= 0x20 && c.words[i]! <= 0xffff && !/[\x7f-\x9f\p{M}\p{Cf}\p{Cs}\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u.test(ch)).toBe(true)
+  }
+  const row = (y: number) => Array.from({ length: 100 }, (_, x) => String.fromCodePoint(c.words[(y * 100 + x) * 3]!)).join('')
+  expect(row(0)).toContain('SESSION')
+})
+
+test('the canvas fits only when its narrowest layout does', () => {
+  expect(canvasFits(60, 2)).toBe(false)
+  expect(canvasFits(100, 2)).toBe(true)
+})
+
+test('the flow tools row fits the wide layout at 100 columns', () => {
+  // Session 26, pipes 22, the tools box border and padding 4, gaps 2; tanks stack below at this width.
+  const row = 14 + toolsBarWidth(100) + 5 + ' 999/min'.length
+  expect(26 + 22 + 4 + 2 + row).toBeLessThanOrEqual(100)
+  expect(toolsBarWidth(140)).toBe(20)
 })
 
 test('v cycles radar, flow and canvas on the terminal', async ($, on) => {
@@ -93,14 +118,18 @@ test('v cycles radar, flow and canvas on the terminal', async ($, on) => {
 })
 
 test('desktop skips the canvas', async ($, on) => {
-  mock.clock(on)
+  const clock = mock.clock(on)
   engine(on)
+  on('tool.call', () => ({ result: {} }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.settle()
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'view' })
   expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBeTruthy()
   await ui.press({ key: 'view' })
   expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /USAGE/ })).toBeTruthy()
   await ui.unmount()
 })
 

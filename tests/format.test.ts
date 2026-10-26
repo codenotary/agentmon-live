@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { brief, findCheck, findChecks, mask, outcomeOf } from '../hooks/format'
+import { brief, describe, findCheck, findChecks, mask, outcomeOf } from '../hooks/format'
 
 test('findCheck on a 200 KB command of unterminated heredocs stays fast', () => {
   const command = 'npm test\n' + '<<A\n'.repeat(50_000)
@@ -35,4 +35,10 @@ test('mask hides secret values', () => {
 
 test('brief masks secrets', () => {
   expect(brief({ command: 'curl -H "Authorization: Bearer abc123" x' })).not.toContain('abc123')
+})
+
+test('mask hides tokens in env prefixes and URL credentials', () => {
+  expect(mask('GITHUB_TOKEN=ghp_x npm test')).toBe('GITHUB_TOKEN=*** npm test')
+  expect(mask('https://bob:hunter2@host/repo')).toBe('https://bob:***@host/repo')
+  expect(describe('Bash', { command: 'git push https://x:ghp_abc@github.com/o/r' })).toBe('git push https://x:***@github.com/o/r')
 })

@@ -131,19 +131,21 @@ async function trackTasks($: EngineInterface, call: { tool: string }, result: un
   // A TaskUpdate can answer without an error and still say it changed nothing.
   if ((result as { success?: unknown } | undefined)?.success === false) return
   const at = await $.clock.now()
+  // Task text can quote a command with its token; it is drawn and sent to the advisor.
+  const hide = (v: string | undefined) => (v === undefined ? undefined : mask(v))
   if (e.tool === 'TodoWrite' && e.todos) {
     const todos = e.todos
     // Prefixed so TodoWrite rows never collide with TaskCreate's ids ("1", "2"…).
-    await update($, tasks, () => todos.map((d, i) => ({ id: `todo-${i}`, subject: d.content, activeForm: d.activeForm, status: d.status, at })).slice(-50))
+    await update($, tasks, () => todos.map((d, i) => ({ id: `todo-${i}`, subject: mask(d.content), activeForm: hide(d.activeForm), status: d.status, at })).slice(-50))
   } else if (e.tool === 'TaskCreate') {
     const id = (result as { task?: { id?: string } } | undefined)?.task?.id
-    if (id) await update($, tasks, list => [...list, { id, subject: e.subject ?? '', activeForm: e.activeForm, status: 'pending' as const, at }].slice(-50))
+    if (id) await update($, tasks, list => [...list, { id, subject: mask(e.subject ?? ''), activeForm: hide(e.activeForm), status: 'pending' as const, at }].slice(-50))
   } else if (e.tool === 'TaskUpdate' && e.taskId) {
     const { taskId, status, subject, activeForm } = e
     await update($, tasks, list =>
       status === 'deleted'
         ? list.filter(k => k.id !== taskId)
-        : list.map(k => (k.id === taskId ? { ...k, status: status ?? k.status, subject: subject ?? k.subject, activeForm: activeForm ?? k.activeForm, at } : k)),
+        : list.map(k => (k.id === taskId ? { ...k, status: status ?? k.status, subject: hide(subject) ?? k.subject, activeForm: hide(activeForm) ?? k.activeForm, at } : k)),
     )
   }
 }
@@ -281,7 +283,7 @@ export const register: Register = (on, options) => {
       // A finished agent that gets a new message runs again.
       const id = e.agentId
       const startedAt = await $.clock.now()
-      await update($, agents, list => list.map(a => (a.id === id && !isLive(a) ? { ...a, status: 'running' as const, startedAt } : a)))
+      await update($, agents, list => list.map(a => (a.id === id && !isLive(a) ? { ...a, status: 'running' as const, startedAt, tests: undefined, testsWhy: undefined } : a)))
     }
     return next(e)
   })
@@ -350,11 +352,13 @@ export const register: Register = (on, options) => {
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
-          ...found.map(f => ({ kind: f.kind, command: f.part.slice(0, 200), who, at: startedAt, result: 'running' as const })),
+          ...found.map(f => ({ kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const })),
         ]),
     ])
     queueStatus($)
 
+    // Bookkeeping after the call must not add to a turn that started meanwhile.
+    const turnAt = turn.startedAt
     const run = e.tool === 'Skill' ? { skill: String((e as { skill?: unknown }).skill ?? ''), who } : undefined
     if (run) skillRuns.push(run)
     let ran: Awaited<ReturnType<typeof next>> | undefined
@@ -379,27 +383,32 @@ export const register: Register = (on, options) => {
       // A denied or aborted run says nothing about the code; a failed one failed at its last check; past a pipe the output decides.
       const resultOf = (kind: CheckKind): Check['result'] =>
         r.deny !== undefined ? 'unknown' : r.isError ? (kind === lastKind ? 'failed' : 'unknown') : hidesExit(command) ? outcomeOf(output, kind) : 'ok'
-      await Promise.all([
+      const sameTurn = turn.startedAt === turnAt
+      const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
+      const touched = path && !failed && (cat === 'edit' || cat === 'read') ? path : undefined
+      if (touched && cat === 'edit' && sameTurn) turn.edited.add(touched)
+      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)
+      // One batch of writes, so the pane redraws once per call.
+      const [s] = await Promise.all([
+        (r.isError || isMain) &&
+          update($, stats, v => ({
+            ...v,
+            errors: r.isError ? { ...v.errors, [cat]: (v.errors[cat] ?? 0) + 1 } : v.errors,
+            streak: isMain ? (r.isError ? (v.streak ?? 0) + 1 : 0) : v.streak,
+          })),
         update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
         update($, flow, all => [...all, { cat, at }].slice(-300)),
-        r.isError && update($, stats, s => ({ ...s, errors: { ...s.errors, [cat]: (s.errors[cat] ?? 0) + 1 } })),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
         found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
+        touched &&
+          update($, files, f =>
+            cat === 'edit'
+              ? { ...f, edited: [...f.edited.filter(p => p !== touched), touched].slice(-200), editedAt: at }
+              : { ...f, read: [...f.read.filter(p => p !== touched), touched].slice(-200) },
+          ),
       ])
-      if (path && !failed && (cat === 'edit' || cat === 'read')) {
-        if (cat === 'edit') turn.edited.add(path)
-        await update($, files, f =>
-          cat === 'edit'
-            ? { ...f, edited: [...f.edited.filter(p => p !== path), path].slice(-200), editedAt: at }
-            : { ...f, read: [...f.read.filter(p => p !== path), path].slice(-200) },
-        )
-      }
-      if (e.agentId === undefined && r.deny === undefined) {
-        turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)
-        const s = await update($, stats, v => ({ ...v, streak: r.isError ? (v.streak ?? 0) + 1 : 0 }))
-        if (s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, () => material($, turn), `${e.tool} ${brief(e)}`.trim())
-      }
+      if (isMain && s && s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, () => material($, turn), `${e.tool} ${brief(e)}`.trim())
     })
     return r
   })
@@ -451,7 +460,7 @@ export const register: Register = (on, options) => {
       type: e.subagentType,
       model: r.model,
       effort: effort ?? m.effort,
-      task: e.description,
+      task: mask(e.description),
       status: 'running',
       files: 0,
       tools: 0,
@@ -461,7 +470,7 @@ export const register: Register = (on, options) => {
     }
     await update($, agents, list => trimAgents([...list, card]))
     tick($)
-    await addLog($, { who: e.subagentType, what: e.description, result: t.started })
+    await addLog($, { who: e.subagentType, what: card.task, result: t.started })
     await refreshStatus($)
     return r
   })
@@ -471,7 +480,7 @@ export const register: Register = (on, options) => {
       const id = e.agentId
       const u = e.usage
       const tests = testsOf(e.answer)
-      const why = tests === 'FAIL' ? failLine(e.answer) : undefined
+      const why = tests === 'FAIL' ? mask(failLine(e.answer) ?? '') || undefined : undefined
       const endedAt = await $.clock.now()
       turn.delegated += 1
       const status: Card['status'] = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'cancelled' : 'error'

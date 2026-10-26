@@ -3,7 +3,7 @@ import type { EngineInterface, RenderChildren } from 'claude-code'
 import { ago, fit, modelName, smoothBar } from './format'
 import type { Strings } from './i18n'
 import type { Topo } from './topology'
-import { isRunning, limitName } from './topology'
+import { fillEighths, isHigh, isMid, isRunning, limitName } from './topology'
 
 // The elements every surface draws.
 type Els = Pick<ReturnType<EngineInterface['ui']['resolve']>, 'Box' | 'Text'>
@@ -12,15 +12,17 @@ const TANK_ROWS = 6
 
 // A vertical gauge filled from the bottom: one string per row, top first.
 export function tankRows(fraction: number, rows = TANK_ROWS, width = 5): string[] {
-  const level = Math.max(0, Math.min(1, fraction)) * rows * 8
-  return Array.from({ length: rows }, (_, i) => {
-    const r = rows - 1 - i
-    const n = Math.max(0, Math.min(8, Math.round(level - r * 8)))
-    return (n === 0 ? '·' : ' ▁▂▃▄▅▆▇█'[n]!).repeat(width)
-  })
+  return fillEighths(fraction, rows)
+    .reverse()
+    .map(n => (n === 0 ? '·' : ' ▁▂▃▄▅▆▇█'[n]!).repeat(width))
 }
 
-const levelColor = (n: number) => (n >= 80 ? 'red' : n >= 50 ? 'yellow' : 'green')
+const levelColor = (n: number) => (isHigh(n) ? 'red' : isMid(n) ? 'yellow' : 'green')
+
+// The wide row is session 26, pipes ~22, tanks ~25 and gaps; the tools bar takes what is left, 6..20.
+export const toolsBarWidth = (cols: number) => Math.max(6, Math.min(20, cols - 105))
+// Below this the tanks stack under the agents, so the wide row still fits in its width.
+const TANKS_RIGHT = 111
 
 // The session as boxes joined by pipes with their live rates: Box and Text only, so every surface draws it.
 export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: number, t: Strings): RenderChildren {
@@ -56,7 +58,7 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
   const fable = (
     <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} width={isWide ? 26 : undefined}>
       {title(t.fable, 'magenta')}
-      <Text color={topo.fable.state === 'unavailable' ? 'red' : undefined}>{topo.fable.state}</Text>
+      <Text color={topo.fable.state === 'unavailable' ? 'red' : undefined}>{t.fableStates[topo.fable.state]}</Text>
       <Text>
         {topo.fable.verdicts.map(ok => (
           <Text color={ok ? 'green' : 'red'}>● </Text>
@@ -66,7 +68,7 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
   )
 
   const most = Math.max(1, ...topo.tools.map(x => x.total))
-  const barW = Math.max(6, Math.min(20, cols - (isWide ? 80 : 40)))
+  const barW = isWide ? toolsBarWidth(cols) : Math.max(6, Math.min(20, cols - 40))
   const tools = (
     <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1} flexGrow={1}>
       {title(t.toolsWord, 'green')}
@@ -142,8 +144,9 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
       <Box flexDirection="column" flexGrow={1}>
         {tools}
         {agents}
+        {cols < TANKS_RIGHT && tanks}
       </Box>
-      {tanks}
+      {cols >= TANKS_RIGHT && tanks}
     </Box>
   )
 }

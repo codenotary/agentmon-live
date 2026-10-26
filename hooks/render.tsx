@@ -5,10 +5,10 @@ import type { Card, Check } from '../types'
 import { ago, clockTime, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
-import { CANVAS_ROWS, paintTopology } from './canvas'
+import { CANVAS_ROWS, canvasFits, paintTopology } from './canvas'
 import { drawFlow } from './flow'
 import { cfg, INIT, isLive, listening, liveStatus, rank, VIEWS } from './state'
-import { topology } from './topology'
+import { isHigh, topology } from './topology'
 
 const main = atom({ plugin: 'agent-radar', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agent-radar', key: 'tools' } as const, INIT.tools)
@@ -60,6 +60,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const cols = e.props.bodyColumns
   const isWide = cols >= 100
+  // The view switch: the canvas needs the terminal's Raster and room for its rows, elsewhere the cycle skips it.
+  // `'Raster' in ui` alone holds on desktop too, which draws no Raster.
+  const hasCanvas = e.surface === 'terminal' && 'Raster' in ui && canvasFits(cols, usage.rateLimits.length)
+  const modes = hasCanvas ? (['radar', 'flow', 'canvas'] as const) : (['radar', 'flow'] as const)
+  const mode = lay.mode === 'canvas' && !hasCanvas ? 'flow' : (lay.mode ?? 'radar')
+  const isRadar = mode === 'radar'
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   const most = Math.max(1, ...Object.values(counts))
   // Two columns less than the row leaves, for the bar's end caps.
@@ -105,8 +111,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Text>
       ),
     })),
+    // Keyed by turn alone, so a dismissed streak stays away as it grows.
     ...((st.streak ?? 0) >= 3
-      ? [{ key: `streak:${m.turnAt ?? 0}:${st.streak}`, row: <Text>{chip(t.status.error, 'red')} {t.errorsInRow(st.streak ?? 0)}</Text>, prompt: t.investigateErrors(st.streak ?? 0) }]
+      ? [{ key: `streak:${m.turnAt ?? 0}`, row: <Text>{chip(t.status.error, 'red')} {t.errorsInRow(st.streak ?? 0)}</Text>, prompt: t.investigateErrors(st.streak ?? 0) }]
       : []),
     ...checked.filter(c => c.result === 'failed').map(c => ({
       key: `check:${c.kind}:${c.at}`,
@@ -141,12 +148,18 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const dismissed = new Set(lay.dismissed ?? [])
   const shownItems = items.filter(x => !x.key || !dismissed.has(x.key))
   const dismissable = shownItems.flatMap(x => (x.key ? [x.key] : []))
-  // Investigate drafts a prompt in the prompt box; nothing is sent until the person sends it.
+  // Approval rows have no prompt, so `i` goes to the first row that does.
+  const firstPrompt = shownItems.findIndex(x => x.prompt)
+  // Investigate drafts a prompt in the prompt box; nothing is sent until the person sends it, and a draft there is kept.
+  const investigate = async (prompt: string) => {
+    const box = await $.prompt.read()
+    await (box.text.trim() ? $.prompt.fill({ text: `\n\n${prompt}`, mode: 'append' }) : $.prompt.fill({ text: prompt, mode: 'replace' }))
+  }
   const attention = shownItems.map((x, i) => (
     <Box gap={1}>
       {x.row}
       {x.prompt && (
-        <Button key={`investigate:${i}`} plain hotkey={i === 0 ? 'i' : undefined} onPress={() => $.prompt.fill({ text: x.prompt ?? '' })}>
+        <Button key={`investigate:${i}`} plain hotkey={i === firstPrompt ? 'i' : undefined} onPress={() => investigate(x.prompt ?? '')}>
           {t.investigate}
         </Button>
       )}
@@ -189,7 +202,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Text>
   )
   const MAX_CARDS = 6
-  const liveAgents = list.filter(isLive)
+  const liveAgents = isRadar ? list.filter(isLive) : []
 
   const runningNow = (
     <Box flexDirection="column">
@@ -221,7 +234,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   // The session's task list: how far it is, what runs now, and every task with details on.
   const doneTasks = planned.filter(k => k.status === 'completed').length
   const current = planned.find(k => k.status === 'in_progress')
-  const taskBox = planned.length > 0 && (
+  const taskBox = isRadar && planned.length > 0 && (
     <Box flexDirection="column">
       <Text>
         {title(t.tasks, 'green')} {doneTasks}/{planned.length} {bar(doneTasks / planned.length, 'green')}
@@ -242,7 +255,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   )
 
   // Skills and prompt commands whose text the session loaded, the latest first.
-  const skillBox = loaded.length > 0 && (
+  const skillBox = isRadar && loaded.length > 0 && (
     <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
       {title(`${t.cat.skills} · ${loaded.length}`, 'yellow')}
       {loaded.slice(lay.isDetailed ? -30 : -5).reverse().map(s => (
@@ -254,7 +267,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Box>
   )
 
-  const changes = (touched.edited.length > 0 || touched.read.length > 0 || checked.length > 0) && (
+  const changes = isRadar && (touched.edited.length > 0 || touched.read.length > 0 || checked.length > 0) && (
     <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} flexGrow={1}>
       {title(t.changes, 'cyan')}
       <Text>
@@ -274,7 +287,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   )
 
   const pct = usage.context.percent
-  const usageBox = (
+  const usageBox = isRadar && (
     <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} flexGrow={1}>
       {title(t.usage)}
       <Text>
@@ -283,7 +296,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           <Text dimColor>{t.unavailable}</Text>
         ) : (
           <Text>
-            {bar(pct / 100, pct > 80 ? 'red' : 'green')}
+            {bar(pct / 100, isHigh(pct) ? 'red' : 'green')}
             {String(pct).padStart(4)} % <Text dimColor>{usage.context.tokens === undefined ? '' : `${kilo(usage.context.tokens)} / ${kilo(usage.context.window)} · `}{t.compactedTimes(st.compactions)}</Text>
           </Text>
         )}
@@ -292,7 +305,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       {usage.rateLimits.map(r => (
         <Text>
           {fit(r.kind, 18)}
-          {bar(r.percentUsed / 100, r.percentUsed > 80 ? 'red' : 'yellow')}
+          {bar(r.percentUsed / 100, isHigh(r.percentUsed) ? 'red' : 'yellow')}
           {String(Math.round(r.percentUsed)).padStart(4)} %{' '}
           <Text dimColor>{r.resetsAt && !Number.isNaN(Date.parse(r.resetsAt)) ? t.resets(resetTime(Date.parse(r.resetsAt), now)) : ''}</Text>
         </Text>
@@ -308,7 +321,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     : adv.state === 'budget' ? `(${t.budgetUsed})`
     : cfg.advisorMode === 'plan' ? `(${t.planOnly})`
     : ''
-  const advisorBox = (
+  const advisorBox = isRadar && (
     <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} width={isWide ? 30 : undefined}>
       <Text>
         {title('fable', 'magenta')}{' '}
@@ -351,7 +364,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   )
 
   const finished = list.filter(a => !isLive(a))
-  const history = (
+  const history = isRadar && lay.isHistoryOpen && (
     <Box flexDirection="column">
       <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
         <Box justifyContent="space-between">
@@ -410,21 +423,17 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   // What each section last did and whether it needs the person now; `rank` orders them by it. Listed in the usual order.
   const latest = (...at: number[]) => Math.max(0, ...at)
   const lastNote = adv.notes.at(-1)
-  const sections = rank(
+  const sections = !isRadar ? [] : rank(
     [
       { key: 'tasks', node: taskBox, isUrgent: false, at: latest(...planned.map(k => k.at ?? 0)) },
       { key: 'skills', node: skillBox, isUrgent: false, at: latest(...loaded.map(s => s.at)) },
       { key: 'advisor', node: advisorBox, isUrgent: lastNote?.ok === false && now - latest(...Object.values(adv.lastAt ?? {})) < 10 * 60_000, at: latest(...Object.values(adv.lastAt ?? {})) },
       { key: 'changes', node: changes, isUrgent: checked.some(c => c.result === 'failed' && !isStale(c)), at: latest(touched.editedAt, ...checked.map(c => c.at)) },
-      { key: 'usage', node: usageBox, isUrgent: (pct ?? 0) >= 80 || usage.rateLimits.some(r => r.percentUsed >= 80), at: 0 },
+      { key: 'usage', node: usageBox, isUrgent: isHigh(pct ?? 0) || usage.rateLimits.some(r => isHigh(r.percentUsed)), at: 0 },
     ].filter(s => s.node),
     now,
   )
 
-  // The view switch: the canvas needs the terminal's Raster, elsewhere the cycle skips it.
-  const hasRaster = 'Raster' in ui
-  const modes = hasRaster ? (['radar', 'flow', 'canvas'] as const) : (['radar', 'flow'] as const)
-  const mode = lay.mode === 'canvas' && !hasRaster ? 'flow' : (lay.mode ?? 'radar')
   const nextMode = modes[(modes.indexOf(mode as never) + 1) % modes.length]!
   const viewButton = (
     <Button key="view" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, mode: nextMode }))}>
@@ -432,16 +441,15 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Button>
   )
   const topo =
-    mode === 'radar'
+    isRadar
       ? undefined
       : topology({ main: m, counts, errors: st.errors, compactions: st.compactions, agents: list, usage, advisor: adv, isListening: listening(adv.isOn), checks: checked, flow: flows, now })
   const phase = Math.floor(now / 500)
-  const labels = { session: t.session, tools: t.toolsWord, agents: t.agentsWord, context: t.contextWord, limits: t.limitsWord, fable: t.fable }
-  const canvasColumns = Math.max(40, Math.min(cols, 160))
+  const canvasColumns = Math.min(cols, 160)
   const topoView =
     topo &&
     (mode === 'canvas' && 'Raster' in ui ? (
-      <ui.Raster key="topology" columns={canvasColumns} rows={CANVAS_ROWS} cells={paintTopology(topo, canvasColumns, phase, labels).encode()} />
+      <ui.Raster key="topology" columns={canvasColumns} rows={CANVAS_ROWS} cells={paintTopology(topo, canvasColumns, phase, t).encode()} />
     ) : (
       drawFlow(ui, topo, cols, phase, t)
     ))
@@ -469,14 +477,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Box>
       )}
       {topoView}
-      {mode === 'radar' && runningNow}
-      {mode === 'radar' && (
+      {isRadar && runningNow}
+      {isRadar && (
         <Box flexDirection={isWide ? 'row' : 'column'} flexWrap="wrap" gap={isWide ? 1 : 0}>
           {sections.map(s => s.node)}
         </Box>
       )}
-      {mode !== 'radar' && <Box gap={2}>{viewButton}</Box>}
-      {mode === 'radar' && (
+      {!isRadar && <Box gap={2}>{viewButton}</Box>}
+      {isRadar && (
       <Box gap={2}>
         {viewButton}
         <Button key="fold:history" plain hotkey="h" onPress={() => update($, layout, l => ({ ...l, isHistoryOpen: !l.isHistoryOpen }))}>
@@ -487,7 +495,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Button>
       </Box>
       )}
-      {mode === 'radar' && lay.isHistoryOpen && history}
+      {history}
     </Box>
   )
 }

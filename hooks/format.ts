@@ -31,18 +31,20 @@ export function brief(call: object): string {
 }
 
 const SECRET_NAME = /((?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40})(\s*[=:]\s*|\s+)(["']?)((?:bearer|basic)\s+)?[^\s"']+/gi
+// Only `[^\s:@/]` and `[^\s@/]` follow `://`, so each scan stops at the next slash or space: linear.
+const URL_CREDENTIALS = /:\/\/([^\s:@/]+):[^\s@/]+@/g
 const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|ghp_\w{20,}|github_pat_\w{20,}|xox[bp]-[\w-]{10,}|AKIA[0-9A-Z]{16})/g
 
 // brief() goes to the advisor model and the pane; the name's tail is bounded so long words cannot make it quadratic.
 export function mask(s: string): string {
-  return s.replace(SECRET_NAME, (_, name, sep, quote, scheme) => `${name}${sep}${quote}${scheme ?? ''}***`).replace(SECRET_SHAPE, '***')
+  return s.replace(URL_CREDENTIALS, '://$1:***@').replace(SECRET_NAME, (_, name, sep, quote, scheme) => `${name}${sep}${quote}${scheme ?? ''}***`).replace(SECRET_SHAPE, '***')
 }
 
 // What a call shows in the detail tabs and under Running now: `git push`, `npm test`, `sentry search_issues crash`.
 export function describe(tool: string, call: object): string {
   const git = tool === 'Bash' ? gitCommand(String((call as { command?: unknown }).command ?? '')) : undefined
   // mcp__server__tool -> server tool
-  return git ?? (/^mcp__/.test(tool) ? `${tool.split('__').slice(1).join(' ')} ${brief(call)}`.trim() : brief(call))
+  return git !== undefined ? mask(git) : (/^mcp__/.test(tool) ? `${tool.split('__').slice(1).join(' ')} ${brief(call)}`.trim() : brief(call))
 }
 
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/

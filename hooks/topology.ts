@@ -8,10 +8,9 @@ export type Topo = {
   limits: { kind: string; percent: number; resetsAt?: number }[]
   tools: { cat: Category; total: number; perMin: number; errors: number }[]
   agents: { type: string; model: string; status: Card['status']; isFail: boolean }[]
-  fable: { state: string; verdicts: boolean[] }
+  fable: { state: 'off' | NonNullable<Advisor['state']>; verdicts: boolean[] }
   checks: { kind: Check['kind']; result: Check['result'] }[]
   callsPerMin: number
-  spawnsPerMin: number
 }
 
 type Usage = { startedAt: number; context: { percent?: number }; cost?: { usd: number }; rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[] }
@@ -54,7 +53,6 @@ export function topology(input: {
     },
     checks: input.checks.map(c => ({ kind: c.kind, result: c.result })),
     callsPerMin: recent.length,
-    spawnsPerMin: input.agents.filter(a => now - a.startedAt < 60_000).length,
   }
 }
 
@@ -62,3 +60,13 @@ export function topology(input: {
 export const limitName = (kind: string) => kind.replace('five_hour', '5h').replace('seven_day', '7d').replace(/_/g, ' ')
 
 export const isRunning = (a: Topo['agents'][number]) => a.status === 'running' || a.status === 'waiting'
+
+// The one place the gauges turn warning and alarm colours.
+export const isHigh = (p: number) => p >= 80
+export const isMid = (p: number) => p >= 50
+
+// How full each row of a gauge is, in eighths (0..8), bottom row first: tanks on the canvas and in the flow share it.
+export function fillEighths(fraction: number, rows: number): number[] {
+  const level = Math.max(0, Math.min(1, fraction)) * rows * 8
+  return Array.from({ length: rows }, (_, r) => Math.max(0, Math.min(8, Math.round(level - r * 8))))
+}
