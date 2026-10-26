@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderInput } from 'claude-code'
 
 import type { Card, Check } from '../types'
-import { ago, clockTime, effortBar, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
+import { ago, clockTime, fit, kilo, modelName, resetTime, shortPath, smoothBar, spinner } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, rank, VIEWS } from './state'
@@ -115,28 +115,43 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     )),
   ]
 
+  // A subagent card is 30 columns and six rows, so three sit side by side in a narrow pane.
+  const CARD = 30
+  const statusChip = (a: Card) =>
+    chip(a.tests === 'FAIL' ? 'FAIL' : t.status[a.status], a.status === 'error' || a.tests === 'FAIL' ? 'red' : a.status === 'done' ? 'green' : isLive(a) ? 'cyan' : 'gray')
   const card = (a: Card) => (
-    <Box flexDirection="column" borderStyle="round" borderColor="blue" paddingX={1} width={isWide ? 26 : undefined}>
+    <Box flexDirection="column" borderStyle="round" borderColor={isLive(a) ? 'cyan' : 'blue'} paddingX={1} width={CARD}>
       <Text>
-        <Text bold>{a.type}</Text>{' '}
-        {chip(a.tests === 'FAIL' ? 'FAIL' : t.status[a.status], a.status === 'error' || a.tests === 'FAIL' ? 'red' : a.status === 'done' ? 'green' : isLive(a) ? 'cyan' : 'gray')}
+        <Text bold>{cut(a.type, CARD - 16)}</Text> {statusChip(a)}
       </Text>
-      <Text color="blue">{modelName(a.model)}</Text>
-      <Text>
-        <Text color="blue">{effortBar(a.effort)}</Text> {a.effort.slice(0, 3)}
+      <Text color="blue">
+        {modelName(a.model)} <Text dimColor>· {a.effort || '?'}</Text>
       </Text>
-      <Text>{cut(a.task, 22)}</Text>
-      <Text color={a.tests?.startsWith('PASS') ? 'green' : a.status === 'error' || a.tests === 'FAIL' ? 'red' : undefined}>
-        {a.tests ??
-          (a.status === 'running'
-            ? `⟳ ${secs(a.startedAt)} · ${a.files} ${t.files}`
-            : `${t.status[a.status]} · ${a.files} ${t.files}`)}
-        {a.tests && <Text dimColor> {t.reported}</Text>}
+      <Text>{cut(a.task, CARD - 4)}</Text>
+      <Text color={a.tests?.startsWith('PASS') ? 'green' : a.tests === 'FAIL' ? 'red' : undefined} dimColor={!a.tests}>
+        {cut(
+          a.tests
+            ? `${a.tests} ${t.reported}`
+            : isLive(a)
+              ? `⟳ ${secs(a.startedAt)} · ${a.files} ${t.files}`
+              : `${kilo(a.input)} / ${kilo(a.output)} · ${a.files} ${t.files}`,
+          CARD - 4,
+        )}
       </Text>
-      <Text dimColor>{t.context}  {kilo(a.input)}</Text>
-      <Text dimColor>{t.output}  {kilo(a.output)}</Text>
     </Box>
   )
+  // Past six running subagents, one line each: ten agents stay ten rows, not four rows of cards.
+  const agentLine = (a: Card) => (
+    <Text>
+      <Text color="cyan">{spinner(now)} </Text>
+      <Text bold>{fit(a.type, 18)}</Text>
+      <Text color="blue">{fit(modelName(a.model), 11)}</Text>
+      {fit(cut(a.task, whatRoom), whatRoom + 1)}
+      <Text dimColor>{secs(a.startedAt)} · {a.files} {t.files}</Text>
+    </Text>
+  )
+  const MAX_CARDS = 6
+  const liveAgents = list.filter(isLive)
 
   const runningNow = (
     <Box flexDirection="column">
@@ -153,10 +168,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           {t.lastCall} · {last.tool} {cut(last.what, whatRoom)} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
         </Text>
       )}
-      {list.some(isLive) && (
-        <Box flexDirection={isWide ? 'row' : 'column'} flexWrap="wrap">
-          {list.filter(isLive).map(card)}
-        </Box>
+      {liveAgents.length > MAX_CARDS ? (
+        <Box flexDirection="column">{liveAgents.map(agentLine)}</Box>
+      ) : (
+        liveAgents.length > 0 && (
+          <Box flexDirection="row" flexWrap="wrap">
+            {liveAgents.map(card)}
+          </Box>
+        )
       )}
     </Box>
   )
@@ -333,8 +352,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         ))}
       </Box>
       {workerModel && <Text color="blue">{'  '}{t.delegated(modelName(workerModel), running)}</Text>}
-      <Box flexDirection={isWide ? 'row' : 'column'} flexWrap="wrap">
-        {finished.slice(-4).map(card)}
+      <Box flexDirection="row" flexWrap="wrap">
+        {finished.slice(-(isWide ? 4 : 3)).map(card)}
       </Box>
       <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
         <Text dimColor>{t.sessionLog}</Text>

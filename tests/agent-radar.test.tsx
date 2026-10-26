@@ -253,7 +253,7 @@ test('a resumed agent runs again', async ($, on) => {
   await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
   await $.turn.complete({ ...DONE, agentId: 'a1' })
   const ui = await $.ui.mount(PANE)
-  expect(await ui.find({ type: 'Text', text: /^done · 0 files/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^0 \/ 0 · 0 files/ })).toBeTruthy()
   await $.turn.start({ text: 'one more thing', turnId: 't2', agentId: 'a1' })
   expect(await ui.find({ type: 'Text', text: /^⟳ 0 s · 0 files/ })).toBeTruthy()
   await ui.unmount()
@@ -371,7 +371,7 @@ test('the engine\'s agent status wins over the card', async ($, on) => {
 
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^ WAITING  Explore/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /^waiting · 0 files/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^⟳ 0 s · 0 files/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -902,5 +902,21 @@ test('the header names the loaded version and commit', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^ 0\.6\.0 · 3366336$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a few subagents get cards side by side; many get one line each', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  let n = 0
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${n++}` }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  for (let i = 0; i < 3; i++) await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}` })
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.findAll({ type: 'Text', text: /^Haiku 5\.5 · / })).toHaveLength(3)
+  for (let i = 3; i < 10; i++) await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}` })
+  expect(await ui.findAll({ type: 'Text', text: /^Haiku 5\.5 · / })).toHaveLength(0)
+  expect(await ui.findAll({ type: 'Text', text: /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Explore\s+Haiku 5\.5\s+Mod lesen/ })).toHaveLength(10)
   await ui.unmount()
 })
