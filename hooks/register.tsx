@@ -95,6 +95,20 @@ function queueStatus($: EngineInterface) {
   })
 }
 
+// Which build is loaded: the manifest's version and, in a git checkout, the commit (`0.6.0 · 3366336`).
+async function build($: EngineInterface): Promise<string> {
+  const root = $.plugin.root
+  const read = (path: string) => $.fs.read(`${root}/${path}`).catch(() => '')
+  const manifest = await read('.claude-plugin/plugin.json')
+  const version = String((manifest ? (JSON.parse(manifest) as { version?: unknown }) : {}).version ?? '')
+  const head = (await read('.git/HEAD')).trim()
+  const ref = head.match(/^ref: (\S+)$/)?.[1]
+  const sha = ref
+    ? (await read(`.git/${ref}`)).trim() || ((await read('.git/packed-refs')).match(new RegExp(`^([0-9a-f]{40}) ${ref}$`, 'm'))?.[1] ?? '')
+    : head
+  return [version, sha.slice(0, 7)].filter(Boolean).join(' · ')
+}
+
 // The session's task list as its own calls change it; `deleted` removes a task.
 async function trackTasks($: EngineInterface, call: { tool: string }, result: unknown) {
   const e = call as { tool: string; todos?: { content: string; status: Task['status']; activeForm: string }[]; subject?: string; activeForm?: string; taskId?: string; status?: Task['status'] | 'deleted' }
@@ -182,6 +196,7 @@ export const register: Register = (on, options) => {
       update($, calls, list => list.map(c => (c.result === 'running' ? { ...c, result: t.unknown } : c))),
       update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
+    cfg.build = await build($).catch(() => '')
     void $.ui.open({ id: PANE, title: 'Agent Radar' })
     await refreshStatus($)
 

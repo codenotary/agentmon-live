@@ -370,6 +370,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         AGENT RADAR · <Text color="#d97757">{modelName(m.model).split(' ')[0]?.toUpperCase()} {t.plans}</Text> ·{' '}
         {workerModel && <Text color="blue">{modelName(workerModel).split(' ')[0]?.toUpperCase()} {t.executes} · </Text>}
         {listening(adv.isOn) && <Text color="magenta">{t.watches}</Text>}
+        {cfg.build && <Text dimColor bold={false}> {cfg.build}</Text>}
       </Text>
       {attention.length > 0 && (
         <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1}>

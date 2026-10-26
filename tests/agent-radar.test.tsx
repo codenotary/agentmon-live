@@ -885,3 +885,22 @@ test('a failed check moves its section to the top', async ($, on) => {
   expect((await titles()).slice(0, 2)).toEqual(['● NEEDS ATTENTION', '● CHANGES & VERIFICATION'])
   await ui.unmount()
 })
+
+test('the header names the loaded version and commit', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  const files: Record<string, string> = {
+    '.claude-plugin/plugin.json': '{ "name": "agent-radar", "version": "0.6.0" }',
+    '.git/HEAD': 'ref: refs/heads/main\n',
+    '.git/packed-refs': '# pack-refs\n3366336aaaabbbbccccddddeeeeffff000011112 refs/heads/main\n',
+  }
+  on('fs.read', (_, e) => {
+    // A file not listed reads empty, as the module's own fallback leaves a missing one.
+    return { value: Object.entries(files).find(([k]) => e.path.endsWith(`/${k}`))?.[1] ?? '' }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^ 0\.6\.0 · 3366336$/ })).toBeTruthy()
+  await ui.unmount()
+})
