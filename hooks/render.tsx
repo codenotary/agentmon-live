@@ -145,12 +145,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           <Text color="cyan">{spinner(now)} </Text>
           <Text bold>{fit(a.tool, 10)}</Text>
           {fit(cut(a.what, whatRoom), whatRoom + 1)}
-          <Text dimColor>{a.who.slice(0, 16)} · {secs(a.startedAt)}</Text>
+          <Text dimColor>{a.who.slice(0, 16)}{a.model ? ` · ${modelName(a.model)}` : ''} · {secs(a.startedAt)}</Text>
         </Text>
       ))}
       {doing.length === 0 && last && (
         <Text dimColor>
-          {t.lastCall} · {last.tool} {cut(last.what, whatRoom)} · {last.who.slice(0, 16)} · {t.ago(secs(last.at))}
+          {t.lastCall} · {last.tool} {cut(last.what, whatRoom)} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
         </Text>
       )}
       {list.some(isLive) && (
@@ -367,8 +367,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   return (
     <Box flexDirection="column">
       <Text bold>
-        AGENT RADAR · <Text color="#d97757">{modelName(m.model).split(' ')[0]?.toUpperCase()} {t.plans}</Text> ·{' '}
-        {workerModel && <Text color="blue">{modelName(workerModel).split(' ')[0]?.toUpperCase()} {t.executes} · </Text>}
+        AGENT RADAR · <Text color="#d97757">{modelName(m.model).toUpperCase()} {t.plans}</Text>
+        {m.effort && <Text color="#d97757" bold={false}> ({m.effort})</Text>} ·{' '}
+        {workerModel && <Text color="blue">{modelName(workerModel).toUpperCase()} {t.executes} · </Text>}
         {listening(adv.isOn) && <Text color="magenta">{t.watches}</Text>}
         {cfg.build && <Text dimColor bold={false}> {cfg.build}</Text>}
       </Text>

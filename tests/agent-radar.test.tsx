@@ -464,14 +464,14 @@ test('a call shows in its tab while it runs', async ($, on) => {
   await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] git push$/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /main session · 0 s$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /main session · Opus 5.5 · 0 s$/ })).toBeTruthy()
   // The elapsed time moves on by itself while the call runs.
   await clock.advance(1500)
-  expect(await ui.find({ type: 'Text', text: /main session · [12] s$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /main session · Opus 5.5 · [12] s$/ })).toBeTruthy()
   await clock.advance(1500)
   await call
   expect(await ui.find({ type: 'Text', text: /^git push$/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /^last · Bash git push/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^last · Bash git push · main session · Opus 5.5 · / })).toBeTruthy()
   await ui.unmount()
 })
 

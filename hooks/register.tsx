@@ -283,7 +283,9 @@ export const register: Register = (on, options) => {
     const tab = viewOf(e.tool, cat)
     const what = describe(e.tool, e)
     const callId = e.tool_use_id ?? `call-${++callCount}`
-    const who = e.agentId === undefined ? t.mainSession : ((await read($, agents)).find(a => a.id === e.agentId)?.type ?? e.agentId)
+    const caller = e.agentId === undefined ? undefined : (await read($, agents)).find(a => a.id === e.agentId)
+    const who = e.agentId === undefined ? t.mainSession : (caller?.type ?? e.agentId)
+    const model = e.agentId === undefined ? (await read($, main)).model : caller?.model
     await update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 }))
     const path = (e as { file_path?: string }).file_path
     if (e.agentId !== undefined) {
@@ -308,7 +310,7 @@ export const register: Register = (on, options) => {
     const startedAt = await $.clock.now()
     // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
     await Promise.all([
-      update($, active, list => [...list, { id: callId, who, tool: e.tool, what, startedAt }]).then(() => tick($)),
+      update($, active, list => [...list, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => tick($)),
       tab && update($, calls, list => [...list, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
       // The row names the part that ran the check, not a script the same command ran first.
       check && update($, checks, list => [...list.filter(c => c.kind !== check.kind), { kind: check.kind, command: check.part.slice(0, 200), who, at: startedAt, result: 'running' as const }]),
@@ -324,7 +326,7 @@ export const register: Register = (on, options) => {
     const failed = ran.deny !== undefined || ran.isError
     const error = failed ? String(ran.deny ?? ran.text ?? '').slice(0, 2000) : undefined
     const at = await $.clock.now()
-    await update($, lastCall, () => ({ tool: e.tool, what, who, at }))
+    await update($, lastCall, () => ({ tool: e.tool, what, who, model, at }))
     if (ran.isError) await update($, stats, s => ({ ...s, errors: { ...s.errors, [cat]: (s.errors[cat] ?? 0) + 1 } }))
     if (tab) {
       const result = failed ? t.failed : 'ok'
@@ -332,7 +334,7 @@ export const register: Register = (on, options) => {
     }
     if (kind) {
       // A denied or aborted run says nothing about the code; past a pipe the output decides.
-      const result: Check['result'] = ran.deny !== undefined ? 'unknown' : ran.isError ? 'failed' : hidesExit(command) ? outcomeOf(String(ran.text ?? ''), kind) : 'ok'
+      const result: Check['result'] = ran.deny !== undefined ? 'unknown' : ran.isError ? 'failed' : hidesExit(command) ? outcomeOf(String(ran.text ?? (ran.result as { stdout?: string } | undefined)?.stdout ?? ''), kind) : 'ok'
       await update($, checks, list => list.map(c => (c.kind === kind && c.at === startedAt ? { ...c, result } : c)))
     }
     if (!failed) await trackTasks($, e, ran.result)

@@ -34,7 +34,8 @@ export type Check = { kind: CheckKind; command: string; who: string; at: number;
 // Files the session read and edited successfully; `editedAt` is the last successful edit, to tell stale checks.
 export type Files = { read: string[]; edited: string[]; editedAt: number }
 
-export type LastCall = { tool: string; what: string; who: string; at: number }
+// `model` is the one the caller ran on, when known.
+export type LastCall = { tool: string; what: string; who: string; model?: string; at: number }
 
 // What the pane shows folded or in full.
 export type Layout = { isHistoryOpen: boolean; isDetailed: boolean }
@@ -59,7 +60,7 @@ export type Advisor = {
 }
 
 // A tool call that has started and not yet finished; `isAsking` while it waits for the person's approval.
-export type Active = { id: string; who: string; tool: string; what: string; startedAt: number; isAsking?: boolean }
+export type Active = { id: string; who: string; model?: string; tool: string; what: string; startedAt: number; isAsking?: boolean }
 
 // The session's own task list (TaskCreate/TaskUpdate or TodoWrite), as the calls left it.
 // `at` is when a call last changed it.
