@@ -616,7 +616,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       {topoView}
       {isRadar && runningNow}
       {isRadar && (
-        <Box flexDirection={isWide ? 'row' : 'column'} flexWrap="wrap" gap={isWide ? 1 : 0}>
+        // A column that wraps measures text one line high, so long Fable notes drew over the next rows.
+        <Box flexDirection={isWide ? 'row' : 'column'} flexWrap={isWide ? 'wrap' : 'nowrap'} gap={isWide ? 1 : 0}>
           {sections.map(s => s.node)}
         </Box>
       )}

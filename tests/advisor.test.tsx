@@ -84,6 +84,34 @@ test('material is not built inside the cooldown', async ($, on) => {
   expect(prompts.length).toBe(1)
 })
 
+test('no done check while a subagent still runs', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('tool.call', () => ({ result: {} }))
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  await $.turn.start({ text: 'first', turnId: 'm1' })
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+  await $.agent.spawn({
+    tool_use_id: 't1',
+    prompt: 'p',
+    description: 'review',
+    subagentType: 'general-purpose',
+    provider: { plugin: 'engine', tier: 'core' },
+    parentModel: 'claude-opus-5-5',
+    background: true,
+    fork: false,
+  })
+  await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Started a review.' })
+  await clock.settle()
+  expect(prompts.length).toBe(0)
+})
+
 test('material is wrapped and cannot close its wrapper early', async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []

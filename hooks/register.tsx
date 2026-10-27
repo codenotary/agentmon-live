@@ -787,7 +787,9 @@ export const register: Register = (on, options) => {
       e.agentId === undefined &&
       e.reason === 'answer' &&
       cfg.advisorMode === 'all' &&
-      (turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0)
+      (turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0) &&
+      // While subagents still run, Fable can only say "not done yet".
+      !(await read($, agents)).some(isLive)
     ) {
       const answer = e.answer
       advise($, 'done', t.askDone, async () => `${await material($, turn)}\n\n${t.finalAnswer}:\n${mask(answer.slice(-4000))}`, workRef())
