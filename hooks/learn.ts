@@ -1,5 +1,5 @@
 import type { Learned, MemFinding, SessionRecord, ToolTally } from '../types'
-import { kilo } from './format'
+import { kilo, mask } from './format'
 import { median } from './insights'
 import type { Insight } from './insights'
 import { LEARN } from './learn-strings'
@@ -19,6 +19,8 @@ export const HABIT_BIG = 4
 // Suggest a plan this far below where past sessions compacted; with no history, at this share of the window.
 export const CTX_MARGIN = 0.9
 export const CTX_FALLBACK = 0.7
+// Early manual /compacts teach nothing: the plan never warns below half the window.
+export const CTX_FLOOR = 0.5
 export const BIG_TOKENS = 10_000
 
 export const EMPTY_LEARNED: Learned = { current: '', sessions: [], mem: [] }
@@ -45,7 +47,7 @@ export function tally(rec: SessionRecord, tool: string, isError: boolean, error:
   t.calls += 1
   if (isError) {
     t.errors += 1
-    t.lastErr = error.replace(/\s+/g, ' ').trim().slice(0, 120) || undefined
+    t.lastErr = mask(error.replace(/\s+/g, ' ').trim()).slice(0, 120) || undefined
   }
   if (resultTokens >= BIG_TOKENS) t.big += 1
 }
@@ -97,7 +99,7 @@ export function parseTranscript(id: string, text: string): SessionRecord {
         const body = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((c: { text?: string }) => c?.text ?? '').join('\n') : ''
         if (b.is_error && !REJECTED.test(body)) {
           t.errors += 1
-          t.lastErr = body.replace(/\s+/g, ' ').trim().slice(0, 120) || undefined
+          t.lastErr = mask(body.replace(/\s+/g, ' ').trim()).slice(0, 120) || undefined
         }
         if (Math.ceil(body.length / 4) >= BIG_TOKENS) t.big += 1
       }
@@ -179,7 +181,7 @@ export function learnedItems(learned: Learned, live: Live): Insight[] {
   if (percent !== undefined && window > 0) {
     const m = median(sum.compactAt)
     // Past sessions on a larger window compacted later than this one can.
-    const limit = m === undefined ? window * CTX_FALLBACK : Math.min(m, window) * CTX_MARGIN
+    const limit = m === undefined ? window * CTX_FALLBACK : Math.max(Math.min(m, window) * CTX_MARGIN, window * CTX_FLOOR)
     if ((percent / 100) * window >= limit) {
       const tips = [t.tipCompact]
       if (/^(high|xhigh|max)$/.test(live.effort)) tips.push(t.tipEffort)

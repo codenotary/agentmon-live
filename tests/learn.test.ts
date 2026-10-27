@@ -99,6 +99,10 @@ test('the context plan uses where past sessions compacted', async () => {
   // No history: 70% of the window; a low effort and a small model get only the compact tip.
   const bare = learnedItems(history(0, () => {}), { ...LIVE, percent: 72, effort: 'low', model: 'claude-sonnet-5-5' }).find(x => x.key.startsWith('ctxplan:'))
   expect(bare?.text).toBe('context 72% · /compact <focus>')
+  // Sessions compacted early by hand: no plan at 7%, only from half the window.
+  const early = history(3, r => r.compactAt.push(4_000))
+  expect(learnedItems(early, { ...LIVE, percent: 7 }).some(x => x.key.startsWith('ctxplan:'))).toBe(false)
+  expect(learnedItems(early, { ...LIVE, percent: 50 }).some(x => x.key.startsWith('ctxplan:'))).toBe(true)
 })
 
 test('a plan from history replaces the plain context warning', async () => {
@@ -154,7 +158,7 @@ test('directive lines from two files that share terms become candidate pairs', a
 
 // What the engine answers; the store is a map the test reads back.
 function engine(on: On, store: Map<string, unknown>, toasts: string[]) {
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.id', () => ({ value: 'live' }))

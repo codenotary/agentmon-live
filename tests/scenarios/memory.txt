@@ -1,9 +1,9 @@
 # Memory check: CLAUDE.md and CLAUDE.local.md share three lines, and CLAUDE.md names a path that is gone.
 write CLAUDE.md # Rules\n- Always run the tests before committing anything in this repo\n- Keep generated reports under the docs folder, never the root\n- Use the staging database for every manual experiment\n- Deploy config lives in `/srv/radar-scenario/gone.yml`
 write CLAUDE.local.md # Local\n- Always run the tests before committing anything in this repo\n- Keep generated reports under the docs folder, never the root\n- Use the staging database for every manual experiment
-cmd /agent-radar memory
+cmd /agentmon memory
 wait text memory-file problems
 snap memory
-cmd /agent-radar details
+cmd /agentmon details
 wait idle
 snap focus

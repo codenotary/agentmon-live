@@ -1,19 +1,19 @@
 {
-  "name": "agent-radar",
+  "name": "agentmon-live",
   "owner": {
     "name": "vchaindz",
     "email": "dennis@dzlabs.ch",
     "url": "https://github.com/vchaindz"
   },
   "metadata": {
-    "description": "Agent Radar: live agent pane for Claude Code"
+    "description": "AgentMon Live: live agent pane for Claude Code"
   },
   "plugins": [
     {
-      "name": "agent-radar",
+      "name": "agentmon-live",
       "source": "./",
-      "description": "Agent Radar: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
-      "version": "0.9.0",
+      "description": "AgentMon Live: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
+      "version": "0.10.0",
       "author": {
         "name": "vchaindz",
         "email": "dennis@dzlabs.ch",

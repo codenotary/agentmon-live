@@ -11,15 +11,15 @@ type On = Parameters<TestBody>[1]
 const TYPED = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 
 const PANE = {
-  plugin: 'agent-radar',
+  plugin: 'agentmon-live',
   component: 'Pane',
-  requestId: 'agent-radar',
+  requestId: 'agentmon-live',
   surface: 'terminal',
-  props: { title: 'Agent Radar', isFocused: false, bodyColumns: 120, placement: 'dock', scroll: { offset: 0, bodyRows: 60 }, view: {} },
+  props: { title: 'AgentMon Live', isFocused: false, bodyColumns: 120, placement: 'dock', scroll: { offset: 0, bodyRows: 60 }, view: {} },
 } as const
 
 function engine(on: On) {
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({
@@ -120,11 +120,11 @@ test('the command reaches the views and details without focusing the pane', asyn
   await $.tool.call({ tool: 'Bash', command: 'ls' })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
-  expect(await $.command.run({ ...TYPED, command: 'agent-radar', args: 'flow' })).toEqual({ text: 'Agent Radar: flow' })
+  expect(await $.command.run({ ...TYPED, command: 'agentmon', args: 'flow' })).toEqual({ text: 'AgentMon Live: flow' })
   expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBeTruthy()
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'radar' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'radar' })
   expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBe(undefined)
-  expect(await $.command.run({ ...TYPED, command: 'agent-radar', args: 'details' })).toEqual({ text: 'Agent Radar: details on' })
+  expect(await $.command.run({ ...TYPED, command: 'agentmon', args: 'details' })).toEqual({ text: 'AgentMon Live: details on' })
   expect(await ui.find({ type: 'Button', text: /● details/ })).toBeTruthy()
   await ui.unmount()
 })

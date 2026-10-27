@@ -173,7 +173,7 @@ export type SkillUse = { name: string; count: number; who: string; at: number }
 
 declare module 'claude-code' {
   interface PluginState {
-    'agent-radar': {
+    'agentmon-live': {
       main: Main
       tools: Record<string, number>
       agents: Card[]

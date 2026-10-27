@@ -1,4 +1,4 @@
-// Strings for what Agent Radar learns across sessions, kept apart from locales.ts so that file does not grow.
+// Strings for what AgentMon Live learns across sessions, kept apart from locales.ts so that file does not grow.
 const en = {
   tag: { plan: 'plan', flaky: 'flaky', unused: 'unused', habit: 'habit', memory: 'memory' },
   kind: 'memory',
@@ -9,7 +9,7 @@ const en = {
   tipModel: '/model sonnet for routine steps',
   flaky: (tool: string, pct: number, calls: number, sessions: number, last?: string) =>
     `${tool} failed ${pct}% of ${calls} calls over ${sessions} sessions${last ? ` · last: ${last}` : ''}`,
-  flakyToast: (tool: string, pct: number) => `Agent Radar: ${tool} failed ${pct}% of its calls in past sessions`,
+  flakyToast: (tool: string, pct: number) => `AgentMon Live: ${tool} failed ${pct}% of its calls in past sessions`,
   unused: (server: string, sessions: number, k: string) => `${server} loaded in ${sessions} sessions, never used · ${k} schema tokens each time`,
   habit: (tool: string, n: number, sessions: number) => `${tool} put 10k+ tokens into context ${n}× over ${sessions} sessions`,
   mem: {
@@ -23,11 +23,11 @@ const en = {
   promptMemory: (file: string, text: string) => `Memory file ${file}: ${text}. Check it and propose a fix; change nothing yet.`,
   learnedLine: (n: number, typical?: number) => `learned from ${n} sessions${typical === undefined ? '' : ` · compacts near ${typical}%`}`,
   learned: (n: number, calls: number, compactions: number, skipped: number) =>
-    `Agent Radar learned from ${n} sessions: ${calls} tool calls, ${compactions} compactions${skipped ? ` · ${skipped} skipped` : ''}.`,
-  learnNone: (dir: string) => `Agent Radar: no transcripts in ${dir}.`,
-  learningOff: 'Agent Radar: learning is off (option `learning`).',
-  memoryNone: 'Agent Radar: no memory-file problems found.',
-  memoryHead: (n: number) => `Agent Radar: ${n} memory-file problems`,
+    `AgentMon Live learned from ${n} sessions: ${calls} tool calls, ${compactions} compactions${skipped ? ` · ${skipped} skipped` : ''}.`,
+  learnNone: (dir: string) => `AgentMon Live: no transcripts in ${dir}.`,
+  learningOff: 'AgentMon Live: learning is off (option `learning`).',
+  memoryNone: 'AgentMon Live: no memory-file problems found.',
+  memoryHead: (n: number) => `AgentMon Live: ${n} memory-file problems`,
   askMemory:
     'These are pairs of lines from different memory and instruction files that share terms. Which pairs give the assistant contradicting instructions? Answer OK if none. Otherwise one line per contradiction: `file A vs file B: what conflicts`. At most 4 lines.',
 }
@@ -42,7 +42,7 @@ const de: LearnStrings = {
   tipEffort: 'weniger Aufwand',
   tipModel: '/model sonnet für Routineschritte',
   flaky: (tool, pct, calls, sessions, last) => `${tool} scheiterte bei ${pct}% von ${calls} Aufrufen in ${sessions} Sitzungen${last ? ` · zuletzt: ${last}` : ''}`,
-  flakyToast: (tool, pct) => `Agent Radar: ${tool} scheiterte bei ${pct}% seiner Aufrufe in früheren Sitzungen`,
+  flakyToast: (tool, pct) => `AgentMon Live: ${tool} scheiterte bei ${pct}% seiner Aufrufe in früheren Sitzungen`,
   unused: (server, sessions, k) => `${server} in ${sessions} Sitzungen geladen, nie genutzt · jedes Mal ${k} Schema-Tokens`,
   habit: (tool, n, sessions) => `${tool} brachte ${n}× über 10k Tokens in den Kontext, in ${sessions} Sitzungen`,
   mem: {
@@ -56,11 +56,11 @@ const de: LearnStrings = {
   promptMemory: (file, text) => `Gedächtnisdatei ${file}: ${text}. Prüfe es und schlage eine Korrektur vor; ändere noch nichts.`,
   learnedLine: (n, typical) => `gelernt aus ${n} Sitzungen${typical === undefined ? '' : ` · verdichtet bei etwa ${typical}%`}`,
   learned: (n, calls, compactions, skipped) =>
-    `Agent Radar hat aus ${n} Sitzungen gelernt: ${calls} Werkzeugaufrufe, ${compactions} Verdichtungen${skipped ? ` · ${skipped} übersprungen` : ''}.`,
-  learnNone: dir => `Agent Radar: keine Transkripte in ${dir}.`,
-  learningOff: 'Agent Radar: Lernen ist aus (Option `learning`).',
-  memoryNone: 'Agent Radar: keine Probleme in den Gedächtnisdateien.',
-  memoryHead: n => `Agent Radar: ${n} Probleme in Gedächtnisdateien`,
+    `AgentMon Live hat aus ${n} Sitzungen gelernt: ${calls} Werkzeugaufrufe, ${compactions} Verdichtungen${skipped ? ` · ${skipped} übersprungen` : ''}.`,
+  learnNone: dir => `AgentMon Live: keine Transkripte in ${dir}.`,
+  learningOff: 'AgentMon Live: Lernen ist aus (Option `learning`).',
+  memoryNone: 'AgentMon Live: keine Probleme in den Gedächtnisdateien.',
+  memoryHead: n => `AgentMon Live: ${n} Probleme in Gedächtnisdateien`,
   askMemory: en.askMemory,
 }
 
@@ -72,7 +72,7 @@ const fr: LearnStrings = {
   tipEffort: 'effort réduit',
   tipModel: '/model sonnet pour les étapes de routine',
   flaky: (tool, pct, calls, sessions, last) => `${tool} a échoué ${pct} % de ${calls} appels sur ${sessions} sessions${last ? ` · dernier : ${last}` : ''}`,
-  flakyToast: (tool, pct) => `Agent Radar : ${tool} a échoué ${pct} % de ses appels lors des sessions passées`,
+  flakyToast: (tool, pct) => `AgentMon Live : ${tool} a échoué ${pct} % de ses appels lors des sessions passées`,
   unused: (server, sessions, k) => `${server} chargé dans ${sessions} sessions, jamais utilisé · ${k} tokens de schéma à chaque fois`,
   habit: (tool, n, sessions) => `${tool} a mis plus de 10k tokens dans le contexte ${n}× sur ${sessions} sessions`,
   mem: {
@@ -86,11 +86,11 @@ const fr: LearnStrings = {
   promptMemory: (file, text) => `Fichier de mémoire ${file} : ${text}. Vérifie-le et propose une correction ; ne change rien encore.`,
   learnedLine: (n, typical) => `appris de ${n} sessions${typical === undefined ? '' : ` · compacte vers ${typical} %`}`,
   learned: (n, calls, compactions, skipped) =>
-    `Agent Radar a appris de ${n} sessions : ${calls} appels d'outils, ${compactions} compactages${skipped ? ` · ${skipped} ignorées` : ''}.`,
-  learnNone: dir => `Agent Radar : aucune transcription dans ${dir}.`,
-  learningOff: "Agent Radar : l'apprentissage est désactivé (option `learning`).",
-  memoryNone: 'Agent Radar : aucun problème dans les fichiers de mémoire.',
-  memoryHead: n => `Agent Radar : ${n} problèmes dans les fichiers de mémoire`,
+    `AgentMon Live a appris de ${n} sessions : ${calls} appels d'outils, ${compactions} compactages${skipped ? ` · ${skipped} ignorées` : ''}.`,
+  learnNone: dir => `AgentMon Live : aucune transcription dans ${dir}.`,
+  learningOff: "AgentMon Live : l'apprentissage est désactivé (option `learning`).",
+  memoryNone: 'AgentMon Live : aucun problème dans les fichiers de mémoire.',
+  memoryHead: n => `AgentMon Live : ${n} problèmes dans les fichiers de mémoire`,
   askMemory: en.askMemory,
 }
 
@@ -102,7 +102,7 @@ const es: LearnStrings = {
   tipEffort: 'menos esfuerzo',
   tipModel: '/model sonnet para pasos rutinarios',
   flaky: (tool, pct, calls, sessions, last) => `${tool} falló el ${pct} % de ${calls} llamadas en ${sessions} sesiones${last ? ` · último: ${last}` : ''}`,
-  flakyToast: (tool, pct) => `Agent Radar: ${tool} falló el ${pct} % de sus llamadas en sesiones pasadas`,
+  flakyToast: (tool, pct) => `AgentMon Live: ${tool} falló el ${pct} % de sus llamadas en sesiones pasadas`,
   unused: (server, sessions, k) => `${server} cargado en ${sessions} sesiones, nunca usado · ${k} tokens de esquema cada vez`,
   habit: (tool, n, sessions) => `${tool} metió más de 10k tokens en el contexto ${n}× en ${sessions} sesiones`,
   mem: {
@@ -116,11 +116,11 @@ const es: LearnStrings = {
   promptMemory: (file, text) => `Archivo de memoria ${file}: ${text}. Revísalo y propone un arreglo; no cambies nada todavía.`,
   learnedLine: (n, typical) => `aprendido de ${n} sesiones${typical === undefined ? '' : ` · compacta cerca del ${typical} %`}`,
   learned: (n, calls, compactions, skipped) =>
-    `Agent Radar aprendió de ${n} sesiones: ${calls} llamadas a herramientas, ${compactions} compactaciones${skipped ? ` · ${skipped} omitidas` : ''}.`,
-  learnNone: dir => `Agent Radar: no hay transcripciones en ${dir}.`,
-  learningOff: 'Agent Radar: el aprendizaje está desactivado (opción `learning`).',
-  memoryNone: 'Agent Radar: no hay problemas en los archivos de memoria.',
-  memoryHead: n => `Agent Radar: ${n} problemas en archivos de memoria`,
+    `AgentMon Live aprendió de ${n} sesiones: ${calls} llamadas a herramientas, ${compactions} compactaciones${skipped ? ` · ${skipped} omitidas` : ''}.`,
+  learnNone: dir => `AgentMon Live: no hay transcripciones en ${dir}.`,
+  learningOff: 'AgentMon Live: el aprendizaje está desactivado (opción `learning`).',
+  memoryNone: 'AgentMon Live: no hay problemas en los archivos de memoria.',
+  memoryHead: n => `AgentMon Live: ${n} problemas en archivos de memoria`,
   askMemory: en.askMemory,
 }
 
@@ -132,7 +132,7 @@ const zh: LearnStrings = {
   tipEffort: '降低思考强度',
   tipModel: '常规步骤用 /model sonnet',
   flaky: (tool, pct, calls, sessions, last) => `${tool} 在 ${sessions} 个会话的 ${calls} 次调用中失败 ${pct}%${last ? ` · 最近：${last}` : ''}`,
-  flakyToast: (tool, pct) => `Agent Radar：${tool} 在过去会话中失败 ${pct}%`,
+  flakyToast: (tool, pct) => `AgentMon Live：${tool} 在过去会话中失败 ${pct}%`,
   unused: (server, sessions, k) => `${server} 在 ${sessions} 个会话中加载但从未使用 · 每次 ${k} 个 schema token`,
   habit: (tool, n, sessions) => `${tool} 在 ${sessions} 个会话中 ${n} 次向上下文放入 10k 以上 token`,
   mem: {
@@ -145,11 +145,11 @@ const zh: LearnStrings = {
   },
   promptMemory: (file, text) => `记忆文件 ${file}：${text}。请检查并提出修正方案；暂不修改。`,
   learnedLine: (n, typical) => `已从 ${n} 个会话学习${typical === undefined ? '' : ` · 约在 ${typical}% 时压缩`}`,
-  learned: (n, calls, compactions, skipped) => `Agent Radar 已从 ${n} 个会话学习：${calls} 次工具调用，${compactions} 次压缩${skipped ? ` · 跳过 ${skipped} 个` : ''}。`,
-  learnNone: dir => `Agent Radar：${dir} 中没有会话记录。`,
-  learningOff: 'Agent Radar：学习已关闭（选项 `learning`）。',
-  memoryNone: 'Agent Radar：记忆文件没有发现问题。',
-  memoryHead: n => `Agent Radar：记忆文件中有 ${n} 个问题`,
+  learned: (n, calls, compactions, skipped) => `AgentMon Live 已从 ${n} 个会话学习：${calls} 次工具调用，${compactions} 次压缩${skipped ? ` · 跳过 ${skipped} 个` : ''}。`,
+  learnNone: dir => `AgentMon Live：${dir} 中没有会话记录。`,
+  learningOff: 'AgentMon Live：学习已关闭（选项 `learning`）。',
+  memoryNone: 'AgentMon Live：记忆文件没有发现问题。',
+  memoryHead: n => `AgentMon Live：记忆文件中有 ${n} 个问题`,
   askMemory: en.askMemory,
 }
 
@@ -161,7 +161,7 @@ const ja: LearnStrings = {
   tipEffort: '思考量を下げる',
   tipModel: '定型作業は /model sonnet',
   flaky: (tool, pct, calls, sessions, last) => `${tool} は ${sessions} セッション ${calls} 回の呼び出しで ${pct}% 失敗${last ? ` · 直近：${last}` : ''}`,
-  flakyToast: (tool, pct) => `Agent Radar：${tool} は過去のセッションで ${pct}% 失敗しています`,
+  flakyToast: (tool, pct) => `AgentMon Live：${tool} は過去のセッションで ${pct}% 失敗しています`,
   unused: (server, sessions, k) => `${server} は ${sessions} セッションで読み込まれ未使用 · 毎回 ${k} のスキーマトークン`,
   habit: (tool, n, sessions) => `${tool} が ${sessions} セッションで ${n} 回 10k 以上のトークンをコンテキストに入れた`,
   mem: {
@@ -174,11 +174,11 @@ const ja: LearnStrings = {
   },
   promptMemory: (file, text) => `メモリファイル ${file}：${text}。確認して修正案を出してください。まだ何も変更しないでください。`,
   learnedLine: (n, typical) => `${n} セッションから学習${typical === undefined ? '' : ` · 約 ${typical}% で圧縮`}`,
-  learned: (n, calls, compactions, skipped) => `Agent Radar は ${n} セッションから学習：ツール呼び出し ${calls} 回、圧縮 ${compactions} 回${skipped ? ` · ${skipped} 件スキップ` : ''}。`,
-  learnNone: dir => `Agent Radar：${dir} にトランスクリプトがありません。`,
-  learningOff: 'Agent Radar：学習はオフです（オプション `learning`）。',
-  memoryNone: 'Agent Radar：メモリファイルに問題はありません。',
-  memoryHead: n => `Agent Radar：メモリファイルの問題 ${n} 件`,
+  learned: (n, calls, compactions, skipped) => `AgentMon Live は ${n} セッションから学習：ツール呼び出し ${calls} 回、圧縮 ${compactions} 回${skipped ? ` · ${skipped} 件スキップ` : ''}。`,
+  learnNone: dir => `AgentMon Live：${dir} にトランスクリプトがありません。`,
+  learningOff: 'AgentMon Live：学習はオフです（オプション `learning`）。',
+  memoryNone: 'AgentMon Live：メモリファイルに問題はありません。',
+  memoryHead: n => `AgentMon Live：メモリファイルの問題 ${n} 件`,
   askMemory: en.askMemory,
 }
 

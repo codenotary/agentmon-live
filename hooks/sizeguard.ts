@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 
 import { INIT, shapeInsights } from './state'
 
-const insights = atom({ plugin: 'agent-radar', key: 'insights' } as const, INIT.insights)
+const insights = atom({ plugin: 'agentmon-live', key: 'insights' } as const, INIT.insights)
 
 // About 5,000 tokens of code: a size heuristic for what a person or an agent can take in at once, not a token count.
 export const SIZE_LIMIT = 20_000
@@ -23,6 +23,8 @@ export const SIZE_EXCLUDE = [
 
 // `**/` any directories (or none), `*` within one name, `?` one character; matched against the whole relative path.
 export function globToRegExp(glob: string): RegExp {
+  // Three or more stars mean no more than two; stacked `.*` groups backtrack without end.
+  glob = glob.replace(/\*{3,}/g, '**')
   let re = ''
   for (let i = 0; i < glob.length; i++) {
     const c = glob[i]!
@@ -36,6 +38,8 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${re}$`)
 }
 
+const MAX_WILDCARDS = 4
+
 // `<glob>  # <reason>` per line; a line without a reason is no exception, so every exception says why.
 export function parseExceptions(text: string): string[] {
   return text
@@ -44,7 +48,8 @@ export function parseExceptions(text: string): string[] {
     .filter(l => l && !l.startsWith('#'))
     .flatMap(l => {
       const [glob, reason] = l.split(/\s+#\s*/, 2)
-      return glob && reason?.trim() ? [glob] : []
+      // A glob from the repo runs on every edit: past four wildcards it can backtrack for seconds.
+      return glob && reason?.trim() && (glob.match(/[*?]/g) ?? []).length <= MAX_WILDCARDS ? [glob] : []
     })
 }
 

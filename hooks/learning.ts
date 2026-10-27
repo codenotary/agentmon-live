@@ -8,7 +8,7 @@ import { contradictionPairs, memRules, refsOf } from './memcheck'
 import type { MemFile } from './memcheck'
 import { cfg, INIT } from './state'
 
-const learned = atom({ plugin: 'agent-radar', key: 'learned' } as const, INIT.learned)
+const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.learned)
 
 // This session's own record; it is rebuilt from the store on a reload.
 let rec: SessionRecord | undefined
@@ -83,7 +83,7 @@ export async function saveTurn($: EngineInterface, u: { tokens?: number; window:
   await save($, l => upsert(l, structuredClone(r)))
 }
 
-// `/agent-radar learn [dir]`: past transcripts of this project, or of `dir`, into the store.
+// `/agentmon learn [dir]`: past transcripts of this project, or of `dir`, into the store.
 export async function learnCommand($: EngineInterface, arg: string): Promise<string> {
   const t = lt()
   if (!cfg.learning || !rec) return t.learningOff
@@ -145,7 +145,7 @@ async function checkMemory($: EngineInterface) {
   }
 }
 
-// `/agent-radar memory`: the findings as text, checked again first.
+// `/agentmon memory`: the findings as text, checked again first.
 export async function memoryCommand($: EngineInterface): Promise<string> {
   const t = lt()
   if (!cfg.learning || !rec) return t.learningOff

@@ -33,6 +33,17 @@ test('mask hides secret values', () => {
   expect(mask('cat src/token.ts')).toBe('cat src/token.ts')
 })
 
+test('mask hides flag secrets, cookies, quoted values with spaces and common key shapes', () => {
+  expect(mask('curl -u admin:hunter2 https://x')).toBe('curl -u admin:*** https://x')
+  expect(mask('mysql -h db -phunter2 app')).toBe('mysql -h db -p*** app')
+  expect(mask('mkdir -p src/app')).toBe('mkdir -p src/app')
+  expect(mask('curl -H "Cookie: session=abc; id=1" x')).toBe('curl -H "Cookie: ***" x')
+  expect(mask('export API_TOKEN="two words"')).toBe('export API_TOKEN="***"')
+  expect(mask('token="abc"')).toBe('token="***"')
+  for (const s of ['sk_live_abcdefghijklmnop1234', 'glpat-abcdefghijklmnopqrstu', `AIza${'x'.repeat(35)}`, `npm_${'a'.repeat(36)}`, 'eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.sig'])
+    expect(mask(`use ${s} now`)).toBe('use *** now')
+})
+
 test('brief masks secrets', () => {
   expect(brief({ command: 'curl -H "Authorization: Bearer abc123" x' })).not.toContain('abc123')
 })

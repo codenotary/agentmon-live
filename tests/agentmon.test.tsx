@@ -12,12 +12,12 @@ type On = Parameters<TestBody>[1]
 const TYPED = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 
 const PANE = {
-  plugin: 'agent-radar',
+  plugin: 'agentmon-live',
   component: 'Pane',
-  requestId: 'agent-radar',
+  requestId: 'agentmon-live',
   surface: 'terminal',
   props: {
-    title: 'Agent Radar',
+    title: 'AgentMon Live',
     isFocused: false,
     bodyColumns: 120,
     placement: 'dock',
@@ -29,7 +29,7 @@ const PANE = {
 // The engine answers every test needs; a test adds its own hooks after. Returns the last status line set.
 function engine(on: On, draft = '') {
   let status = ''
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -76,7 +76,7 @@ test('helpers format like the screenshot', async () => {
 })
 
 test('pane counts tool calls and shows a spawned subagent', async ($, on) => {
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 330000, percent: 33 }, rateLimits: [] } }))
@@ -109,7 +109,7 @@ test('pane counts tool calls and shows a spawned subagent', async ($, on) => {
 
 test('pane counts failed calls and compactions', async ($, on) => {
   const clock = mock.clock(on)
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -131,7 +131,7 @@ test('pane counts failed calls and compactions', async ($, on) => {
 
 test('german option localizes the pane', { options: { language: 'de' } }, async ($, on) => {
   const clock = mock.clock(on)
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -152,7 +152,7 @@ test('german option localizes the pane', { options: { language: 'de' } }, async 
 
 test('git commands get their own row and no log line', async ($, on) => {
   const clock = mock.clock(on)
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -176,7 +176,7 @@ test('git commands get their own row and no log line', async ($, on) => {
 })
 
 test('fable box stays one line until fable is asked', async ($, on) => {
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -195,7 +195,7 @@ test('fable box stays one line until fable is asked', async ($, on) => {
 
 test('mcp calls get a row and their own detail tab', async ($, on) => {
   const clock = mock.clock(on)
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -223,7 +223,7 @@ test('fable verdicts show as ok and nok', async ($, on) => {
   const clock = mock.clock(on)
   const answers = ['OK', 'The tests were never run.']
   const toasts: string[] = []
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -300,7 +300,7 @@ test('clear keeps running agents and drops history', async ($, on) => {
   await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
   await $.turn.complete({ ...DONE, agentId: 'a1' })
   await $.tool.call({ tool: 'Bash', command: 'ls' })
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'clear' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'clear' })
 
   expect(status()).toMatch(/subagents \[1\/1\].*tools \[0\]/)
 })
@@ -323,7 +323,7 @@ test('an advisor answer that arrives after a clear is dropped', async ($, on) =>
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'ExitPlanMode' })
   await clock.settle()
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'clear' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'clear' })
   await clock.advance(5000)
 
   const ui = await $.ui.mount(PANE)
@@ -493,7 +493,7 @@ test('a call shows in its tab while it runs', async ($, on) => {
 
 test('usage says unavailable rather than zero, and shows rate limits', async ($, on) => {
   mock.clock(on)
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({
@@ -663,7 +663,7 @@ test('check now asks Fable at once, past the cooldown', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   await ui.press({ key: 'advisor:check' })
   await clock.settle()
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
   expect(prompts.length).toBe(2)
   expect(prompts[0]).toMatch(/^Look at the work so far/)
@@ -701,7 +701,7 @@ test('an advisor answer that arrives after a reload is dropped', async ($, on) =
 
 for (const language of ['fr', 'es', 'zh', 'ja'] as const) {
   test(`${language} option draws the pane`, { options: { language } }, async ($, on) => {
-    on('command.register', () => ({ value: { command: 'agent-radar' } }))
+    on('command.register', () => ({ value: { command: 'agentmon' } }))
     on('ui.open', () => ({ value: { isPlaced: true } }))
     on('session.model', () => ({ value: 'claude-opus-5-5' }))
     on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
@@ -729,7 +729,7 @@ test('a hung advisor call times out and leaves Fable usable', async ($, on) => {
   })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
   expect(timeoutMs).toBe(30_000)
 })
@@ -844,12 +844,12 @@ test('a dropped advisor answer still counts its tokens, and a reload keeps unava
   })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'clear' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'clear' })
   await clock.advance(1000)
   answer = false
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.advance(1000)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
@@ -915,7 +915,7 @@ test('the header names the loaded version and commit', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   const files: Record<string, string> = {
-    '.claude-plugin/plugin.json': '{ "name": "agent-radar", "version": "0.6.0" }',
+    '.claude-plugin/plugin.json': '{ "name": "agentmon-live", "version": "0.6.0" }',
     '.git/HEAD': 'ref: refs/heads/main\n',
     '.git/packed-refs': '# pack-refs\n3366336aaaabbbbccccddddeeeeffff000011112 refs/heads/main\n',
   }
@@ -1034,7 +1034,7 @@ test('clear empties the task list and the skills', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /TASKS 1\/3/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /SKILLS & COMMANDS/ })).toBeTruthy()
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'clear' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'clear' })
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: /TASKS/ })).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /SKILLS & COMMANDS/ })).toBe(undefined)
@@ -1045,7 +1045,7 @@ test('in a worktree the header names only the version', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('fs.read', (_, e) => {
-    if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{ "name": "agent-radar", "version": "0.6.0" }' }
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{ "name": "agentmon-live", "version": "0.6.0" }' }
     // `.git` is a file: whatever a reader makes of `.git/HEAD`, it is the `gitdir:` line, never a commit.
     if (e.path.includes('/.git')) return { value: 'gitdir: /repo/.git/worktrees/w\n' }
     throw new Error('ENOENT')
@@ -1183,6 +1183,8 @@ test('a dismissed error streak stays dismissed as it grows', async ($, on) => {
   for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: 'false' })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
+  // The first x puts away the loop note, the second the streak.
+  await ui.press({ key: 'attention:dismiss' })
   await ui.press({ key: 'attention:dismiss' })
   await $.tool.call({ tool: 'Bash', command: 'false' })
   await clock.settle()
@@ -1197,7 +1199,7 @@ test('fable says why it is unavailable', async ($, on) => {
   on('model.complete', () => ({ value: { isAnswered: false, reason: 'api-error', status: 400, error: 'invalid_request', usage: zero } }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.command.run({ ...TYPED, command: 'agent-radar', args: 'check' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /\(unavailable: invalid_request 400\)/ })).toBeTruthy()

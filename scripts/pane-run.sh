@@ -121,7 +121,7 @@ for line in open(sys.argv[1], encoding="utf-8"):
         _, key, value = line.split(maxsplit=2)
         opts[key] = value.strip()
 conf = {"options": opts}
-print(json.dumps({"pluginConfigs": {"agent-radar": conf, "agent-radar@inline": conf}}))
+print(json.dumps({"pluginConfigs": {"agentmon-live": conf, "agentmon-live@inline": conf}}))
 ' "$scenario")
 mkdir -p "$out"
 rm -f "$out"/*.txt "$out"/*.ansi

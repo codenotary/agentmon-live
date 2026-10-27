@@ -10,28 +10,28 @@ import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, watched } from './sizeguard'
 import { drawPane } from './render'
-import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
+import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
 
 export { brief, fit, gitCommand, kilo, modelName, testsOf } from './format'
 
-const main = atom({ plugin: 'agent-radar', key: 'main' } as const, INIT.main)
-const tools = atom({ plugin: 'agent-radar', key: 'tools' } as const, INIT.tools)
-const agents = atom({ plugin: 'agent-radar', key: 'agents' } as const, INIT.agents)
-const log = atom({ plugin: 'agent-radar', key: 'log' } as const, INIT.log)
-const advisor = atom({ plugin: 'agent-radar', key: 'advisor' } as const, INIT.advisor)
-const stats = atom({ plugin: 'agent-radar', key: 'stats' } as const, INIT.stats)
-const calls = atom({ plugin: 'agent-radar', key: 'calls' } as const, INIT.calls)
-const view = atom({ plugin: 'agent-radar', key: 'view' } as const, INIT.view)
-const active = atom({ plugin: 'agent-radar', key: 'active' } as const, INIT.active)
-const checks = atom({ plugin: 'agent-radar', key: 'checks' } as const, INIT.checks)
-const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
-const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
-const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
-const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
-const flow = atom({ plugin: 'agent-radar', key: 'flow' } as const, INIT.flow)
-const insights = atom({ plugin: 'agent-radar', key: 'insights' } as const, INIT.insights)
-const layout = atom({ plugin: 'agent-radar', key: 'layout' } as const, INIT.layout)
+const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
+const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
+const agents = atom({ plugin: 'agentmon-live', key: 'agents' } as const, INIT.agents)
+const log = atom({ plugin: 'agentmon-live', key: 'log' } as const, INIT.log)
+const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
+const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
+const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
+const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
+const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
+const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
+const files = atom({ plugin: 'agentmon-live', key: 'files' } as const, INIT.files)
+const lastCall = atom({ plugin: 'agentmon-live', key: 'lastCall' } as const, INIT.lastCall)
+const tasks = atom({ plugin: 'agentmon-live', key: 'tasks' } as const, INIT.tasks)
+const skills = atom({ plugin: 'agentmon-live', key: 'skills' } as const, INIT.skills)
+const flow = atom({ plugin: 'agentmon-live', key: 'flow' } as const, INIT.flow)
+const insights = atom({ plugin: 'agentmon-live', key: 'insights' } as const, INIT.insights)
+const layout = atom({ plugin: 'agentmon-live', key: 'layout' } as const, INIT.layout)
 
 // A call slower than this joins the slowest list; a result bigger than this the biggest.
 const SLOW_MIN_MS = 5000
@@ -135,7 +135,8 @@ function tick($: EngineInterface) {
   $.clock.after(500, async () => {
     isTicking = false
     const [doing, list, now] = await Promise.all([read($, active), read($, agents), $.clock.now()])
-    if (doing.length === 0 && !list.some(isLive)) return
+    // A waiting or idle teammate changes nothing on screen; only running work keeps the redraw going.
+    if (doing.length === 0 && !list.some(a => a.status === 'running')) return
     // A card whose turn.complete never came would keep this loop running; the engine's list settles it.
     if (list.some(isLive) && now - reconciledAt >= RECONCILE_MS) {
       reconciledAt = now
@@ -203,15 +204,12 @@ async function trackTasks($: EngineInterface, call: { tool: string }, result: un
 }
 
 let clk = newClock(0, false)
+liveTurn.read = () => (clk.inTurn ? snapshot(clk) : undefined)
 
-async function flushTurn($: EngineInterface) {
-  const turnTime = clk.inTurn ? snapshot(clk) : undefined
-  await update($, insights, v => ({ ...v, turn: turnTime }))
-}
 
 // A hook that fails lets the event go ahead: radar only watches, so it never holds up the session.
 function logFailure($: EngineInterface, event: string, error: { kind: string; message?: string }) {
-  $.ui.log(`agent-radar: the ${event} hook failed, so the event went ahead (${error.kind}: ${error.message ?? 'unknown'})`, { to: 'debug' })
+  $.ui.log(`agentmon-live: the ${event} hook failed, so the event went ahead (${error.kind}: ${error.message ?? 'unknown'})`, { to: 'debug' })
 }
 function failOpen<T>($: EngineInterface, event: string, error: { kind: string; message?: string }, proceed: () => T): T {
   logFailure($, event, error)
@@ -308,13 +306,13 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'agent-radar',
+      name: 'agentmon',
       description: t.commandDescription,
       argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|flow|radar|details|learn|memory]`,
     })
     cwd = e.cwd
     // The project's own size exceptions, each with a reason.
-    void $.fs.read(`${cwd}/.agent-radar-size`).then(
+    void $.fs.read(`${cwd}/.agentmon-size`).then(
       text => configureSize(options.sizeLimit, options.sizeExclude, parseExceptions(text)),
       () => undefined,
     )
@@ -336,7 +334,7 @@ export const register: Register = (on, options) => {
       update($, calls, list => list.map(c => (c.result === 'running' ? { ...c, result: t.unknown } : c))),
       update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
-    void $.ui.open({ id: PANE, title: 'Agent Radar' })
+    void $.ui.open({ id: PANE, title: 'AgentMon Live' })
     // Reading the build and the status line need not hold up the session.
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
@@ -370,7 +368,7 @@ export const register: Register = (on, options) => {
     return next(e)
   }).catch(($, e, next) => failOpen($, 'session.measure', next.error, () => next(e)))
 
-  on('command.run', { command: 'agent-radar' }, async ($, e) => {
+  on('command.run', { command: 'agentmon' }, async ($, e) => {
     const arg = e.args.trim()
     if (arg === t.argAdvisor) {
       const a = await update($, advisor, v => ({ ...v, isOn: !v.isOn }))
@@ -385,21 +383,21 @@ export const register: Register = (on, options) => {
     if (arg === 'flow' || arg === 'radar') {
       const mode: 'flow' | 'radar' = arg
       await update($, layout, l => ({ ...l, mode }))
-      await $.ui.open({ id: PANE, title: 'Agent Radar' })
-      return { text: `Agent Radar: ${t.modes[mode]}` }
+      await $.ui.open({ id: PANE, title: 'AgentMon Live' })
+      return { text: `AgentMon Live: ${t.modes[mode]}` }
     }
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
     if (arg === 'memory') return { text: await memoryCommand($) }
     if (arg === 'details') {
       const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
-      return { text: `Agent Radar: ${t.details} ${l.isDetailed ? 'on' : 'off'}` }
+      return { text: `AgentMon Live: ${t.details} ${l.isDetailed ? 'on' : 'off'}` }
     }
     const v = VIEWS.find(x => x === arg.toLowerCase())
     if (v) {
       await update($, view, () => v)
-      await $.ui.open({ id: PANE, title: 'Agent Radar' })
-      return { text: `Agent Radar: ${t.cat[v]}` }
+      await $.ui.open({ id: PANE, title: 'AgentMon Live' })
+      return { text: `AgentMon Live: ${t.cat[v]}` }
     }
     if (CLEAR_ARGS.includes(arg)) {
       forgetSizes()
@@ -427,13 +425,13 @@ export const register: Register = (on, options) => {
       await refreshStatus($)
       return { text: t.cleared }
     }
-    await $.ui.open({ id: PANE, title: 'Agent Radar' })
+    await $.ui.open({ id: PANE, title: 'AgentMon Live' })
     return { text: t.opened }
-  }).catch(($, e, next) => ({ text: `agent-radar: the command failed (${next.error.message ?? next.error.kind})` }))
+  }).catch(($, e, next) => ({ text: `agentmon-live: the command failed (${next.error.message ?? next.error.kind})` }))
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
-      turn.prompt = e.text
+      turn.prompt = mask(e.text)
       turn.tools = 0
       turn.delegated = 0
       turn.startedAt = await $.clock.now()
@@ -443,12 +441,11 @@ export const register: Register = (on, options) => {
       askedCalls.clear()
       const turnAt = turn.startedAt
       clk = newClock(turnAt, true)
-      const turnTime = snapshot(clk)
       await Promise.all([
         update($, stats, s => ({ ...s, streak: 0 })),
         update($, main, v => ({ ...v, turnAt })),
         // Loops and switches are this turn's; approvals and re-reads add up over the session.
-        update($, insights, v => ({ ...v, turn: turnTime, fails: {}, turnSwitches: 0, turnAreas: {} })),
+        update($, insights, v => ({ ...v, fails: {}, turnSwitches: 0, turnAreas: {} })),
       ])
     } else {
       // A finished agent that gets a new message runs again.
@@ -485,7 +482,6 @@ export const register: Register = (on, options) => {
       book(clk, stepAt)
       clk.stepping = true
       clk.steps += 1
-      await flushTurn($)
     } else {
       await update($, agents, list => list.map(a => (a.id === agentId ? { ...a, lastAt: stepAt } : a)))
     }
@@ -505,11 +501,10 @@ export const register: Register = (on, options) => {
       clk.ctxStart ??= total
       clk.ctxEnd = total
     }
-    const turnTime = isMain && clk.inTurn ? snapshot(clk) : undefined
-    await update($, insights, v => ({
+    // Off the stream's path: the next tool call need not wait for the bookkeeping.
+    if (u) $.clock.after(0, () => update($, insights, v => ({
       ...v,
-      turn: isMain ? turnTime : v.turn,
-      ...(u && isMain
+      ...(isMain
         ? {
             ctx: [...v.ctx, total].slice(-80),
             cacheRead: u.cache_read_input_tokens,
@@ -517,8 +512,8 @@ export const register: Register = (on, options) => {
             tokens: { ...v.tokens, mainIn: v.tokens.mainIn + total, mainOut: v.tokens.mainOut + u.output_tokens, mainCached: v.tokens.mainCached + u.cache_read_input_tokens },
           }
         : {}),
-      ...(u && !isMain ? { tokens: { ...v.tokens, agentsIn: v.tokens.agentsIn + total, agentsOut: v.tokens.agentsOut + u.output_tokens } } : {}),
-    }))
+      ...(!isMain ? { tokens: { ...v.tokens, agentsIn: v.tokens.agentsIn + total, agentsOut: v.tokens.agentsOut + u.output_tokens } } : {}),
+    })))
     return r
   }).catch(async function* ($, e, next) {
     logFailure($, 'turn.step', next.error)
@@ -553,7 +548,7 @@ export const register: Register = (on, options) => {
       const prompt = turn.prompt
       advise($, 'plan', t.askPlan, async () => {
         const plan = (await $.session.messages()).filter(x => x.role === 'assistant').at(-1)?.text ?? ''
-        return `${t.task}: ${prompt.slice(0, REQUEST_ROOM)}\n\n${t.plan}:\n${plan.slice(0, MATERIAL_ROOM)}`
+        return `${t.task}: ${prompt.slice(0, REQUEST_ROOM)}\n\n${t.plan}:\n${mask(plan.slice(0, MATERIAL_ROOM))}`
       }, t.plan)
     }
 
@@ -567,7 +562,6 @@ export const register: Register = (on, options) => {
     await Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, files: agentFiles, lastAt: startedAt } : a))),
-      id === undefined && flushTurn($),
       update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => tick($)),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
       found.length > 0 &&
@@ -597,7 +591,6 @@ export const register: Register = (on, options) => {
       }
       // A call that threw never reports back.
       await Promise.all([
-        id === undefined && flushTurn($),
         update($, active, all => all.filter(a => a.id !== callId)),
         ran === undefined && tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: t.unknown } : c))),
         ran === undefined && found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: 'unknown' as const } : c))),
@@ -695,8 +688,7 @@ export const register: Register = (on, options) => {
         asking.isAsking = true
       }
       const askKey = `${e.tool} ${brief((e.input ?? {}) as object)}`.trim().slice(0, 60)
-      const turnTime = clk.inTurn ? snapshot(clk) : undefined
-      await update($, insights, s => ({ ...s, turn: turnTime ?? s.turn, asked: bump(s.asked, askKey) }))
+      await update($, insights, s => ({ ...s, asked: bump(s.asked, askKey) }))
     }
     return v
   }).catch(($, e, next) => failOpen($, 'tool.check', next.error, () => next(e)))
@@ -798,13 +790,13 @@ export const register: Register = (on, options) => {
       (turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0)
     ) {
       const answer = e.answer
-      advise($, 'done', t.askDone, async () => `${await material($, turn)}\n\n${t.finalAnswer}:\n${answer.slice(-4000)}`, workRef())
+      advise($, 'done', t.askDone, async () => `${await material($, turn)}\n\n${t.finalAnswer}:\n${mask(answer.slice(-4000))}`, workRef())
     }
     return next(e)
   }).catch(($, e, next) => failOpen($, 'turn.complete', next.error, () => next(e)))
 
   // The pane's "check now" button; taken here, where this turn's material is at hand.
-  on('ui.press', { plugin: 'agent-radar', element: 'advisor:check' }, async ($, e) => {
+  on('ui.press', { plugin: 'agentmon-live', element: 'advisor:check' }, async ($, e) => {
     advise($, 'check', t.askCheck, () => material($, turn), workRef(), true)
     return { element: e.element }
   })

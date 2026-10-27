@@ -269,11 +269,11 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
   }
 
   if (ins.cacheTotal >= CACHE_MIN_TOKENS && ins.ctx.length > 2 && ins.cacheRead / ins.cacheTotal < LOW_CACHE) {
-    out.push({ key: `cache:${ins.ctx.length}`, score: 40, tag: t.tag.cache, color: 'yellow', text: t.cache(Math.round((ins.cacheRead / ins.cacheTotal) * 100)) })
+    out.push({ key: `cache:${ins.turns}`, score: 40, tag: t.tag.cache, color: 'yellow', text: t.cache(Math.round((ins.cacheRead / ins.cacheTotal) * 100)) })
   }
 
   if (ins.turnSwitches >= SWITCHES) {
-    out.push({ key: `switches:${ins.turnSwitches}`, score: 35, tag: t.tag.switches, color: 'blue', text: t.switches(ins.turnSwitches, Object.keys(ins.turnAreas).length) })
+    out.push({ key: `switches:${ins.turns}`, score: 35, tag: t.tag.switches, color: 'blue', text: t.switches(ins.turnSwitches, Object.keys(ins.turnAreas).length) })
   }
 
   if (ins.mcpTokens && window > 0 && ins.mcpTokens / window >= MCP_SHARE) {
@@ -290,7 +290,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
     if (fullMs >= last.resetsAt - now) continue
     const win = limitName(kind)
     out.push({
-      key: `pace:${kind}:${Math.round(last.pct)}`,
+      key: `pace:${kind}:${last.resetsAt}`,
       score: 55,
       tag: t.tag.pace,
       color: 'yellow',

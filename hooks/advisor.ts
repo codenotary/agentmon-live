@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Note } from '../types'
 import { cfg, INIT, listening } from './state'
 
-const advisor = atom({ plugin: 'agent-radar', key: 'advisor' } as const, INIT.advisor)
+const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
 
 // The same kind of automatic check runs at most once a minute; a manual check skips the wait.
 const COOLDOWN_MS = 60_000

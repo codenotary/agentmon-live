@@ -1,6 +1,6 @@
 import type { AgentStatus } from 'claude-code'
 
-import type { Card, Insights, Learned, View } from '../types'
+import type { Card, Insights, Learned, TurnTime, View } from '../types'
 import { LANGUAGES } from './i18n'
 
 export const EMPTY_INSIGHTS: Insights = {
@@ -31,7 +31,7 @@ export function shapeInsights(v: Partial<Insights> | undefined): Insights {
   return { ...EMPTY_INSIGHTS, ...(v ?? {}), tokens: { ...EMPTY_INSIGHTS.tokens, ...(v?.tokens ?? {}) } }
 }
 
-export const PANE = 'agent-radar'
+export const PANE = 'agentmon-live'
 export const VIEWS: View[] = ['git', 'shell', 'mcp']
 // Finished agent cards kept; running and waiting ones are never dropped.
 const MAX_FINISHED = 12
@@ -61,7 +61,10 @@ export const INIT = {
   learned: { current: '', sessions: [], mem: [] } as Learned,
 }
 
-// The `/agent-radar advisor` toggle and the advisorMode option both have to allow Fable.
+// The main turn's clock as it stands, set by register: the pane reads it live instead of each call writing it to an atom.
+export const liveTurn: { read?: () => TurnTime | undefined } = {}
+
+// The `/agentmon advisor` toggle and the advisorMode option both have to allow Fable.
 export function listening(isOn: boolean): boolean {
   return isOn && cfg.advisorMode !== 'off'
 }

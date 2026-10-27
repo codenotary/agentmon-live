@@ -6,29 +6,29 @@ import { ago, clockTime, fit, kilo, modelName, percent, resetTime, shortPath, sm
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { drawFlow } from './flow'
-import { cfg, INIT, isLive, listening, liveStatus, rank, shapeInsights, VIEWS } from './state'
+import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
 import { isHigh, topology } from './topology'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 
-const main = atom({ plugin: 'agent-radar', key: 'main' } as const, INIT.main)
-const tools = atom({ plugin: 'agent-radar', key: 'tools' } as const, INIT.tools)
-const agents = atom({ plugin: 'agent-radar', key: 'agents' } as const, INIT.agents)
-const log = atom({ plugin: 'agent-radar', key: 'log' } as const, INIT.log)
-const advisor = atom({ plugin: 'agent-radar', key: 'advisor' } as const, INIT.advisor)
-const stats = atom({ plugin: 'agent-radar', key: 'stats' } as const, INIT.stats)
-const calls = atom({ plugin: 'agent-radar', key: 'calls' } as const, INIT.calls)
-const view = atom({ plugin: 'agent-radar', key: 'view' } as const, INIT.view)
-const active = atom({ plugin: 'agent-radar', key: 'active' } as const, INIT.active)
-const checks = atom({ plugin: 'agent-radar', key: 'checks' } as const, INIT.checks)
-const files = atom({ plugin: 'agent-radar', key: 'files' } as const, INIT.files)
-const lastCall = atom({ plugin: 'agent-radar', key: 'lastCall' } as const, INIT.lastCall)
-const tasks = atom({ plugin: 'agent-radar', key: 'tasks' } as const, INIT.tasks)
-const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skills)
-const flow = atom({ plugin: 'agent-radar', key: 'flow' } as const, INIT.flow)
-const layout = atom({ plugin: 'agent-radar', key: 'layout' } as const, INIT.layout)
-const insights = atom({ plugin: 'agent-radar', key: 'insights' } as const, INIT.insights)
-const learned = atom({ plugin: 'agent-radar', key: 'learned' } as const, INIT.learned)
+const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
+const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
+const agents = atom({ plugin: 'agentmon-live', key: 'agents' } as const, INIT.agents)
+const log = atom({ plugin: 'agentmon-live', key: 'log' } as const, INIT.log)
+const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
+const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
+const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
+const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
+const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
+const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
+const files = atom({ plugin: 'agentmon-live', key: 'files' } as const, INIT.files)
+const lastCall = atom({ plugin: 'agentmon-live', key: 'lastCall' } as const, INIT.lastCall)
+const tasks = atom({ plugin: 'agentmon-live', key: 'tasks' } as const, INIT.tasks)
+const skills = atom({ plugin: 'agentmon-live', key: 'skills' } as const, INIT.skills)
+const flow = atom({ plugin: 'agentmon-live', key: 'flow' } as const, INIT.flow)
+const layout = atom({ plugin: 'agentmon-live', key: 'layout' } as const, INIT.layout)
+const insights = atom({ plugin: 'agentmon-live', key: 'insights' } as const, INIT.insights)
+const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.learned)
 // Insights shown in Focus with details off; the rest wait for `d`.
 const FOCUS_SHOWN = 3
 
@@ -63,7 +63,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, insights),
     read($, learned),
   ])
-  const ins = shapeInsights(insStored)
+  const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const cols = e.props.bodyColumns
@@ -166,7 +166,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   }))
   const moreInsights = found.length - insightItems.length
   const shownItems = [...urgent, ...insightItems]
-  const dismissable = shownItems.flatMap(x => (x.key ? [x.key] : []))
+  // `x` puts away the notes first; what needs the person goes only when nothing else is left to put away.
+  const dismissable = (insightItems.length ? insightItems : urgent).flatMap(x => (x.key ? [x.key] : []))
   // Approval rows have no prompt, so `i` goes to the first row that does.
   const firstPrompt = shownItems.findIndex(x => x.prompt)
   // Investigate drafts a prompt in the prompt box; nothing is sent until the person sends it, and a draft there is kept.
@@ -577,7 +578,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   return (
     <Box flexDirection="column">
       <Text bold>
-        AGENT RADAR · <Text color="#d97757">{modelName(m.model).toUpperCase()} {t.plans}</Text>
+        AGENTMON LIVE · <Text color="#d97757">{modelName(m.model).toUpperCase()} {t.plans}</Text>
         {m.effort && <Text color="#d97757" bold={false}> ({m.effort})</Text>}
         {workerModel && <Text color="blue"> · {modelName(workerModel).toUpperCase()} {t.executes}</Text>}
         {listening(adv.isOn) && <Text color="magenta"> · {t.watches}</Text>}

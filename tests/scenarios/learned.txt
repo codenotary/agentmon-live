@@ -1,10 +1,10 @@
 # Learning from past sessions: three fixture transcripts with a flaky MCP tool, big Read results and a compaction near 20k.
 # Expect Focus to show the flaky tool, the Read habit and, once the context passes 18k, a context plan.
-cmd /agent-radar learn {repo}/tests/fixtures/transcripts
+cmd /agentmon learn {repo}/tests/fixtures/transcripts
 wait text learned from 3 sessions
 snap learn
 prompt Reply with the single word ready.
 wait idle
-cmd /agent-radar details
+cmd /agentmon details
 wait idle
 snap focus

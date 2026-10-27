@@ -37,14 +37,21 @@ export function brief(call: object): string {
   return typeof arg === 'string' ? mask(arg.replace(/\s+/g, ' ')).slice(0, 100) : ''
 }
 
-const SECRET_NAME = /((?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40})(\s*[=:]\s*|\s+)(["']?)((?:bearer|basic)\s+)?[^\s"']+/gi
+// A quoted value is masked to its closing quote (spaces and all), an unquoted one to the next space.
+const SECRET_NAME = /((?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40})(\s*[=:]\s*|\s+)(?:(["'])((?:bearer|basic)\s+)?[^"'\n]{1,200}\3|((?:bearer|basic)\s+)?[^\s"']+)/gi
 // Only `[^\s:@/]` and `[^\s@/]` follow `://`, so each scan stops at the next slash or space: linear.
 const URL_CREDENTIALS = /:\/\/([^\s:@/]+):[^\s@/]+@/g
-const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|ghp_\w{20,}|github_pat_\w{20,}|xox[bp]-[\w-]{10,}|AKIA[0-9A-Z]{16})/g
+const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|[sr]k_(?:live|test)_\w{16,}|ghp_\w{20,}|github_pat_\w{20,}|glpat-[\w-]{20,}|xox[bp]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|npm_\w{36}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]+)/g
+// `curl -u user:pw`, `mysql -ppw` and cookie headers carry secrets without a telling name.
+const FLAG_SECRET = /(\s(?:-u\s*|--user[=\s]\s*)[^\s:"']+:)[^\s"']+|(\b(?:mysql|mysqldump|mariadb)\b[^|;&\n]{0,200}?\s-p)[^\s"']+|(\b(?:set-)?cookie\s*:\s*)[^\n"']+/gi
 
 // brief() goes to the advisor model and the pane; the name's tail is bounded so long words cannot make it quadratic.
 export function mask(s: string): string {
-  return s.replace(URL_CREDENTIALS, '://$1:***@').replace(SECRET_NAME, (_, name, sep, quote, scheme) => `${name}${sep}${quote}${scheme ?? ''}***`).replace(SECRET_SHAPE, '***')
+  return s
+    .replace(URL_CREDENTIALS, '://$1:***@')
+    .replace(FLAG_SECRET, (_, user, mysql, cookie) => `${user ?? mysql ?? cookie}***`)
+    .replace(SECRET_NAME, (_, name, sep, quote, quotedScheme, scheme) => (quote ? `${name}${sep}${quote}${quotedScheme ?? ''}***${quote}` : `${name}${sep}${scheme ?? ''}***`))
+    .replace(SECRET_SHAPE, '***')
 }
 
 // What a call shows in the detail tabs and under Running now: `git push`, `npm test`, `sentry search_issues crash`.

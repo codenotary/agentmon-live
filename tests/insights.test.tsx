@@ -7,12 +7,12 @@ import { EMPTY_INSIGHTS, shapeInsights } from '../hooks/state'
 type On = Parameters<TestBody>[1]
 
 const PANE = {
-  plugin: 'agent-radar',
+  plugin: 'agentmon-live',
   component: 'Pane',
-  requestId: 'agent-radar',
+  requestId: 'agentmon-live',
   surface: 'terminal',
   props: {
-    title: 'Agent Radar',
+    title: 'AgentMon Live',
     isFocused: false,
     bodyColumns: 120,
     placement: 'dock',
@@ -22,7 +22,7 @@ const PANE = {
 } as const
 
 function engine(on: On, percent = 1) {
-  on('command.register', () => ({ value: { command: 'agent-radar' } }))
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: percent * 10000, percent }, rateLimits: [] } }))
@@ -154,9 +154,11 @@ test('the same failing call three times is a loop; a long call in flight is slow
   const tags = (await ui.findAll({ type: 'Text', text: /^ [A-Z]+  / })).map(x => x.text.trim().split(/\s{2,}/)[0])
   expect(tags).toEqual(['ERROR', 'FAILED', 'SLOW', 'LOOP'])
   expect(await ui.find({ type: 'Text', text: /failed 3× in a row: Bash npm test/ })).toBeTruthy()
-  // x puts them away.
+  // x puts the notes away first; what needs the person stays until a second x.
   await ui.press({ key: 'attention:dismiss' })
-  expect(await ui.find({ type: 'Text', text: /LOOP/ })).toBe(undefined)
+  const left = (await ui.findAll({ type: 'Text', text: /^ [A-Z]+  / })).map(x => x.text.trim().split(/\s{2,}/)[0])
+  expect(left).toEqual(['ERROR', 'FAILED'])
+  await ui.press({ key: 'attention:dismiss' })
   expect(await ui.find({ type: 'Text', text: /nothing needs you/ })).toBeTruthy()
   await clock.advance(200_000)
   await hang
