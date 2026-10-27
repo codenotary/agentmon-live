@@ -1,8 +1,8 @@
 import type { Active, Card, Insights, TurnTime } from '../types'
-import { decimal, kilo, shortPath } from './format'
+import { clockTime, decimal, kilo, shortPath } from './format'
 import { isOversized, sizeCfg } from './sizeguard'
 import { cfg } from './state'
-import { isHigh } from './topology'
+import { isHigh, limitName } from './topology'
 
 // Thresholds: what counts as long, big, often. Kept here so the rules read in one place.
 export const LONG_CALL_MS = 60_000
@@ -22,6 +22,12 @@ export const SINK_SHARE = 0.6
 export const SINK_MIN_MS = 60_000
 export const CONTEXT_JUMP = 50_000
 export const MCP_SHARE = 0.1
+// Plan-window pace is judged over readings 5 to 15 minutes apart.
+export const PACE_MIN_MS = 5 * 60_000
+export const PACE_MAX_MS = 15 * 60_000
+// The prompt cache lives an hour; past that a session this large pays to write it again.
+export const CACHE_TTL_MS = 3_600_000
+export const COLD_MIN_TOKENS = 150_000
 const KEEP_KEYS = 200
 const KEEP_DURATIONS = 20
 
@@ -155,13 +161,15 @@ export type FocusInput = {
   agents: readonly Card[]
   percent?: number
   window: number
+  // The main context's size now, when known.
+  tokens?: number
   now: number
   // What past sessions say (learn.ts); a context plan from it replaces the plain context warning.
   learned?: readonly Insight[]
 }
 
 // Everything worth a look, most important first. Pure: the pane draws it, the tests read it.
-export function focusList({ ins, doing, agents, percent, window, now, learned = [] }: FocusInput): Insight[] {
+export function focusList({ ins, doing, agents, percent, window, tokens, now, learned = [] }: FocusInput): Insight[] {
   const t = cfg.t.ins
   const out: Insight[] = [...learned]
   const top = <V>(r: Record<string, V>, by: (v: V) => number) => Object.entries(r).sort((a, b) => by(b[1]) - by(a[1]))[0]
@@ -272,5 +280,43 @@ export function focusList({ ins, doing, agents, percent, window, now, learned = 
     out.push({ key: 'mcp', score: 25, tag: t.tag.mcp, color: 'blue', text: t.mcp(kilo(ins.mcpTokens), Math.round((ins.mcpTokens / window) * 100)) })
   }
 
+  // A plan window filling faster than it resets.
+  for (const [kind, list] of Object.entries(ins.limits)) {
+    const last = list.at(-1)
+    const base = last && list.find(r => last.at - r.at <= PACE_MAX_MS)
+    if (!last?.resetsAt || !base || last.pct >= 100 || last.at - base.at < PACE_MIN_MS || now - last.at > PACE_MAX_MS) continue
+    const perMs = (last.pct - base.pct) / (last.at - base.at)
+    const fullMs = perMs > 0 ? (100 - last.pct) / perMs : Infinity
+    if (fullMs >= last.resetsAt - now) continue
+    const win = limitName(kind)
+    out.push({
+      key: `pace:${kind}:${Math.round(last.pct)}`,
+      score: 55,
+      tag: t.tag.pace,
+      color: 'yellow',
+      text: t.pace(win, Math.round(last.pct), Math.round(last.pct - base.pct), Math.round((last.at - base.at) / 60_000), dur(fullMs), dur(last.resetsAt - now)),
+      prompt: t.promptPace(win, dur(fullMs)),
+    })
+  }
+
+  // A large session idle past the prompt cache's life: the next prompt writes it all again.
+  const size = tokens ?? ins.ctx.at(-1) ?? ins.lastTokens ?? 0
+  if (!ins.turn && ins.lastActive !== undefined && now - ins.lastActive >= CACHE_TTL_MS && size >= COLD_MIN_TOKENS) {
+    out.push({ key: `cold:${ins.lastActive}`, score: 50, tag: t.tag.cold, color: 'yellow', text: t.cold(dur(now - ins.lastActive), kilo(size)) })
+  }
+
+  // Peak hours count more toward a plan's weekly limit; only plans report a `seven_day` window.
+  const peak = ins.limits.seven_day ? peakEnd(now) : undefined
+  if (peak) out.push({ key: `peak:${new Date(now).toDateString()}`, score: 20, tag: t.tag.peak, color: 'blue', text: t.peak(clockTime(peak)) })
+
   return out.sort((a, b) => b.score - a.score)
+}
+
+// Weekdays 05:00 to 11:00 Pacific time; the end of that stretch when `now` is inside it.
+const PACIFIC = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' })
+export function peakEnd(now: number): number | undefined {
+  const part = (type: string) => PACIFIC.formatToParts(now).find(p => p.type === type)?.value ?? ''
+  const minute = Number(part('hour')) * 60 + Number(part('minute'))
+  if (part('weekday') === 'Sat' || part('weekday') === 'Sun' || minute < 5 * 60 || minute >= 11 * 60) return undefined
+  return now - (now % 60_000) + (11 * 60 - minute) * 60_000
 }

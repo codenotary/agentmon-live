@@ -23,6 +23,7 @@ export const EMPTY_INSIGHTS: Insights = {
   turnAreas: {},
   modelSwitches: 0,
   sizes: {},
+  limits: {},
 }
 
 // State an older version stored lacks fields this one reads; fill them in.

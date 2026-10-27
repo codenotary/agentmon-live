@@ -15,10 +15,11 @@ const MAX_PAIRS = 12
 const base = (p: string) => p.slice(p.lastIndexOf('/') + 1)
 
 // Backticked absolute or home paths a file names, home expanded; globs and placeholders left out.
+// A lone `/src` or `/docs` is a project folder convention, not an absolute path, so `/` needs two segments.
 export function refsOf(files: readonly MemFile[], home: string): Map<string, string> {
   const out = new Map<string, string>()
   for (const f of files) {
-    for (const m of f.text.matchAll(/`((?:~\/|\/)[^\s`]+)`/g)) {
+    for (const m of f.text.matchAll(/`(~\/[^\s`]+|\/[^\s`/]+\/[^\s`]+)`/g)) {
       const ref = m[1]!
       if (/[*<>${}]/.test(ref) || out.size >= MAX_REFS) continue
       out.set(ref.startsWith('~/') ? `${home}${ref.slice(1)}` : ref, f.path)

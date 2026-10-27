@@ -134,7 +134,7 @@ export const de: Strings = {
     reread: 'mehrfach gelesen',
     editedOften: 'bearbeitet',
     modelSwitches: n => `${n}× Modell oder Aufwand gewechselt`,
-    tag: { slow: 'langsam', silent: 'still', loop: 'Schleife', context: 'Kontext', big: 'groß', reread: 'neu gelesen', churn: 'Umbau', wait: 'wartet', cache: 'Cache', switches: 'Wechsel', sink: 'Zeit', mcp: 'MCP', size: 'Größe' },
+    tag: { slow: 'langsam', silent: 'still', loop: 'Schleife', context: 'Kontext', big: 'groß', reread: 'neu gelesen', churn: 'Umbau', wait: 'wartet', cache: 'Cache', switches: 'Wechsel', sink: 'Zeit', mcp: 'MCP', size: 'Größe', pace: 'Tempo', cold: 'kalt', peak: 'Spitze' },
     slow: (tool, what, d, usual) => `${tool} ${what} läuft seit ${d}${usual ? ` · sonst ${usual}` : ''}`,
     silent: (type, d, tools) => `${type} seit ${d} still · bisher ${tools} Werkzeuge`,
     loop: (n, what) => `${n}× in Folge fehlgeschlagen: ${what}`,
@@ -157,6 +157,10 @@ export const de: Strings = {
     promptSize: (path, kb, limit, tokensK) =>
       `${path} hat ${kb} KB, mehr als die Richtgröße von ${limit} Bytes (etwa ${tokensK}k Tokens; eine Größen-Faustregel, keine Tokenzählung).\n\nWenn die Datei getrennte Aufgaben enthält, teile sie entlang dieser Aufgaben und halte die Schnittstellen zwischen den Teilen klar. Teile sie nicht willkürlich und füge keine Abstraktionen hinzu, nur um unter die Zahl zu kommen. Wenn sie eine zusammenhängende Einheit ist, sag das und lass sie so.`,
     promptChurn: (file, n) => `${file} wurde ${n}× bearbeitet. Tritt einen Schritt zurück: Was ist das Ziel für diese Datei, und führt der Ansatz dorthin?`,
+    pace: (win, pct, rise, mins, fullIn, resetIn) => `${win}-Fenster ${pct}% · +${rise} in ${mins} min · voll in ~${fullIn}, Reset in ${resetIn}`,
+    cold: (idle, k) => `Prompt-Cache abgelaufen · ${idle} untätig · der nächste Prompt schreibt ≈${k} Tokens neu · erst /compact`,
+    peak: until => `Spitzenzeit bis ${until} · Nutzung zählt jetzt stärker aufs Wochenlimit`,
+    promptPace: (win, fullIn) => `In diesem Tempo ist das ${win}-Nutzungsfenster in etwa ${fullIn} aufgebraucht, vor dem Reset. Schließe den laufenden Schritt ab, starte keine neuen Subagents und sage, was erledigt ist und was fehlt.`,
     promptWait: list => `Diese Aufrufe warteten am häufigsten auf meine Freigabe: ${list}. Schlage Erlaubnisregeln für die unbedenklichen vor; ändere noch nichts.`,
   },
 }
@@ -290,7 +294,7 @@ export const fr: Strings = {
     reread: 'relu',
     editedOften: 'modifié',
     modelSwitches: n => `modèle ou effort changé ${n}×`,
-    tag: { slow: 'lent', silent: 'muet', loop: 'boucle', context: 'contexte', big: 'gros', reread: 'relu', churn: 'retouches', wait: 'attente', cache: 'cache', switches: 'dispersion', sink: 'temps', mcp: 'mcp', size: 'taille' },
+    tag: { slow: 'lent', silent: 'muet', loop: 'boucle', context: 'contexte', big: 'gros', reread: 'relu', churn: 'retouches', wait: 'attente', cache: 'cache', switches: 'dispersion', sink: 'temps', mcp: 'mcp', size: 'taille', pace: 'rythme', cold: 'froid', peak: 'pointe' },
     slow: (tool, what, d, usual) => `${tool} ${what} tourne depuis ${d}${usual ? ` · d'habitude ${usual}` : ''}`,
     silent: (type, d, tools) => `${type} muet depuis ${d} · ${tools} outils jusqu'ici`,
     loop: (n, what) => `échec ${n}× de suite : ${what}`,
@@ -313,6 +317,10 @@ export const fr: Strings = {
     promptSize: (path, kb, limit, tokensK) =>
       `${path} fait ${kb} Ko, au-delà du repère de ${limit} octets (environ ${tokensK}k tokens ; une heuristique de taille, pas un compte de tokens).\n\nS'il regroupe des responsabilités distinctes, découpe-le selon elles et garde des interfaces claires entre les parties. Ne le découpe pas arbitrairement et n'ajoute pas d'abstractions juste pour passer sous le seuil. S'il forme un tout cohérent, dis-le et laisse-le tel quel.`,
     promptChurn: (file, n) => `${file} a été modifié ${n} fois. Prends du recul : quel est le but pour ce fichier, et l'approche converge-t-elle ?`,
+    pace: (win, pct, rise, mins, fullIn, resetIn) => `fenêtre ${win} ${pct}% · +${rise} en ${mins} min · pleine dans ~${fullIn}, réinitialisée dans ${resetIn}`,
+    cold: (idle, k) => `cache du prompt expiré · inactif ${idle} · le prochain prompt réécrit ≈${k} tokens · /compact d'abord`,
+    peak: until => `heures de pointe jusqu'à ${until} · l'usage compte davantage dans la limite hebdomadaire`,
+    promptPace: (win, fullIn) => `À ce rythme, la fenêtre d'usage ${win} sera épuisée dans environ ${fullIn}, avant sa réinitialisation. Termine l'étape en cours, ne lance aucun nouveau sous-agent et dis ce qui est fait et ce qui reste.`,
     promptWait: list => `Ces appels ont le plus souvent attendu mon approbation : ${list}. Propose des règles d'autorisation pour les plus sûrs ; ne change rien pour l'instant.`,
   },
 }
@@ -446,7 +454,7 @@ export const es: Strings = {
     reread: 'releído',
     editedOften: 'editado',
     modelSwitches: n => `modelo o esfuerzo cambiado ${n}×`,
-    tag: { slow: 'lento', silent: 'callado', loop: 'bucle', context: 'contexto', big: 'grande', reread: 'releído', churn: 'retoques', wait: 'espera', cache: 'caché', switches: 'saltos', sink: 'tiempo', mcp: 'mcp', size: 'tamaño' },
+    tag: { slow: 'lento', silent: 'callado', loop: 'bucle', context: 'contexto', big: 'grande', reread: 'releído', churn: 'retoques', wait: 'espera', cache: 'caché', switches: 'saltos', sink: 'tiempo', mcp: 'mcp', size: 'tamaño', pace: 'ritmo', cold: 'frío', peak: 'pico' },
     slow: (tool, what, d, usual) => `${tool} ${what} lleva ${d}${usual ? ` · normalmente ${usual}` : ''}`,
     silent: (type, d, tools) => `${type} callado desde hace ${d} · ${tools} herramientas hasta ahora`,
     loop: (n, what) => `falló ${n}× seguidas: ${what}`,
@@ -469,6 +477,10 @@ export const es: Strings = {
     promptSize: (path, kb, limit, tokensK) =>
       `${path} tiene ${kb} KB, más que la guía de ${limit} bytes (unos ${tokensK}k tokens; una heurística de tamaño, no un recuento de tokens).\n\nSi reúne responsabilidades distintas, divídelo según ellas y mantén interfaces claras entre las partes. No lo dividas de forma arbitraria ni añadas abstracciones solo para bajar del número. Si es una unidad coherente, dilo y déjalo como está.`,
     promptChurn: (file, n) => `${file} se ha editado ${n} veces. Da un paso atrás: ¿cuál es el objetivo para este archivo y converge el enfoque?`,
+    pace: (win, pct, rise, mins, fullIn, resetIn) => `ventana ${win} ${pct}% · +${rise} en ${mins} min · llena en ~${fullIn}, se reinicia en ${resetIn}`,
+    cold: (idle, k) => `caché del prompt caducada · inactivo ${idle} · el próximo prompt reescribe ≈${k} tokens · primero /compact`,
+    peak: until => `horas pico hasta ${until} · el uso cuenta más para el límite semanal`,
+    promptPace: (win, fullIn) => `A este ritmo la ventana de uso ${win} se agota en unos ${fullIn}, antes de reiniciarse. Termina el paso en curso, no inicies nuevos subagentes y di qué está hecho y qué falta.`,
     promptWait: list => `Estas llamadas esperaron mi aprobación más a menudo: ${list}. Propón reglas de permiso para las seguras; no cambies nada todavía.`,
   },
 }
@@ -601,7 +613,7 @@ export const zh: Strings = {
     reread: '重复读取',
     editedOften: '编辑',
     modelSwitches: n => `模型或强度切换 ${n} 次`,
-    tag: { slow: '慢', silent: '静默', loop: '循环', context: '上下文', big: '大', reread: '重读', churn: '反复', wait: '等待', cache: '缓存', switches: '切换', sink: '耗时', mcp: 'MCP', size: '大小' },
+    tag: { slow: '慢', silent: '静默', loop: '循环', context: '上下文', big: '大', reread: '重读', churn: '反复', wait: '等待', cache: '缓存', switches: '切换', sink: '耗时', mcp: 'MCP', size: '大小', pace: '速度', cold: '冷缓存', peak: '高峰' },
     slow: (tool, what, d, usual) => `${tool} ${what} 已运行 ${d}${usual ? ` · 通常 ${usual}` : ''}`,
     silent: (type, d, tools) => `${type} 已静默 ${d} · 已用 ${tools} 个工具`,
     loop: (n, what) => `连续失败 ${n} 次：${what}`,
@@ -623,6 +635,10 @@ export const zh: Strings = {
     promptSize: (path, kb, limit, tokensK) =>
       `${path} 为 ${kb} KB，超过 ${limit} 字节的参考值（约 ${tokensK}k tokens；这是大小经验值，不是精确的 token 数）。\n\n如果它包含彼此独立的职责，就按这些职责拆分，并保持各部分之间接口清晰。不要为了低于这个数字而随意拆分或增加不必要的抽象。如果它是一个内聚的整体，请说明并保持原样。`,
     promptChurn: (file, n) => `${file} 已被编辑 ${n} 次。退一步想：这个文件的目标是什么，当前做法是否在收敛？`,
+    pace: (win, pct, rise, mins, fullIn, resetIn) => `${win} 窗口 ${pct}% · ${mins} 分钟内 +${rise} · 约 ${fullIn} 后用尽，${resetIn} 后重置`,
+    cold: (idle, k) => `提示缓存已过期 · 空闲 ${idle} · 下一个提示将重写 ≈${k} tokens · 先 /compact`,
+    peak: until => `高峰时段至 ${until} · 现在的用量在每周限额中占比更高`,
+    promptPace: (win, fullIn) => `按此速度，${win} 用量窗口约 ${fullIn} 后用尽，早于重置。完成当前步骤，不要启动新的子代理，并说明已完成和剩余的内容。`,
     promptWait: list => `这些调用最常等待我的批准：${list}。为安全的调用建议允许规则；暂时不要修改任何内容。`,
   },
 }
@@ -756,7 +772,7 @@ export const ja: Strings = {
     reread: '再読込',
     editedOften: '編集',
     modelSwitches: n => `モデルまたは effort の変更 ${n} 回`,
-    tag: { slow: '遅延', silent: '無言', loop: 'ループ', context: '文脈', big: '大', reread: '再読', churn: '手戻り', wait: '待機', cache: 'キャッシュ', switches: '切替', sink: '時間', mcp: 'MCP', size: 'サイズ' },
+    tag: { slow: '遅延', silent: '無言', loop: 'ループ', context: '文脈', big: '大', reread: '再読', churn: '手戻り', wait: '待機', cache: 'キャッシュ', switches: '切替', sink: '時間', mcp: 'MCP', size: 'サイズ', pace: 'ペース', cold: '冷キャッシュ', peak: 'ピーク' },
     slow: (tool, what, d, usual) => `${tool} ${what} 実行中 ${d}${usual ? ` · 通常 ${usual}` : ''}`,
     silent: (type, d, tools) => `${type} が ${d} 無言 · これまで ${tools} ツール`,
     loop: (n, what) => `${n} 回連続で失敗：${what}`,
@@ -778,6 +794,10 @@ export const ja: Strings = {
     promptSize: (path, kb, limit, tokensK) =>
       `${path} は ${kb} KB で、目安の ${limit} バイト（約 ${tokensK}k トークン。サイズの目安で、正確なトークン数ではない）を超えている。\n\n別々の責務を含むなら、その責務に沿って分割し、各部分の間のインターフェースを明確に保つこと。数字を下回るためだけに恣意的に分割したり、不要な抽象化を加えたりしないこと。まとまった一つの単位なら、そう述べてそのままにすること。`,
     promptChurn: (file, n) => `${file} が ${n} 回編集された。一歩引いて：このファイルの目的は何で、やり方は収束しているか？`,
+    pace: (win, pct, rise, mins, fullIn, resetIn) => `${win} 枠 ${pct}% · ${mins} 分で +${rise} · 約 ${fullIn} で上限、リセットまで ${resetIn}`,
+    cold: (idle, k) => `プロンプトキャッシュ期限切れ · ${idle} 放置 · 次のプロンプトで ≈${k} トークンを再書き込み · 先に /compact`,
+    peak: until => `${until} までピーク時間帯 · 今の利用は週間上限に多く数えられる`,
+    promptPace: (win, fullIn) => `このペースだと ${win} の利用枠はリセット前の約 ${fullIn} で尽きる。進行中のステップを終え、新しいサブエージェントは起動せず、完了したことと残りを伝えて。`,
     promptWait: list => `承認待ちが多かった呼び出し：${list}。安全なものの許可ルールを提案して。まだ何も変更しないで。`,
   },
 }

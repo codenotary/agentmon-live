@@ -133,7 +133,7 @@ const en = {
     reread: 're-read',
     editedOften: 'edited',
     modelSwitches: (n: number) => `${n}× model or effort changed`,
-    tag: { slow: 'slow', silent: 'quiet', loop: 'loop', context: 'context', big: 'big', reread: 're-read', churn: 'churn', wait: 'waiting', cache: 'cache', switches: 'switching', sink: 'time', mcp: 'mcp', size: 'size' },
+    tag: { slow: 'slow', silent: 'quiet', loop: 'loop', context: 'context', big: 'big', reread: 're-read', churn: 'churn', wait: 'waiting', cache: 'cache', switches: 'switching', sink: 'time', mcp: 'mcp', size: 'size', pace: 'pace', cold: 'cold', peak: 'peak' },
     slow: (tool: string, what: string, d: string, usual?: string) => `${tool} ${what} running ${d}${usual ? ` · usually ${usual}` : ''}`,
     silent: (type: string, d: string, tools: number) => `${type} quiet for ${d} · ${tools} tools so far`,
     loop: (n: number, what: string) => `failed ${n}× in a row: ${what}`,
@@ -156,6 +156,10 @@ const en = {
     promptSize: (path: string, kb: string, limit: number, tokensK: number) =>
       `${path} is ${kb} KB, past the ${limit}-byte guide (about ${tokensK}k tokens; a size heuristic, not a token count).\n\nIf it holds distinct responsibilities, split it along them and keep clear interfaces between the parts. Do not split it arbitrarily or add abstractions just to get under the number. If it is one cohesive unit, say so and leave it as it is.`,
     promptChurn: (file: string, n: number) => `${file} has been edited ${n} times. Step back: what is the goal for this file, and is the approach converging?`,
+    pace: (win: string, pct: number, rise: number, mins: number, fullIn: string, resetIn: string) => `${win} window ${pct}% · +${rise} in ${mins} min · full in ~${fullIn}, resets in ${resetIn}`,
+    cold: (idle: string, k: string) => `prompt cache expired · idle ${idle} · the next prompt re-writes ≈${k} tokens · /compact first`,
+    peak: (until: string) => `peak hours until ${until} · usage now counts more toward the weekly limit`,
+    promptPace: (win: string, fullIn: string) => `At this pace the ${win} usage window runs out in about ${fullIn}, before it resets. Finish the step in progress, start no new subagents, and say what is done and what is left.`,
     promptWait: (list: string) => `These calls waited for my approval most often: ${list}. Suggest permission allow rules for the safe ones; change nothing yet.`,
   },
 }

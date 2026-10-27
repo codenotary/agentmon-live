@@ -102,6 +102,12 @@ export type Insights = {
   memoryTokens?: number
   // Watched source files this session: the size before the first edit (absent for a new file) and now.
   sizes: Record<string, { first?: number; now: number }>
+  // Plan-window readings per kind (`five_hour`, ...), oldest first, for the pace; a new window starts a fresh list.
+  limits: Record<string, { at: number; pct: number; resetsAt?: number }[]>
+  // When the main loop last finished a turn, kept across resumes for the prompt cache's expiry.
+  lastActive?: number
+  // The context size kept with it: a resumed process knows none until its first response.
+  lastTokens?: number
 }
 
 export type LogLine = { at: number; who: string; what: string; result: string }

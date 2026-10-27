@@ -1,7 +1,7 @@
 import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { areaOf, cells, dur, focusList, liveBuckets, sparkline } from '../hooks/insights'
+import { areaOf, cells, dur, focusList, liveBuckets, peakEnd, sparkline } from '../hooks/insights'
 import { EMPTY_INSIGHTS, shapeInsights } from '../hooks/state'
 
 type On = Parameters<TestBody>[1]
@@ -177,6 +177,64 @@ test('focus moves between project areas are counted per turn', async ($, on) => 
   expect(await ui.find({ type: 'Text', text: /^4 switches this turn · hooks 3 · (tests|types) 1/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /re-read hooks\/a\.ts 2×/ })).toBeTruthy()
   await ui.unmount()
+})
+
+test('a plan window filling faster than it resets is worth a look', async () => {
+  const at = 3 * 3_600_000
+  const reading = (min: number, pct: number) => ({ at: at - min * 60_000, pct, resetsAt: at + 2 * 3_600_000 })
+  const pace = (limits: typeof EMPTY_INSIGHTS.limits) => focusList({ ins: { ...EMPTY_INSIGHTS, limits }, doing: [], agents: [], window: 1000000, now: at }).filter(x => x.tag === 'pace')
+  const fast = pace({ five_hour: [reading(10, 44), reading(0, 62)] })
+  expect(fast.map(x => x.text)).toEqual(['5h window 62% · +18 in 10 min · full in ~21m06s, resets in 2h00m'])
+  expect(fast[0]?.prompt).toMatch(/no new subagents/)
+  expect(pace({ five_hour: [reading(10, 44), reading(0, 46)] })).toEqual([])
+  // Readings closer than five minutes say nothing yet.
+  expect(pace({ five_hour: [reading(2, 44), reading(0, 62)] })).toEqual([])
+})
+
+test('plan readings build the pace; a new window starts a fresh list', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const measure = async (pct: number, resetsAt: string) => {
+    await $.session.measure({ context: { window: 1000000 }, rateLimits: [{ kind: 'five_hour', percentUsed: pct, resetsAt }], changed: ['rateLimits'] })
+    await clock.settle()
+  }
+  const paced = async () => {
+    const ui = await $.ui.mount(PANE)
+    const found = await ui.find({ type: 'Text', text: /5h window/ })
+    await ui.unmount()
+    return Boolean(found)
+  }
+  await measure(10, '2099-01-01T00:00:00Z')
+  await clock.advance(10 * 60_000)
+  // 10% to 62% in ten minutes would be a pace, but the reset moved: a new window, nothing to compare.
+  await measure(62, '2099-01-02T00:00:00Z')
+  expect(await paced()).toBe(false)
+  await clock.advance(10 * 60_000)
+  await measure(80, '2099-01-02T00:00:00Z')
+  expect(await paced()).toBe(true)
+})
+
+test('a large session idle past the cache life warns before the next prompt', async () => {
+  const now = 10 * 3_600_000
+  const cold = (idleMin: number, tokens: number) =>
+    focusList({ ins: { ...EMPTY_INSIGHTS, lastActive: now - idleMin * 60_000 }, doing: [], agents: [], window: 1000000, tokens, now }).filter(x => x.tag === 'cold')
+  expect(cold(70, 180_000).map(x => x.text)).toEqual(['prompt cache expired · idle 1h10m · the next prompt re-writes ≈180.0k tokens · /compact first'])
+  expect(cold(40, 180_000)).toEqual([])
+  expect(cold(70, 120_000)).toEqual([])
+})
+
+test('peak hours are weekdays 05:00 to 11:00 Pacific, and show only with plan windows', async () => {
+  expect(peakEnd(Date.parse('2026-10-27T15:00:00Z'))).toBe(Date.parse('2026-10-27T18:00:00Z'))
+  expect(peakEnd(Date.parse('2026-11-03T13:30:00Z'))).toBe(Date.parse('2026-11-03T19:00:00Z'))
+  expect(peakEnd(Date.parse('2026-10-27T19:00:00Z'))).toBeUndefined()
+  expect(peakEnd(Date.parse('2026-10-31T15:00:00Z'))).toBeUndefined()
+  const now = Date.parse('2026-10-27T15:00:00Z')
+  const peak = (limits: typeof EMPTY_INSIGHTS.limits) => focusList({ ins: { ...EMPTY_INSIGHTS, limits }, doing: [], agents: [], window: 1000000, now }).filter(x => x.tag === 'peak')
+  expect(peak({})).toEqual([])
+  expect(peak({ seven_day: [{ at: now, pct: 30 }] }).map(x => x.text)).toEqual([expect.stringMatching(/^peak hours until .+ · usage now counts more toward the weekly limit$/)])
 })
 
 test('the german pane names the insights', { options: { language: 'de' } }, async ($, on) => {

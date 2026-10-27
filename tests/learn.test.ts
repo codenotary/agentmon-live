@@ -125,7 +125,7 @@ test('memory rules: duplicates, index, stale paths, copied lines', async () => {
   const shared = ['- Always run the tests before you commit anything here', '- Prefer PASETO tokens over JWT for every new service', '- Store docs under the docs folder, never the root']
   const files = [
     { path: `${dir}/MEMORY.md`, text: '- [A](a.md) — one\n- [Gone](gone.md) — two', inDir: true },
-    { path: `${dir}/a.md`, text: '---\nname: auth\n---\nUses `/srv/old/config.yml` and `~/notes/x.md` and `/tmp/*.log`', inDir: true },
+    { path: `${dir}/a.md`, text: '---\nname: auth\n---\nUses `/srv/old/config.yml` and `~/notes/x.md` and `/tmp/*.log`\n- `/src` - Source code\n- `/docs/` - Docs', inDir: true },
     { path: `${dir}/b.md`, text: '---\nname: auth\n---\nbody', inDir: true },
     { path: '/h/CLAUDE.md', text: shared.join('\n'), inDir: false },
     { path: '/p/CLAUDE.md', text: `${shared.join('\n')}\n${'y'.repeat(41_000)}`, inDir: false },

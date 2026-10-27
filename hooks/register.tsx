@@ -7,7 +7,7 @@ import { isMemoryPath, learnCommand, memoryCommand, noteCall, noteCompact, queue
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
-import { areaOf, bump, estTokens, pathOf, pushDuration } from './insights'
+import { areaOf, bump, CACHE_TTL_MS, estTokens, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, watched } from './sizeguard'
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
@@ -209,19 +209,39 @@ async function flushTurn($: EngineInterface) {
   await update($, insights, v => ({ ...v, turn: turnTime }))
 }
 
+// A hook that fails lets the event go ahead: radar only watches, so it never holds up the session.
+function logFailure($: EngineInterface, event: string, error: { kind: string; message?: string }) {
+  $.ui.log(`agent-radar: the ${event} hook failed, so the event went ahead (${error.kind}: ${error.message ?? 'unknown'})`, { to: 'debug' })
+}
+function failOpen<T>($: EngineInterface, event: string, error: { kind: string; message?: string }, proceed: () => T): T {
+  logFailure($, event, error)
+  return proceed()
+}
+
+// Redraw when the prompt cache of a session last active at `at` expires: an idle pane draws nothing on its own.
+async function watchCache($: EngineInterface, at: number) {
+  $.clock.after(Math.max(0, at + CACHE_TTL_MS - (await $.clock.now())), async () => $.ui.invalidate('ui.render'))
+}
+
 // The main turn ended: its time joins the session's, and the window is broken down once, locally.
 async function finishTurn($: EngineInterface, durationMs: number) {
   if (!clk.inTurn) return
-  book(clk, await $.clock.now())
+  const endedAt = await $.clock.now()
+  book(clk, endedAt)
   const done: TurnTime = { ...snapshot(clk), mode: undefined, since: undefined }
   // The engine's figure for the turn's length, when it has one, over the clock's.
   done.wallMs = Math.max(done.wallMs, durationMs || 0)
   clk.inTurn = false
-  await update($, insights, v => {
+  const ended = await update($, insights, v => {
     const session = { ...v.session }
     for (const [k, ms] of Object.entries(done.buckets)) session[k] = (session[k] ?? 0) + ms
-    return { ...v, turn: undefined, last: done, session, sessionWall: v.sessionWall + done.wallMs, turns: v.turns + 1 }
+    return { ...v, turn: undefined, last: done, session, sessionWall: v.sessionWall + done.wallMs, turns: v.turns + 1, lastActive: endedAt }
   })
+  // Kept in the store too: a resumed session starts a new process, and the transcript's time is rewritten on resume.
+  // shortcut: one key per session, never pruned; prune by age if the store grows.
+  const tokens = ended.ctx.at(-1)
+  void $.session.id().then(id => $.store.set(`active:${id}`, { at: endedAt, tokens })).catch(() => undefined)
+  await watchCache($, endedAt)
   $.clock.after(0, async () => {
     const u = await $.session.usage({ breakdown: 'summary' }).catch(() => undefined)
     const b = u?.context.breakdown
@@ -323,10 +343,32 @@ export const register: Register = (on, options) => {
       await refreshStatus($)
       // Learning is extra: an engine without a store or session id leaves the rest working.
       await startLearning($, cwd).catch(() => undefined)
+      const kept = (await $.session.id().then(id => $.store.get(`active:${id}`)).catch(() => undefined)) as { at?: unknown; tokens?: unknown } | undefined
+      if (typeof kept?.at !== 'number') return
+      const at = kept.at
+      const v = await update($, insights, v => (v.lastActive === undefined ? { ...v, lastActive: at, lastTokens: typeof kept.tokens === 'number' ? kept.tokens : undefined } : v))
+      await watchCache($, v.lastActive ?? at)
     })
 
     return next(e)
-  })
+  }).catch(($, e, next) => failOpen($, 'session.start', next.error, () => next(e)))
+
+  // Plan-window readings, kept for their pace; a new `resetsAt` is a new window.
+  on('session.measure', async ($, e, next) => {
+    if (e.changed.includes('rateLimits')) {
+      const at = await $.clock.now()
+      await update($, insights, v => {
+        const limits = { ...v.limits }
+        for (const r of e.rateLimits) {
+          const resetsAt = r.resetsAt ? Date.parse(r.resetsAt) : undefined
+          const kept = (limits[r.kind] ?? []).filter(x => x.resetsAt === resetsAt && at - x.at <= 30 * 60_000)
+          limits[r.kind] = [...kept, { at, pct: r.percentUsed, resetsAt }].slice(-20)
+        }
+        return { ...v, limits }
+      })
+    }
+    return next(e)
+  }).catch(($, e, next) => failOpen($, 'session.measure', next.error, () => next(e)))
 
   on('command.run', { command: 'agent-radar' }, async ($, e) => {
     const arg = e.args.trim()
@@ -387,7 +429,7 @@ export const register: Register = (on, options) => {
     }
     await $.ui.open({ id: PANE, title: 'Agent Radar' })
     return { text: t.opened }
-  })
+  }).catch(($, e, next) => ({ text: `agent-radar: the command failed (${next.error.message ?? next.error.kind})` }))
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
@@ -415,7 +457,7 @@ export const register: Register = (on, options) => {
       await update($, agents, list => list.map(a => (a.id === id && !isLive(a) ? { ...a, status: 'running' as const, startedAt, tests: undefined, testsWhy: undefined } : a)))
     }
     return next(e)
-  })
+  }).catch(($, e, next) => failOpen($, 'turn.start', next.error, () => next(e)))
 
   on('turn.step', async function* ($, e, next) {
     const key = e.agentId ?? 'main'
@@ -478,6 +520,9 @@ export const register: Register = (on, options) => {
       ...(u && !isMain ? { tokens: { ...v.tokens, agentsIn: v.tokens.agentsIn + total, agentsOut: v.tokens.agentsOut + u.output_tokens } } : {}),
     }))
     return r
+  }).catch(async function* ($, e, next) {
+    logFailure($, 'turn.step', next.error)
+    return yield* next(e)
   })
 
   on('tool.call', async ($, e, next) => {
@@ -631,7 +676,7 @@ export const register: Register = (on, options) => {
       if (isMain && s && s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, () => material($, turn), `${e.tool} ${brief(e)}`.trim())
     })
     return r
-  })
+  }).catch(($, e, next) => failOpen($, 'tool.call', next.error, () => next(e)))
 
   // An `ask` verdict means the call now waits for the person; `tool.call` above already listed it as active.
   on('tool.check', async ($, e, next) => {
@@ -654,7 +699,7 @@ export const register: Register = (on, options) => {
       await update($, insights, s => ({ ...s, turn: turnTime ?? s.turn, asked: bump(s.asked, askKey) }))
     }
     return v
-  })
+  }).catch(($, e, next) => failOpen($, 'tool.check', next.error, () => next(e)))
 
   on('session.compact', async ($, e, next) => {
     // Where the context stood when it compacted; past sessions' figures set the next plan's threshold.
@@ -666,7 +711,7 @@ export const register: Register = (on, options) => {
       await addLog($, { who: t.mainSession, what: t.compacted(e.trigger), result: '' })
     }
     return r
-  })
+  }).catch(($, e, next) => failOpen($, 'session.compact', next.error, () => next(e)))
 
   // A skill's text is loaded, by the Skill tool or by a slash command the person typed.
   on('skill.prompt', async ($, e, next) => {
@@ -681,7 +726,7 @@ export const register: Register = (on, options) => {
       })
     })
     return next(e)
-  })
+  }).catch(($, e, next) => failOpen($, 'skill.prompt', next.error, () => next(e)))
 
   on('agent.spawn', async ($, e, next) => {
     const r = await next(e)
@@ -707,7 +752,7 @@ export const register: Register = (on, options) => {
     await addLog($, { who: e.subagentType, what: card.task, result: t.started })
     await refreshStatus($)
     return r
-  })
+  }).catch(($, e, next) => failOpen($, 'agent.spawn', next.error, () => next(e)))
 
   on('turn.complete', async ($, e, next) => {
     if (e.agentId !== undefined) {
@@ -756,7 +801,7 @@ export const register: Register = (on, options) => {
       advise($, 'done', t.askDone, async () => `${await material($, turn)}\n\n${t.finalAnswer}:\n${answer.slice(-4000)}`, workRef())
     }
     return next(e)
-  })
+  }).catch(($, e, next) => failOpen($, 'turn.complete', next.error, () => next(e)))
 
   // The pane's "check now" button; taken here, where this turn's material is at hand.
   on('ui.press', { plugin: 'agent-radar', element: 'advisor:check' }, async ($, e) => {
