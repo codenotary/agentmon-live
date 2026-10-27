@@ -70,8 +70,8 @@
     "email": "dennis@dzlabs.ch",
     "url": "https://github.com/vchaindz"
   },
-  "homepage": "https://github.com/vchaindz/agent-radar",
-  "repository": "https://github.com/vchaindz/agent-radar",
+  "homepage": "https://github.com/codenotary/agentmon-live",
+  "repository": "https://github.com/codenotary/agentmon-live",
   "keywords": [
     "pane",
     "subagents",

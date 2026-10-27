@@ -30,24 +30,24 @@ Requires Claude Code 2.1.308 or later.
 At the prompt of a Claude Code terminal session:
 
 ```
-/plugin install agentmon-live --marketplace vchaindz/agent-radar
+/plugin install agentmon-live --marketplace codenotary/agentmon-live
 ```
 
 Answer `y` to add the marketplace, then pick a scope. From a shell:
 
 ```sh
-claude plugin install agentmon-live --marketplace vchaindz/agent-radar
+claude plugin install agentmon-live --marketplace codenotary/agentmon-live
 ```
 
-In the desktop app: click + next to the prompt box, then Plugins, Add marketplace with `vchaindz/agent-radar`, then Add plugin.
+In the desktop app: click + next to the prompt box, then Plugins, Add marketplace with `codenotary/agentmon-live`, then Add plugin.
 
 ### Or let Claude set it up
 
 Paste this into a Claude Code session:
 
 ```
-Install the Claude Code plugin agentmon-live from the marketplace vchaindz/agent-radar
-(claude plugin install agentmon-live --marketplace vchaindz/agent-radar). Then ask me which
+Install the Claude Code plugin agentmon-live from the marketplace codenotary/agentmon-live
+(claude plugin install agentmon-live --marketplace codenotary/agentmon-live). Then ask me which
 language I want (en, de, fr, es, zh, ja) and which advisor mode (all, plan, off), and set
 those options for the plugin in my user settings. Tell me to restart Claude Code when done.
 ```
@@ -111,8 +111,8 @@ At the end of each turn the mod keeps a small record of the session, per project
 
 
 ```sh
-git clone https://github.com/vchaindz/agent-radar.git
-cd agent-radar
+git clone https://github.com/codenotary/agentmon-live.git
+cd agentmon-live
 claude --plugin-dir .
 ```
 
