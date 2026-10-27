@@ -105,6 +105,12 @@ cat >"$project/package.json" <<'EOF'
 EOF
 (cd "$project" && git init -q && git add -A && git -c user.name=radar -c user.email=radar@example.invalid -c commit.gpgsign=false commit -qm init)
 
+# `write <file> <text>` lines seed the project before the session starts (memory files load at start); `\n` is a newline.
+while IFS= read -r line; do
+  f=${line#write }; f=${f%% *}
+  printf '%b\n' "${line#write "$f" }" >"$project/$f"
+done < <(grep -E '^write ' "$scenario" || true)
+
 allowed=$(grep -E '^allow ' "$scenario" | cut -d' ' -f2- | tr '\n' ' ' || true)
 # Mod options: Fable stays off unless the scenario asks (`option advisorMode all`), so runs need no Fable calls.
 settings=$(python3 -I -c '
@@ -131,8 +137,9 @@ while IFS= read -r line || [[ -n $line ]]; do
   verb=${line%% *}
   rest=${line#* }
   case $verb in
-    allow | option) ;;
-    prompt | cmd) type_line "$rest" ;;
+    allow | option | write) ;;
+    # `{repo}` stands for this checkout, so a step can name its fixtures.
+    prompt | cmd) type_line "${rest//\{repo\}/$repo}" ;;
     keys) tmux send-keys -t "$session" $rest ;;
     sleep) sleep "$rest" ;;
     snap) snap "$rest" ;;

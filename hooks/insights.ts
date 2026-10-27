@@ -156,12 +156,14 @@ export type FocusInput = {
   percent?: number
   window: number
   now: number
+  // What past sessions say (learn.ts); a context plan from it replaces the plain context warning.
+  learned?: readonly Insight[]
 }
 
 // Everything worth a look, most important first. Pure: the pane draws it, the tests read it.
-export function focusList({ ins, doing, agents, percent, window, now }: FocusInput): Insight[] {
+export function focusList({ ins, doing, agents, percent, window, now, learned = [] }: FocusInput): Insight[] {
   const t = cfg.t.ins
-  const out: Insight[] = []
+  const out: Insight[] = [...learned]
   const top = <V>(r: Record<string, V>, by: (v: V) => number) => Object.entries(r).sort((a, b) => by(b[1]) - by(a[1]))[0]
 
   // A call running far past what it usually takes.
@@ -197,7 +199,7 @@ export function focusList({ ins, doing, agents, percent, window, now }: FocusInp
   }
 
   const biggest = [...ins.big].sort((a, b) => b.tokens - a.tokens)[0]
-  if (percent !== undefined && isHigh(percent)) {
+  if (percent !== undefined && isHigh(percent) && !learned.some(x => x.key.startsWith('ctxplan:'))) {
     out.push({
       key: `context:${Math.floor(percent / 5)}`,
       score: 85,

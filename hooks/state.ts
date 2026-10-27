@@ -1,6 +1,6 @@
 import type { AgentStatus } from 'claude-code'
 
-import type { Card, Insights, View } from '../types'
+import type { Card, Insights, Learned, View } from '../types'
 import { LANGUAGES } from './i18n'
 
 export const EMPTY_INSIGHTS: Insights = {
@@ -36,7 +36,7 @@ export const VIEWS: View[] = ['git', 'shell', 'mcp']
 const MAX_FINISHED = 12
 
 // Set from the options on each load.
-export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30 }
+export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true }
 
 // Each module declares the atoms it reads or writes itself, as the engine's scan needs; they share these first values.
 export const INIT = {
@@ -57,6 +57,7 @@ export const INIT = {
   skills: [],
   flow: [],
   insights: EMPTY_INSIGHTS,
+  learned: { current: '', sessions: [], mem: [] } as Learned,
 }
 
 // The `/agent-radar advisor` toggle and the advisorMode option both have to allow Fable.

@@ -62,6 +62,8 @@ those options for the plugin in my user settings. Tell me to restart Claude Code
 | `/agent-radar git`, `shell`, `mcp` | Shows that detail tab |
 | `/agent-radar flow`, `radar` | Switches the view (`v` in the pane) |
 | `/agent-radar details` | Shows cut-off texts whole (`d` in the pane) |
+| `/agent-radar learn [dir]` | Learns from this project's past transcripts (or the `.jsonl` files in `dir`) |
+| `/agent-radar memory` | Checks the memory and instruction files now and lists what it found |
 | `/agent-radar clear` | Resets counters, finished cards, log and Fable's notes; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
 The pane opens by itself at session start when the terminal is wide enough.
@@ -78,6 +80,7 @@ Set in `/config`, under the plugin:
 | `advisorBudget` | most Fable calls per session; `0` for no limit | `30` |
 | `sizeLimit` | bytes a maintained source file may reach before Focus suggests splitting it; `0` turns the guide off | `20000` |
 | `sizeExclude` | comma-separated globs the size guide skips, on top of the built-in ones | empty |
+| `learning` | `on` keeps what each session of a project shows (below); `off` keeps nothing | `on` |
 
 ### Cost
 
@@ -96,7 +99,16 @@ src/schema.ts      # one table per type; kept together on purpose
 src/legacy/*.ts    # ported code, split after the migration
 ```
 
-## Develop
+### Learning across sessions
+
+At the end of each turn the mod keeps a small record of the session, per project, in its own store: tool calls and errors per tool, results of 10k+ tokens, where the context compacted, and the MCP servers loaded. The last 30 sessions count. `/agent-radar learn` fills that history from the project's past transcripts once. From it, Focus suggests; it never changes anything itself:
+
+- **plan**: the context nears where past sessions compacted (90% of that point; with no history, 70% of the window). It names `/compact <focus>`, a lower effort when effort is high, and `/model sonnet` on a large model.
+- **flaky**: a tool that failed in at least 25% of 10 or more calls over 3 or more sessions, with its last error. Its first call in a session also gives a toast.
+- **unused**: an MCP server loaded in 5 or more sessions and never called, with the schema tokens it costs each time.
+- **habit**: a tool that put 10k+ tokens into context 4 or more times over 3 or more sessions.
+- **memory**: the memory and instruction files the session loads, plus the project's auto-memory folder, checked at start and after each edit of one. It finds a memory name used twice, MEMORY.md entries without a file and files without an entry, backticked paths that no longer exist, files over about 10k tokens and lines copied between files. With `advisorMode` `all`, Fable is asked once per new set of candidate pairs (directive lines from two files that share terms) which of them contradict.
+
 
 ```sh
 git clone https://github.com/vchaindz/agent-radar.git
@@ -116,6 +128,8 @@ npx -p typescript tsc --noEmit -p .
 | --- | --- |
 | `hooks/register.tsx` | Hooks, state and the pane |
 | `hooks/insights.ts` | The Focus rules and their thresholds, time and context helpers |
+| `hooks/learn.ts`, `hooks/learning.ts` | What is learned across sessions: the pure rules, and the store and commands |
+| `hooks/memcheck.ts` | The memory-file rules |
 | `hooks/i18n.ts` | All text, one block per language |
 | `types/index.d.ts` | State contract |
 | `tests/agent-radar.test.tsx` | Tests |
@@ -139,6 +153,9 @@ Captures land in `tests/pane-snaps/<scenario>/`: `<name>.txt` (whole screen), `<
 | `wait idle [secs]` | Until the turn is over |
 | `wait text <regex> [secs]`, `wait gone <regex> [secs]` | Until the screen shows, or no longer shows, a match |
 | `sleep <secs>`, `snap <name>` | Pauses; saves the screen |
+| `write <file> <text>` | Writes a project file before the session starts (`\n` for a newline) |
+
+`{repo}` in a `prompt` or `cmd` stands for this checkout. The `learned` and `memory` scenarios check what learning shows; they leave a small record per throwaway project in the mod's store.
 
 Each run costs a few calls on the cheap model. Needs `tmux` and `python3`.
 

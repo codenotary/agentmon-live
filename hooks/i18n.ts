@@ -20,7 +20,7 @@ const en = {
     other: 'other',
   } as Record<Category, string>,
   status: { running: 'running', waiting: 'waiting', done: 'done', error: 'error', cancelled: 'cancelled' },
-  kind: { plan: 'plan', error: 'error', done: 'done', check: 'check' },
+  kind: { plan: 'plan', error: 'error', done: 'done', check: 'check', memory: 'memory' },
   testsPass: (n: string) => `PASS · ${n} tests`,
   statusLine: (effort: string, running: number, agents: number, listening: boolean, tools: number, git: number) =>
     `effort [${effort}] · subagents [${running}/${agents}] · advisor [${listening ? 'listening' : 'off'}] · tools [${tools}] · git [${git}]`,

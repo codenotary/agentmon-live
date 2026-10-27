@@ -22,7 +22,7 @@ export const de: Strings = {
     other: 'sonstige',
   },
   status: { running: 'läuft', waiting: 'wartet', done: 'fertig', error: 'fehler', cancelled: 'abgebrochen' },
-  kind: { plan: 'plan', error: 'fehler', done: 'fertig', check: 'prüfung' },
+  kind: { plan: 'plan', error: 'fehler', done: 'fertig', check: 'prüfung', memory: 'gedächtnis' },
   testsPass: n => `PASS · ${n} Tests`,
   statusLine: (effort, running, agents, listening, tools, git) =>
     `effort [${effort}] · subagenten [${running}/${agents}] · advisor [${listening ? 'hört zu' : 'aus'}] · werkzeuge [${tools}] · git [${git}]`,
@@ -178,7 +178,7 @@ export const fr: Strings = {
     other: 'autres',
   },
   status: { running: 'en cours', waiting: 'en attente', done: 'terminé', error: 'erreur', cancelled: 'annulé' },
-  kind: { plan: 'plan', error: 'erreur', done: 'terminé', check: 'contrôle' },
+  kind: { plan: 'plan', error: 'erreur', done: 'terminé', check: 'contrôle', memory: 'mémoire' },
   testsPass: n => `PASS · ${n} tests`,
   statusLine: (effort, running, agents, listening, tools, git) =>
     `effort [${effort}] · sous-agents [${running}/${agents}] · advisor [${listening ? 'écoute' : 'off'}] · outils [${tools}] · git [${git}]`,
@@ -334,7 +334,7 @@ export const es: Strings = {
     other: 'otros',
   },
   status: { running: 'en curso', waiting: 'esperando', done: 'hecho', error: 'error', cancelled: 'cancelado' },
-  kind: { plan: 'plan', error: 'error', done: 'hecho', check: 'revisión' },
+  kind: { plan: 'plan', error: 'error', done: 'hecho', check: 'revisión', memory: 'memoria' },
   testsPass: n => `PASS · ${n} tests`,
   statusLine: (effort, running, agents, listening, tools, git) =>
     `effort [${effort}] · subagentes [${running}/${agents}] · advisor [${listening ? 'escuchando' : 'off'}] · herramientas [${tools}] · git [${git}]`,
@@ -490,7 +490,7 @@ export const zh: Strings = {
     other: '其他',
   },
   status: { running: '运行中', waiting: '等待中', done: '完成', error: '错误', cancelled: '已取消' },
-  kind: { plan: '计划', error: '错误', done: '完成', check: '检查' },
+  kind: { plan: '计划', error: '错误', done: '完成', check: '检查', memory: '记忆' },
   testsPass: n => `PASS · ${n} 个测试`,
   statusLine: (effort, running, agents, listening, tools, git) =>
     `effort [${effort}] · 子代理 [${running}/${agents}] · advisor [${listening ? '监听中' : '关闭'}] · 工具 [${tools}] · git [${git}]`,
@@ -644,7 +644,7 @@ export const ja: Strings = {
     other: 'その他',
   },
   status: { running: '実行中', waiting: '待機中', done: '完了', error: 'エラー', cancelled: '中止' },
-  kind: { plan: '計画', error: 'エラー', done: '完了', check: 'チェック' },
+  kind: { plan: '計画', error: 'エラー', done: '完了', check: 'チェック', memory: 'メモリ' },
   testsPass: n => `PASS · ${n} 件のテスト`,
   statusLine: (effort, running, agents, listening, tools, git) =>
     `effort [${effort}] · サブエージェント [${running}/${agents}] · advisor [${listening ? '待機中' : 'オフ'}] · ツール [${tools}] · git [${git}]`,

@@ -9,6 +9,7 @@ import { drawFlow } from './flow'
 import { cfg, INIT, isLive, listening, liveStatus, rank, shapeInsights, VIEWS } from './state'
 import { isHigh, topology } from './topology'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline } from './insights'
+import { learnedItems, lt, totals, typicalCompact } from './learn'
 
 const main = atom({ plugin: 'agent-radar', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agent-radar', key: 'tools' } as const, INIT.tools)
@@ -27,6 +28,7 @@ const skills = atom({ plugin: 'agent-radar', key: 'skills' } as const, INIT.skil
 const flow = atom({ plugin: 'agent-radar', key: 'flow' } as const, INIT.flow)
 const layout = atom({ plugin: 'agent-radar', key: 'layout' } as const, INIT.layout)
 const insights = atom({ plugin: 'agent-radar', key: 'insights' } as const, INIT.insights)
+const learned = atom({ plugin: 'agent-radar', key: 'learned' } as const, INIT.learned)
 // Insights shown in Focus with details off; the rest wait for `d`.
 const FOCUS_SHOWN = 3
 
@@ -37,7 +39,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
   const ui = $.ui.resolve(e)
   const { Box, Button, Text } = ui
-  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored] = await Promise.all([
+  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt] = await Promise.all([
     read($, main),
     read($, tools),
     read($, agents),
@@ -59,6 +61,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, skills),
     read($, flow),
     read($, insights),
+    read($, learned),
   ])
   const ins = shapeInsights(insStored)
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
@@ -150,7 +153,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const dismissed = new Set(lay.dismissed ?? [])
   const urgent = items.filter(x => !x.key || !dismissed.has(x.key))
   // Below what needs the person: what is worth a look, most important first.
-  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, now }).filter(x => !dismissed.has(x.key))
+  const learnedFocus = learnedItems(learnt, { percent: usage.context.percent, window: usage.context.window, model: m.model, effort: m.effort })
+  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, now, learned: learnedFocus }).filter(x => !dismissed.has(x.key))
   const insightItems: Item[] = found.slice(0, lay.isDetailed ? found.length : FOCUS_SHOWN).map(x => ({
     key: x.key,
     row: (
@@ -538,6 +542,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Text>
       )}
       {lay.isDetailed && ins.modelSwitches > 0 && <Text dimColor>{ti.modelSwitches(ins.modelSwitches)}</Text>}
+      {learnt.sessions.length > 0 && <Text dimColor>{lt().learnedLine(learnt.sessions.length, typicalCompact(totals(learnt), usage.context.window))}</Text>}
     </Box>
   )
 

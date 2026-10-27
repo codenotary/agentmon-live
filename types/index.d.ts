@@ -41,6 +41,31 @@ export type SlowCall = { tool: string; what: string; who: string; ms: number; at
 // A tool result the main loop read, by its estimated tokens (characters / 4).
 export type BigResult = { tool: string; what: string; tokens: number; at: number }
 
+// One tool's calls in one session; `big` counts results of 10k+ tokens, `lastErr` the last error text.
+export type ToolTally = { calls: number; errors: number; big: number; lastErr?: string }
+
+// What one session of this project left behind: context tokens at its peak and at each compaction,
+// tool calls per tool, and the MCP servers loaded (tool-name prefix to schema tokens).
+export type SessionRecord = {
+  id: string
+  at: number
+  model: string
+  effort: string
+  peak: number
+  window: number
+  compactAt: number[]
+  turns: number
+  tools: Record<string, ToolTally>
+  mcp: Record<string, number>
+}
+
+// A memory-file problem found by the local rules.
+export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine'; file: string; detail: string }
+
+// The project's sessions as the store keeps them, last 30; `current` is this session's id.
+// `memKey` fingerprints the memory candidates Fable last judged, so the same set is not sent again.
+export type Learned = { current: string; sessions: SessionRecord[]; mem: MemFinding[]; memKey?: string }
+
 export type Insights = {
   // The main loop's turn under way, or undefined between turns; `last` the last finished one.
   turn?: TurnTime
@@ -83,7 +108,7 @@ export type LogLine = { at: number; who: string; what: string; result: string }
 
 // `ok` is missing on notes kept by older versions, which kept only objections.
 // `ref` names the evidence an objection rests on: the failed call, the files, the plan.
-export type Note = { kind: 'plan' | 'error' | 'done' | 'check'; ok?: boolean; text: string; ref?: string }
+export type Note = { kind: 'plan' | 'error' | 'done' | 'check' | 'memory'; ok?: boolean; text: string; ref?: string }
 
 export type View = 'git' | 'shell' | 'mcp'
 
@@ -160,6 +185,7 @@ declare module 'claude-code' {
       skills: SkillUse[]
       flow: Flow[]
       insights: Insights
+      learned: Learned
     }
   }
 }

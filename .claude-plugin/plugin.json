@@ -1,6 +1,6 @@
 {
   "name": "agent-radar",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Agent Radar: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -52,6 +52,16 @@
       "title": "File-size exclusions",
       "description": "Comma-separated globs the guide skips, added to the built-in lockfile, generated, vendored, build and fixture patterns",
       "default": ""
+    },
+    "learning": {
+      "type": "string",
+      "title": "Learning",
+      "description": "on: remember tool failures, compactions and MCP use per project across sessions, and check memory files; off: nothing is kept",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
     }
   },
   "license": "Apache-2.0",

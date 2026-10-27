@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
 import { advise } from './advisor'
+import { isMemoryPath, learnCommand, memoryCommand, noteCall, noteCompact, queueMemoryCheck, saveTurn, startLearning } from './learning'
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
@@ -233,6 +234,8 @@ async function finishTurn($: EngineInterface, durationMs: number) {
     const mcpTokens = b.mcpTools.filter(m => m.isLoaded).reduce((n, m) => n + m.tokens, 0)
     const memoryTokens = b.memoryFiles.reduce((n, m) => n + m.tokens, 0)
     await update($, insights, v => ({ ...v, breakdown, mcpTokens, memoryTokens }))
+    const m = await read($, main)
+    await saveTurn($, { tokens: u.context.tokens, window: u.context.window, mcpTools: b.mcpTools, model: m.model, effort: m.effort })
   })
 }
 
@@ -267,6 +270,7 @@ export const register: Register = (on, options) => {
   const budget = Number(options.advisorBudget ?? 30)
   cfg.advisorBudget = Number.isFinite(budget) && budget >= 0 ? budget : 30
   configureSize(options.sizeLimit, options.sizeExclude)
+  cfg.learning = String(options.learning ?? 'on') !== 'off'
   // Module variables reset on reload; the atoms above keep the shown state.
   const effortByCall = new Map<string, string>()
   const filesByAgent = new Map<string, Set<string>>()
@@ -286,7 +290,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'agent-radar',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|flow|radar|details]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|flow|radar|details|learn|memory]`,
     })
     cwd = e.cwd
     // The project's own size exceptions, each with a reason.
@@ -317,6 +321,8 @@ export const register: Register = (on, options) => {
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
       await refreshStatus($)
+      // Learning is extra: an engine without a store or session id leaves the rest working.
+      await startLearning($, cwd).catch(() => undefined)
     })
 
     return next(e)
@@ -340,6 +346,9 @@ export const register: Register = (on, options) => {
       await $.ui.open({ id: PANE, title: 'Agent Radar' })
       return { text: `Agent Radar: ${t.modes[mode]}` }
     }
+    // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
+    if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
+    if (arg === 'memory') return { text: await memoryCommand($) }
     if (arg === 'details') {
       const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
       return { text: `Agent Radar: ${t.details} ${l.isDetailed ? 'on' : 'off'}` }
@@ -569,6 +578,8 @@ export const register: Register = (on, options) => {
       const wasAsked = askedCalls.delete(callId)
       const callKey = `${e.tool} ${brief(e)}`.trim().slice(0, 80)
       const resultTokens = e.agentId === undefined && !failed ? estTokens(String(r.text ?? '')) : 0
+      if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), String(r.text ?? ''), r.isError ? 0 : estTokens(String(r.text ?? '')))
+      if (touched && cat === 'edit' && isMemoryPath(touched)) queueMemoryCheck($)
       const workPath = e.agentId === undefined && sameTurn && r.deny === undefined ? pathOf(e) : undefined
       const area = workPath === undefined ? undefined : areaOf(workPath, cwd)
       // One batch of writes, so the pane redraws once per call.
@@ -646,7 +657,10 @@ export const register: Register = (on, options) => {
   })
 
   on('session.compact', async ($, e, next) => {
+    // Where the context stood when it compacted; past sessions' figures set the next plan's threshold.
+    const before = e.trigger !== 'precompute' && e.agentId === undefined ? await $.session.usage().catch(() => undefined) : undefined
     const r = await next(e)
+    if (r.skip === undefined) noteCompact(before?.context.tokens)
     if (r.skip === undefined && e.trigger !== 'precompute' && e.agentId === undefined) {
       await update($, stats, s => ({ ...s, compactions: s.compactions + 1 }))
       await addLog($, { who: t.mainSession, what: t.compacted(e.trigger), result: '' })
