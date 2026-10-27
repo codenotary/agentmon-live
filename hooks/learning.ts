@@ -2,9 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { ContextMcpTool, EngineInterface } from 'claude-code'
 
 import type { Learned, SessionRecord } from '../types'
-import { advise, fingerprint } from './advisor'
 import { lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare } from './learn'
-import { contradictionPairs, memRules, refsOf } from './memcheck'
+import { memRules, refsOf } from './memcheck'
 import type { MemFile } from './memcheck'
 import { cfg, INIT } from './state'
 
@@ -135,14 +134,7 @@ async function checkMemory($: EngineInterface) {
   const missing = new Map<string, string>()
   for (const [ref, file] of refsOf(files, home)) if (!(await $.fs.exists(ref).catch(() => true))) missing.set(ref, file)
   const mem = memRules(files, dir, missing)
-  const pairs = cfg.advisorMode === 'all' ? contradictionPairs(files) : []
-  const memKey = pairs.length > 0 ? fingerprint(pairs.join('\n')) : undefined
-  const before = await read($, learned)
-  await save($, l => ({ ...l, mem, memKey: memKey ?? l.memKey }))
-  // Fable judges a set of candidate pairs once, across sessions too.
-  if (memKey && memKey !== before.memKey) {
-    advise($, 'memory', lt().askMemory, pairs.map((p, i) => `P${i + 1}\n${p}`).join('\n\n'), lt().tag.memory)
-  }
+  await save($, l => ({ ...l, mem }))
 }
 
 // `/agentmon memory`: the findings as text, checked again first.

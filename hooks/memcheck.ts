@@ -10,7 +10,6 @@ export const BIG_CHARS = 40_000
 const DUP_LINES = 3
 const DUP_MIN = 40
 const MAX_REFS = 40
-const MAX_PAIRS = 12
 
 const base = (p: string) => p.slice(p.lastIndexOf('/') + 1)
 
@@ -66,36 +65,6 @@ export function memRules(files: readonly MemFile[], dir: readonly string[], miss
     if (n < DUP_LINES) continue
     const [a, b] = pair.split('\n') as [string, string]
     out.push({ kind: 'dupLine', file: b, detail: `${shortPath(a)} ↔ ${shortPath(b)} (${n})` })
-  }
-  return out
-}
-
-const DIRECTIVE = /\b(never|always|must|don't|do not|prefer|avoid|only|instead)\b/i
-const STOP = new Set(['about', 'after', 'always', 'before', 'never', 'should', 'their', 'there', 'these', 'those', 'where', 'which', 'while', 'with', 'without', 'would', 'files', 'instead', 'prefer', 'avoid', 'claude'])
-
-function terms(line: string): Set<string> {
-  return new Set((line.toLowerCase().match(/[a-z][a-z0-9_-]{4,}/g) ?? []).filter(w => !STOP.has(w)))
-}
-
-// Directive lines from different files that share at least two terms: what Fable is asked to judge.
-export function contradictionPairs(files: readonly MemFile[]): string[] {
-  const lines = files.flatMap(f =>
-    f.text
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length >= 20 && l.length <= 300 && DIRECTIVE.test(l))
-      .map(l => ({ file: f.path, line: l, terms: terms(l) })),
-  )
-  const out: string[] = []
-  for (let i = 0; i < lines.length && out.length < MAX_PAIRS; i++) {
-    for (let j = i + 1; j < lines.length && out.length < MAX_PAIRS; j++) {
-      const a = lines[i]!
-      const b = lines[j]!
-      if (a.file === b.file || a.line === b.line) continue
-      let common = 0
-      for (const w of a.terms) if (b.terms.has(w)) common++
-      if (common >= 2) out.push(`${shortPath(a.file)}: ${a.line}\n${shortPath(b.file)}: ${b.line}`)
-    }
   }
   return out
 }

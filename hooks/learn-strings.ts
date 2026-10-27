@@ -28,8 +28,6 @@ const en = {
   learningOff: 'AgentMon Live: learning is off (option `learning`).',
   memoryNone: 'AgentMon Live: no memory-file problems found.',
   memoryHead: (n: number) => `AgentMon Live: ${n} memory-file problems`,
-  askMemory:
-    'These are pairs of lines from different memory and instruction files that share terms. Which pairs give the assistant contradicting instructions? Answer OK if none. Otherwise one line per contradiction: `file A vs file B: what conflicts`. At most 4 lines.',
 }
 
 export type LearnStrings = typeof en
@@ -61,7 +59,6 @@ const de: LearnStrings = {
   learningOff: 'AgentMon Live: Lernen ist aus (Option `learning`).',
   memoryNone: 'AgentMon Live: keine Probleme in den Gedächtnisdateien.',
   memoryHead: n => `AgentMon Live: ${n} Probleme in Gedächtnisdateien`,
-  askMemory: en.askMemory,
 }
 
 const fr: LearnStrings = {
@@ -91,7 +88,6 @@ const fr: LearnStrings = {
   learningOff: "AgentMon Live : l'apprentissage est désactivé (option `learning`).",
   memoryNone: 'AgentMon Live : aucun problème dans les fichiers de mémoire.',
   memoryHead: n => `AgentMon Live : ${n} problèmes dans les fichiers de mémoire`,
-  askMemory: en.askMemory,
 }
 
 const es: LearnStrings = {
@@ -121,7 +117,6 @@ const es: LearnStrings = {
   learningOff: 'AgentMon Live: el aprendizaje está desactivado (opción `learning`).',
   memoryNone: 'AgentMon Live: no hay problemas en los archivos de memoria.',
   memoryHead: n => `AgentMon Live: ${n} problemas en archivos de memoria`,
-  askMemory: en.askMemory,
 }
 
 const zh: LearnStrings = {
@@ -150,7 +145,6 @@ const zh: LearnStrings = {
   learningOff: 'AgentMon Live：学习已关闭（选项 `learning`）。',
   memoryNone: 'AgentMon Live：记忆文件没有发现问题。',
   memoryHead: n => `AgentMon Live：记忆文件中有 ${n} 个问题`,
-  askMemory: en.askMemory,
 }
 
 const ja: LearnStrings = {
@@ -179,7 +173,6 @@ const ja: LearnStrings = {
   learningOff: 'AgentMon Live：学習はオフです（オプション `learning`）。',
   memoryNone: 'AgentMon Live：メモリファイルに問題はありません。',
   memoryHead: n => `AgentMon Live：メモリファイルの問題 ${n} 件`,
-  askMemory: en.askMemory,
 }
 
 export const LEARN: Record<string, LearnStrings> = { en, de, fr, es, zh, ja }

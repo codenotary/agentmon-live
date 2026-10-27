@@ -2,7 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
-import { advise } from './advisor'
+import { addNote, consult } from './advisor'
+import { doneGaps, isDoc } from './gate'
 import { isMemoryPath, learnCommand, memoryCommand, noteCall, noteCompact, queueMemoryCheck, saveTurn, startLearning } from './learning'
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
@@ -258,7 +259,8 @@ async function finishTurn($: EngineInterface, durationMs: number) {
 }
 
 // What the main loop did this turn, so Fable judges the work and not only the answer.
-type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string> }
+// `before` holds the checks as they stood at the prompt; `codeEditAt` and `lastCodeEditAt` are the turn's first and last edit of a file that is not a doc.
+type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number }
 
 // The request, this turn's subagents and the observed checks are kept whole; the trail gives way.
 async function material($: EngineInterface, turn: Turn): Promise<string> {
@@ -280,11 +282,29 @@ const t = cfg.t
   return t.material(request, lines.join('\n'), changed) + evidence
 }
 
+// What the turn left open: recorded facts first; only when they show nothing does Fable judge whether the answer covers the request.
+async function openGaps($: EngineInterface, turn: Turn, answer: string): Promise<{ lines: string[]; fix?: string }> {
+  const t = cfg.t
+  const [checked, planned, list] = await Promise.all([read($, checks), read($, tasks), read($, agents)])
+  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt })
+  if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines }
+  const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-4000))}` : ''}`)
+  // Fable read untrusted tool output; what it says goes to Claude as a claim, never as a fact.
+  return v && !v.ok ? { lines: [t.fableSays(mask(v.text))], fix: v.fix && mask(v.fix) } : { lines: [] }
+}
+
+// "check now": the gate's own look, shown in the pane and never sent.
+async function checkNow($: EngineInterface, turn: Turn, answer: string, ref: string) {
+  const found = await openGaps($, turn, answer)
+  await addNote($, { kind: 'check', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref, at: await $.clock.now() })
+}
+
 export const register: Register = (on, options) => {
   const t = (cfg.t = LANGUAGES[String(options.language)] ?? LANGUAGES.en!)
   cfg.lang = String(options.language) in LANGUAGES ? String(options.language) : 'en'
   cfg.advisorModel = String(options.advisorModel || 'claude-fable-5-1')
-  cfg.advisorMode = String(options.advisorMode || 'all')
+  // `plan` was the plan-only mode, gone with the plan check; its nearest is the gate without a model.
+  cfg.advisorMode = String(options.advisorMode || 'all').replace(/^plan$/, 'gate')
   const budget = Number(options.advisorBudget ?? 30)
   cfg.advisorBudget = Number.isFinite(budget) && budget >= 0 ? budget : 30
   configureSize(options.sizeLimit, options.sizeExclude)
@@ -297,8 +317,18 @@ export const register: Register = (on, options) => {
   // Who runs each Skill call under way, for the `skill.prompt` it raises; none matches when the person typed the command.
   const skillRuns: { skill: string; who: string }[] = []
   // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
-  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set() }
-  const workRef = () => t.filesTools(turn.edited.size, turn.tools) + (turn.delegated ? ` · ${turn.delegated} subagents` : '')
+  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), before: [] }
+  // Fable judges an answer, so "check now" during a turn waits for the turn's answer.
+  let isTurnLive = false
+  let isCheckQueued = false
+  let lastAnswer = ''
+  // The done gate sends a turn back once; set until the person's next prompt.
+  let isGateUsed = false
+  // A note names the request it is about, so an old note is not taken for a current one.
+  const workRef = () => {
+    const ask = turn.prompt.replace(/\s+/g, ' ').trim()
+    return ask ? `"${ask.length > 40 ? `${ask.slice(0, 39)}…` : ask}"` : ''
+  }
   clk = newClock(0, false)
   let cwd = ''
   // Calls that waited on an approval: their time is the person's, not the tool's.
@@ -328,7 +358,7 @@ export const register: Register = (on, options) => {
       update($, stats, s => ({ ...s, errors: keep(s.errors) })),
       update($, agents, list => trimAgents(reconcile(list.filter(a => a.status in t.status), live))),
       // A load starts a new advisor epoch, so an answer the last load asked for is dropped.
-      update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind in t.kind), epoch: (a.epoch ?? 0) + 1, state: a.state === 'checking' ? ('idle' as const) : a.state })),
+      update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind === 'done' || n.kind === 'check'), epoch: (a.epoch ?? 0) + 1, state: a.state === 'checking' ? ('idle' as const) : a.state })),
       // Calls in flight when the module reloaded will never report back.
       update($, active, () => []),
       update($, calls, list => list.map(c => (c.result === 'running' ? { ...c, result: t.unknown } : c))),
@@ -376,7 +406,11 @@ export const register: Register = (on, options) => {
       return { text: t.advisorToggled(a.isOn) }
     }
     if (arg === t.argCheck || arg === 'check') {
-      advise($, 'check', t.askCheck, () => material($, turn), workRef(), true)
+      if (isTurnLive) {
+        isCheckQueued = true
+        return { text: t.checkAfterTurn }
+      }
+      $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
       return { text: t.checking }
     }
     // The pane's views and details from the prompt, so a script reaches them without focusing the pane.
@@ -430,13 +464,21 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => ({ text: `agentmon-live: the command failed (${next.error.message ?? next.error.kind})` }))
 
   on('turn.start', async ($, e, next) => {
-    if (e.agentId === undefined) {
+    // A turn the done gate sent back goes on as the same turn: its checks and edits still count.
+    if (e.agentId === undefined && e.text === '' && isGateUsed) {
+      isTurnLive = true
+    } else if (e.agentId === undefined) {
+      isTurnLive = true
+      isGateUsed = false
       turn.prompt = mask(e.text)
       turn.tools = 0
       turn.delegated = 0
       turn.startedAt = await $.clock.now()
       turn.trail = []
       turn.edited = new Set()
+      turn.before = await read($, checks)
+      turn.codeEditAt = undefined
+      turn.lastCodeEditAt = undefined
       effortByCall.clear()
       askedCalls.clear()
       const turnAt = turn.startedAt
@@ -544,14 +586,6 @@ export const register: Register = (on, options) => {
       clk.calls.set(callId, { cat, isAsking: false })
     }
 
-    if (e.tool === 'ExitPlanMode' && e.agentId === undefined && cfg.advisorMode !== 'off') {
-      const prompt = turn.prompt
-      advise($, 'plan', t.askPlan, async () => {
-        const plan = (await $.session.messages()).filter(x => x.role === 'assistant').at(-1)?.text ?? ''
-        return `${t.task}: ${prompt.slice(0, REQUEST_ROOM)}\n\n${t.plan}:\n${mask(plan.slice(0, MATERIAL_ROOM))}`
-      }, t.plan)
-    }
-
     const command = e.tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
     // One row per kind; the row names the part that ran the check, not a script the same command ran first.
     const kinds = cat === 'shell' ? findChecks(command) : []
@@ -609,7 +643,13 @@ export const register: Register = (on, options) => {
       const sameTurn = turn.startedAt === turnAt
       const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
       const touched = path && !failed && (cat === 'edit' || cat === 'read') ? path : undefined
-      if (touched && cat === 'edit' && sameTurn) turn.edited.add(touched)
+      if (touched && cat === 'edit' && sameTurn) {
+        turn.edited.add(touched)
+        if (!isDoc(touched)) {
+          turn.codeEditAt ??= at
+          turn.lastCodeEditAt = at
+        }
+      }
       if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)
       // Insights: how long it took, what it cost the context, where the main loop works.
       const ms = Math.max(0, at - startedAt)
@@ -666,7 +706,6 @@ export const register: Register = (on, options) => {
           }
         }),
       ])
-      if (isMain && s && s.streak === 3 && cfg.advisorMode === 'all') advise($, 'error', t.askErrors, () => material($, turn), `${e.tool} ${brief(e)}`.trim())
     })
     return r
   }).catch(($, e, next) => failOpen($, 'tool.call', next.error, () => next(e)))
@@ -782,24 +821,38 @@ export const register: Register = (on, options) => {
       await refreshStatus($)
     } else {
       await finishTurn($, e.durationMs)
+      isTurnLive = false
+      lastAnswer = e.answer
     }
-    if (
-      e.agentId === undefined &&
-      e.reason === 'answer' &&
-      cfg.advisorMode === 'all' &&
-      (turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0) &&
-      // While subagents still run, Fable can only say "not done yet".
-      !(await read($, agents)).some(isLive)
-    ) {
-      const answer = e.answer
-      advise($, 'done', t.askDone, async () => `${await material($, turn)}\n\n${t.finalAnswer}:\n${mask(answer.slice(-4000))}`, workRef())
+    if (e.agentId === undefined && isCheckQueued) {
+      isCheckQueued = false
+      $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
     }
     return next(e)
   }).catch(($, e, next) => failOpen($, 'turn.complete', next.error, () => next(e)))
 
+  // The done gate: before Claude stops, what is visibly unfinished goes back to it, once per prompt.
+  on('classic.Stop', async ($, e, next) => {
+    const r = await next(e)
+    // Another hook already sends it back: never stack.
+    if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
+    // A light turn has nothing to gate; while subagents still run, the work is not over yet.
+    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0) || (await read($, agents)).some(isLive)) return r
+    const found = await openGaps($, turn, e.last_assistant_message ?? '')
+    // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
+    const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
+    await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
+    if (!isSent) return r
+    isGateUsed = true
+    return { ...r, block: t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n')) }
+  }).catch(($, e, next) => failOpen($, 'classic.Stop', next.error, () => next(e)))
+
   // The pane's "check now" button; taken here, where this turn's material is at hand.
   on('ui.press', { plugin: 'agentmon-live', element: 'advisor:check' }, async ($, e) => {
-    advise($, 'check', t.askCheck, () => material($, turn), workRef(), true)
+    if (isTurnLive) {
+      isCheckQueued = true
+      $.ui.toast(t.checkAfterTurn)
+    } else $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
     return { element: e.element }
   })
 

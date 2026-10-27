@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
-import type { Card, Check } from '../types'
+import type { Card, Check, Note } from '../types'
 import { ago, clockTime, fit, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
@@ -154,6 +154,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const urgent = items.filter(x => !x.key || !dismissed.has(x.key))
   // Below what needs the person: what is worth a look, most important first.
   const learnedFocus = learnedItems(learnt, { percent: usage.context.percent, window: usage.context.window, model: m.model, effort: m.effort })
+  const isCurrent = (n: Note) => n.at !== undefined && n.at >= (m.turnAt ?? 0)
   const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, tokens: usage.context.tokens, now, learned: learnedFocus }).filter(x => !dismissed.has(x.key))
   const insightItems: Item[] = found.slice(0, lay.isDetailed ? found.length : FOCUS_SHOWN).map(x => ({
     key: x.key,
@@ -339,36 +340,45 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     : adv.state === 'checking' ? t.checking
     : adv.state === 'unavailable' ? `(${t.unavailable}${adv.why ? `: ${adv.why}` : ''})`
     : adv.state === 'budget' ? `(${t.budgetUsed})`
-    : cfg.advisorMode === 'plan' ? `(${t.planOnly})`
+    : cfg.advisorMode === 'gate' ? `(${t.gateOnly})`
     : ''
+  // The box answers one question: did Claude stop with work left open? Gone once the next turn starts.
+  const lastVerdict = adv.notes.findLast(n => n.kind === 'done' || n.kind === 'check')
+  const verdict = lastVerdict && isCurrent(lastVerdict) ? lastVerdict : undefined
+  const gaps = [...(verdict?.text.split('\n').filter(Boolean) ?? []), ...(verdict?.fix ? [`→ ${verdict.fix}`] : [])]
   const advisorBox = isRadar && (
-    <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} width={isWide ? 30 : undefined}>
+    <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1}>
       <Text>
-        {title('fable', 'magenta')}{' '}
+        {title(t.gateTitle, 'magenta')}{' '}
         <Text color={adv.state === 'checking' ? 'cyan' : adv.state === 'unavailable' ? 'red' : undefined} dimColor={adv.state !== 'checking'}>
           {advisorState}
         </Text>
       </Text>
-      {adv.calls === 0 ? (
+      {!verdict ? (
         <Text dimColor>{t.advisorAbout}</Text>
+      ) : verdict.ok ? (
+        <Text>
+          <Text color="green">✓</Text> {t.gatePassed}
+        </Text>
       ) : (
-        adv.notes.slice(-5).map(n =>
-          n.ok ? (
-            <Text>
-              <Text color="green">✓</Text> {fit(t.kind[n.kind], 8)}
-              {chip(t.ok, 'green')}
-            </Text>
-          ) : (
-            <Box flexDirection="column">
-              <Text>
-                <Text color="red">✗</Text> {fit(t.kind[n.kind], 8)}
-                {chip(t.nok, 'red')}
-              </Text>
-              <Text color="yellow">  {cut(n.text, 200)}</Text>
-              {n.ref && <Text dimColor>  ↳ {cut(n.ref, 40)}</Text>}
-            </Box>
-          ),
-        )
+        <Box flexDirection="column">
+          <Text color={verdict.isSent ? 'cyan' : 'yellow'} bold>
+            {verdict.isSent ? `↩ ${t.gateSent}` : `⚠ ${t.gateLeft}`}
+          </Text>
+          {gaps.map(g => (
+            <Text>  {g.startsWith('→') ? g : `- ${g}`}</Text>
+          ))}
+        </Box>
+      )}
+      {verdict && (
+        <Box gap={1}>
+          <Text dimColor>  ↳ {t.ago(secs(verdict.at ?? now))}{verdict.ref ? ` · ${verdict.ref}` : ''}</Text>
+          {!verdict.ok && !verdict.isSent && (
+            <Button key="advisor:investigate" plain hotkey="f" onPress={() => investigate(t.gateReason(gaps.map(g => `- ${g}`).join('\n')))}>
+              {t.askClaude}
+            </Button>
+          )}
+        </Box>
       )}
       {adv.calls > 0 && (
         <Text dimColor>
@@ -616,9 +626,13 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       {topoView}
       {isRadar && runningNow}
       {isRadar && (
-        // A column that wraps measures text one line high, so long Fable notes drew over the next rows.
+        // A wrapping column measures notes one line high, a shrinking one squeezes boxes below their text.
         <Box flexDirection={isWide ? 'row' : 'column'} flexWrap={isWide ? 'wrap' : 'nowrap'} gap={isWide ? 1 : 0}>
-          {sections.map(s => s.node)}
+          {sections.map(s => (
+            <Box key={s.key} flexDirection="column" flexShrink={0} flexGrow={isWide ? 1 : 0}>
+              {s.node}
+            </Box>
+          ))}
         </Box>
       )}
       {!isRadar && <Box gap={2}>{viewButton}</Box>}

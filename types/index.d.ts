@@ -63,8 +63,7 @@ export type SessionRecord = {
 export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine'; file: string; detail: string }
 
 // The project's sessions as the store keeps them, last 30; `current` is this session's id.
-// `memKey` fingerprints the memory candidates Fable last judged, so the same set is not sent again.
-export type Learned = { current: string; sessions: SessionRecord[]; mem: MemFinding[]; memKey?: string }
+export type Learned = { current: string; sessions: SessionRecord[]; mem: MemFinding[] }
 
 export type Insights = {
   // The main loop's turn under way, or undefined between turns; `last` the last finished one.
@@ -113,8 +112,9 @@ export type Insights = {
 export type LogLine = { at: number; who: string; what: string; result: string }
 
 // `ok` is missing on notes kept by older versions, which kept only objections.
-// `ref` names the evidence an objection rests on: the failed call, the files, the plan.
-export type Note = { kind: 'plan' | 'error' | 'done' | 'check' | 'memory'; ok?: boolean; text: string; ref?: string }
+// `ref` names the request a note is about. `text` holds the gaps, one per line; `fix` what would settle them.
+// A done gate result is `done`; `isSent` when it went back to Claude. `check` is the person's own "check now".
+export type Note = { kind: 'done' | 'check'; ok?: boolean; text: string; fix?: string; ref?: string; at?: number; isSent?: boolean }
 
 export type View = 'git' | 'shell' | 'mcp'
 

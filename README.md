@@ -13,7 +13,7 @@ Top to bottom, in the order you need it:
 - **Focus** (always on top, in every view): first what needs you (a tool call waiting for your approval, three failed calls in a row, a failed check, a subagent that failed or reported failing tests, a subagent waiting), then what is worth a look, ranked by importance: a call running far longer than that tool usually takes, a subagent quiet for minutes, the same call failing again and again, context near compaction or one tool result that flooded it, a file read over and over or edited over and over, approvals holding up the turn (with the calls asked most, to turn into allow rules), a low prompt-cache hit rate, focus jumping between many parts of the project, one tool category eating most of the turn, MCP tool schemas taking a large slice of the window, a plan window (5h, 7d) filling faster than it resets, a large session (150k+ tokens) idle past its one-hour prompt cache, and peak hours (weekdays 05:00–11:00 Pacific), when usage counts more toward the weekly limit. Three show at once (`d` shows all); `i` drafts a question about the first one that has one, `x` puts them away. When nothing needs a look it is one line: where the last turn's time went.
 - **Insights:** where the time went, this turn and over the session, as one bar: the model streaming, each tool category (parallel calls share the time), you (calls waiting on an approval) and idle; the slowest calls (approval waits left out); the main context per model request as a sparkline, its growth in the last turn, the prompt-cache hit rate and the biggest tool results (≈ characters / 4); tokens in, cached and out, and the subagents' share; how often the main loop moved between parts of the project this turn, and the files it re-read or re-edited most. With details on, the window's breakdown by category (from a local estimate, no extra request), MCP schema and CLAUDE.md tokens, and model or effort switches.
 - **Running now:** each tool call in flight, with who runs it and for how long; when idle, the last call. Running and waiting subagents sit here as cards.
-- **Fable advisor:** a second model that reads along and speaks up, as a toast, only when something looks off: a plan that misses something, three errors in a row, or a task reported done with parts left out (after real work: 3 or more tool calls, an edit, or a subagent). It sees your request whole, this turn's tool calls, the files changed (by subagents too), the subagents' outcomes and the observed checks. It never writes code. Each verdict shows as ok or nok; an objection names the evidence it rests on (`↳ Bash npm test`). Its state reads checking, off, plan only, unavailable (the model failed) or budget used, with its own call count and tokens. **Check now** (`c`, or `/agentmon check`) asks it at once. The same question twice in a row, or the same kind of check within a minute, is not sent again; the same objection twice gives no second toast.
+- **Done gate:** when Claude is about to stop after real work (3 or more tool calls, an edit, or a subagent), it checks what the session recorded: a test, lint, typecheck or build that failed this turn, one that ran before the last edit, todo items still open, a subagent that reported failing tests. Anything found goes back to Claude, once per prompt, as a Stop hook block: "Before you report done, this looks unfinished: … Finish it, or say plainly why not." Only when the facts show nothing does Fable, a second model that never writes code, judge one thing: does the final answer address every part of the request? The box reads `✓ nothing left open at the last stop`, `↩ sent back to Claude:` with the gaps, or `⚠ stopped with this left open:` when Claude stopped again with gaps; `f` then drafts the same reason as a prompt. Each result names when it came and the request it is about (`↳ 2 min ago · "fix the parser"`) and leaves when your next turn starts. It does not block while subagents run, after another Stop hook already sent the turn back, or when off. **Check now** (`c`, or `/agentmon check`) runs the same check and only shows it; while a turn runs, it waits for the turn's answer. Its state reads checking, off, checks only, unavailable (Fable failed; Claude then stops as usual) or budget used, with Fable's call count and tokens.
 - **Changes and verification:** files edited and read (successful calls only), and the last test, lint, typecheck and build command with its outcome: ok, failed, or unknown when a pipe or a denial hides the exit status. A check run before a later edit is marked stale.
 - **Usage:** context, cost and rate limits with their reset times; `unavailable` where the session does not report a value.
 - **History** (folds with `h`): main session, tool counts per category with errors, the git / shell / MCP detail tabs (`g` `s` `m`, a click, or `/agentmon git|shell|mcp`), finished subagent cards and the session log.
@@ -48,7 +48,7 @@ Paste this into a Claude Code session:
 ```
 Install the Claude Code plugin agentmon-live from the marketplace codenotary/agentmon-live
 (claude plugin install agentmon-live --marketplace codenotary/agentmon-live). Then ask me which
-language I want (en, de, fr, es, zh, ja) and which advisor mode (all, plan, off), and set
+language I want (en, de, fr, es, zh, ja) and which advisor mode (all, gate, off), and set
 those options for the plugin in my user settings. Tell me to restart Claude Code when done.
 ```
 
@@ -57,14 +57,14 @@ those options for the plugin in my user settings. Tell me to restart Claude Code
 | Command | Does |
 | --- | --- |
 | `/agentmon` | Opens the pane |
-| `/agentmon advisor` | Turns Fable on or off |
-| `/agentmon check` | Asks Fable now |
+| `/agentmon advisor` | Turns the done gate on or off |
+| `/agentmon check` | Runs the done gate's check now, without sending anything |
 | `/agentmon git`, `shell`, `mcp` | Shows that detail tab |
 | `/agentmon flow`, `radar` | Switches the view (`v` in the pane) |
 | `/agentmon details` | Shows cut-off texts whole (`d` in the pane) |
 | `/agentmon learn [dir]` | Learns from this project's past transcripts (or the `.jsonl` files in `dir`) |
 | `/agentmon memory` | Checks the memory and instruction files now and lists what it found |
-| `/agentmon clear` | Resets counters, finished cards, log and Fable's notes; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
+| `/agentmon clear` | Resets counters, finished cards, log and the done gate's results; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
 The pane opens by itself at session start when the terminal is wide enough.
 
@@ -76,7 +76,7 @@ Set in `/config`, under the plugin:
 | --- | --- | --- |
 | `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | `en` |
 | `advisorModel` | any model id | `claude-fable-5-1` |
-| `advisorMode` | `all` (plan, error streak and done checks), `plan` (plan check only), `off` | `all` |
+| `advisorMode` | `all` (done gate with Fable's coverage check), `gate` (done gate from recorded facts only, no model), `off`; `plan` is read as `gate` | `all` |
 | `advisorBudget` | most Fable calls per session; `0` for no limit | `30` |
 | `sizeLimit` | bytes a maintained source file may reach before Focus suggests splitting it; `0` turns the guide off | `20000` |
 | `sizeExclude` | comma-separated globs the size guide skips, on top of the built-in ones | empty |
@@ -84,7 +84,7 @@ Set in `/config`, under the plugin:
 
 ### Cost
 
-Each Fable check is one small model call (low effort, at most 300 output tokens, about 12,000 characters of material). The done check runs only after real work; the cooldown, duplicate suppression and `advisorBudget` cap the rest. The pane shows Fable's own tokens. Set `advisorMode` to `plan` or `off` to cut calls further.
+Fable is asked at most once per stop, and only when the recorded facts show no gap: one small model call (low effort, at most 300 output tokens, about 12,000 characters of material). `advisorBudget` caps the calls per session, and the pane shows Fable's own tokens. Set `advisorMode` to `gate` for no model calls at all.
 
 ### File-size guide
 
@@ -107,7 +107,7 @@ At the end of each turn the mod keeps a small record of the session, per project
 - **flaky**: a tool that failed in at least 25% of 10 or more calls over 3 or more sessions, with its last error. Its first call in a session also gives a toast.
 - **unused**: an MCP server loaded in 5 or more sessions and never called, with the schema tokens it costs each time.
 - **habit**: a tool that put 10k+ tokens into context 4 or more times over 3 or more sessions.
-- **memory**: the memory and instruction files the session loads, plus the project's auto-memory folder, checked at start and after each edit of one. It finds a memory name used twice, MEMORY.md entries without a file and files without an entry, backticked paths that no longer exist, files over about 10k tokens and lines copied between files. With `advisorMode` `all`, Fable is asked once per new set of candidate pairs (directive lines from two files that share terms) which of them contradict.
+- **memory**: the memory and instruction files the session loads, plus the project's auto-memory folder, checked at start and after each edit of one. It finds a memory name used twice, MEMORY.md entries without a file and files without an entry, backticked paths that no longer exist, files over about 10k tokens and lines copied between files.
 
 
 ```sh
@@ -147,7 +147,7 @@ Captures land in `tests/pane-snaps/<scenario>/`: `<name>.txt` (whole screen), `<
 | Step | Does |
 | --- | --- |
 | `allow <tool rules>` | Tools the session may use without asking, e.g. `Bash(npm test:*) Read` |
-| `option <name> <value>` | A mod option for the run; Fable is off unless a scenario sets `option advisorMode all` |
+| `option <name> <value>` | A mod option for the run; the done gate is off unless a scenario sets `option advisorMode all` |
 | `prompt <text>`, `cmd /<command>` | Types the line and presses Enter |
 | `keys <tmux keys>` | Sends keys, e.g. `Escape` |
 | `wait idle [secs]` | Until the turn is over |

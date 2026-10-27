@@ -1,6 +1,6 @@
 {
   "name": "agentmon-live",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "AgentMon Live: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -27,12 +27,13 @@
     "advisorMode": {
       "type": "string",
       "title": "Advisor mode",
-      "description": "all: plan, error streak and done checks; plan: plan check only; off: never call the advisor",
+      "description": "all: before Claude stops, unfinished work (failed or stale checks, open todos, failing subagents, and parts of the request Fable finds unanswered) goes back to it once; gate: the same without a model; off: no gate; plan: the old name of gate",
       "default": "all",
       "options": [
         "all",
-        "plan",
-        "off"
+        "gate",
+        "off",
+        "plan"
       ]
     },
     "advisorBudget": {

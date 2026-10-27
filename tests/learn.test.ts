@@ -4,7 +4,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import { EMPTY_INSIGHTS } from '../hooks/state'
 import { focusList } from '../hooks/insights'
 import { KEEP_SESSIONS, learnedItems, newRecord, parseTranscript, shapeLearned, tally, totals, upsert } from '../hooks/learn'
-import { contradictionPairs, memRules, refsOf } from '../hooks/memcheck'
+import { memRules, refsOf } from '../hooks/memcheck'
 import type { Learned, SessionRecord } from '../types'
 
 type On = Parameters<TestBody>[1]
@@ -144,16 +144,6 @@ test('memory rules: duplicates, index, stale paths, copied lines', async () => {
   expect(found.some(f => f.kind === 'staleRef' && f.detail.endsWith('/srv/old/config.yml'))).toBe(true)
   expect(found.some(f => f.kind === 'dupLine' && f.detail.endsWith('(3)'))).toBe(true)
   expect(found.some(f => f.kind === 'tooBig' && f.file === '/p/CLAUDE.md')).toBe(true)
-})
-
-test('directive lines from two files that share terms become candidate pairs', async () => {
-  const pairs = contradictionPairs([
-    { path: '/h/CLAUDE.md', text: 'Always use JWT tokens for service authentication.', inDir: false },
-    { path: '/p/CLAUDE.md', text: 'Never use JWT tokens; prefer PASETO for service authentication.\nUnrelated line about colours and fonts only.', inDir: false },
-  ])
-  expect(pairs.length).toBe(1)
-  expect(pairs[0]).toContain('Always use JWT')
-  expect(pairs[0]).toContain('Never use JWT')
 })
 
 // What the engine answers; the store is a map the test reads back.

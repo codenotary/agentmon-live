@@ -175,7 +175,7 @@ test('git commands get their own row and no log line', async ($, on) => {
   await ui.unmount()
 })
 
-test('fable box stays one line until fable is asked', async ($, on) => {
+test('the done gate box shows what it does until it first runs', async ($, on) => {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -188,7 +188,7 @@ test('fable box stays one line until fable is asked', async ($, on) => {
 
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^calls/ })).toBe(undefined)
-  expect(await ui.find({ type: 'Text', text: /speaks up only when needed/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /go back to it once/ })).toBeTruthy()
   expect(await ui.find({ key: 'view:git' })).toBe(undefined)
   await ui.unmount()
 })
@@ -216,42 +216,6 @@ test('mcp calls get a row and their own detail tab', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /^sentry search_issues crash$/ })).toBeTruthy()
   await ui.press({ key: 'view:shell' })
   expect(await ui.find({ type: 'Text', text: /^ls -la$/ })).toBeTruthy()
-  await ui.unmount()
-})
-
-test('fable verdicts show as ok and nok', async ($, on) => {
-  const clock = mock.clock(on)
-  const answers = ['OK', 'The tests were never run.']
-  const toasts: string[] = []
-  on('command.register', () => ({ value: { command: 'agentmon' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('session.model', () => ({ value: 'claude-opus-5-5' }))
-  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
-  on('session.start', (_, e) => ({ cwd: e.cwd }))
-  const plans = ['the first plan', 'the second plan']
-  on('session.messages', () => ({ value: [{ role: 'assistant', text: plans.shift() ?? 'later plan', toolUses: [] }] }))
-  on('ui.status', () => ({ value: undefined }))
-  on('ui.toast', (_, e) => {
-    toasts.push(e.text)
-    return { value: undefined }
-  })
-  on('model.complete', () => ({
-    value: { isAnswered: true, text: answers.shift() ?? 'OK', usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } },
-  }))
-  on('tool.call', () => ({ result: {} }))
-
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.tool.call({ tool: 'ExitPlanMode' })
-  await clock.settle()
-  // A second plan check within the minute's cooldown would be skipped.
-  await clock.advance(61_000)
-  await $.tool.call({ tool: 'ExitPlanMode' })
-  await clock.settle()
-
-  const ui = await $.ui.mount(PANE)
-  expect(await ui.find({ type: 'Text', text: /^✓ plan\s+ OK $/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /^✗ plan\s+ NOK $/ })).toBeTruthy()
-  expect(toasts).toEqual(['Fable: The tests were never run.'])
   await ui.unmount()
 })
 
@@ -554,30 +518,29 @@ function fable(on: On, answers: string[], prompts: string[]) {
   })
 }
 
-test('delegated work gets a done check with the request and subagent evidence', async ($, on) => {
+test('a subagent that reported failing tests sends Claude back, with no model call', async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []
   engine(on)
-  fable(on, ['The subagent reported failing tests.'], prompts)
+  fable(on, [], prompts)
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
   on('ui.toast', () => ({ value: undefined }))
+  on('classic.Stop', () => ({}))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
   await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
   await $.turn.complete({ ...DONE, answer: '3 tests passed, 1 failed', agentId: 'a1' })
-  await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Done.' })
   await clock.settle()
+  const r = await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'Done.' })
 
-  expect(prompts.length).toBe(1)
-  expect(prompts[0]).toContain('Fix the parser')
-  expect(prompts[0]).toMatch(/- Explore: done · FAIL \(reported\) · Mod lesen/)
+  expect(r.block).toContain('subagent Explore reported failing tests: 3 tests passed, 1 failed')
+  expect(prompts.length).toBe(0)
   const ui = await $.ui.mount(PANE)
-  expect(await ui.find({ type: 'Text', text: /^✗ done\s+ NOK $/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /↳ 0 files · 0 tools · 1 subagents/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /tokens 100 \/ 20/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^↩ sent back to Claude:$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /↳ .* ago · "Fix the parser"$/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -593,40 +556,30 @@ test('a long trail is trimmed from its oldest lines, never from the request', as
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.turn.start({ text: 'REQUEST-MARK keep me', turnId: 'm1' })
   for (let i = 0; i < 40; i++) await $.tool.call({ tool: 'Bash', command: `step-${i} ${'x'.repeat(90)}` })
-  await clock.advance(61_000)
   await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Done.' })
+  await clock.settle()
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
 
   const done = prompts.at(-1) ?? ''
   expect(done).toContain('REQUEST-MARK keep me')
   expect(done).toContain('step-39')
   expect(done).not.toContain('step-0 ')
-  expect(done.length).toBeLessThan(13000)
+  expect(done.length).toBeLessThan(13500)
 })
 
-test('repeated and rapid checks are suppressed and the budget holds', { options: { advisorBudget: 3 } }, async ($, on) => {
+test('the advisor budget holds', { options: { advisorBudget: 3 } }, async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []
-  // A skipped call never builds its material, so it reads no plan.
-  const plans = ['plan A', 'plan B', 'plan B', 'plan C', 'plan D']
   engine(on)
   fable(on, [], prompts)
-  on('session.messages', () => ({ value: [{ role: 'assistant', text: plans.shift() ?? '', toolUses: [] }] }))
-  on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  const plan = async (wait: number) => {
-    await clock.advance(wait)
-    await $.tool.call({ tool: 'ExitPlanMode' })
+  for (let i = 0; i < 4; i++) {
+    await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
     await clock.settle()
   }
-  await plan(0) // A: asked
-  await plan(1000) // B within the cooldown: skipped, so never asked
-  await plan(61_000) // B: asked
-  await plan(61_000) // B again: a duplicate, skipped
-  await plan(61_000) // C: asked, the budget of 3 now used
-  await plan(61_000) // D: over budget
-  expect(prompts.map(p => p.match(/plan [A-D]/)?.[0])).toEqual(['plan A', 'plan B', 'plan C'])
+  expect(prompts.length).toBe(3)
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /budget used/ })).toBeTruthy()
   expect(await ui.find({ key: 'advisor:check' })).toBe(undefined)
@@ -643,7 +596,8 @@ test('a failing advisor model leaves the dashboard working', async ($, on) => {
   on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.tool.call({ tool: 'ExitPlanMode' })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /\(unavailable: error\)/ })).toBeTruthy()
@@ -651,7 +605,7 @@ test('a failing advisor model leaves the dashboard working', async ($, on) => {
   await ui.unmount()
 })
 
-test('check now asks Fable at once, past the cooldown', async ($, on) => {
+test('check now asks Fable at once, from the button and the command', async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []
   engine(on)
@@ -666,8 +620,8 @@ test('check now asks Fable at once, past the cooldown', async ($, on) => {
   await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
   expect(prompts.length).toBe(2)
-  expect(prompts[0]).toMatch(/^Look at the work so far/)
-  expect(await ui.find({ type: 'Text', text: /^✓ check\s+ OK $/ })).toBeTruthy()
+  expect(prompts[0]).toMatch(/^Does the final answer address every part of the task\?/)
+  expect(await ui.find({ type: 'Text', text: /^✓ nothing left open at the last stop$/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -804,25 +758,6 @@ test('task calls create, finish and delete tasks; a failed update changes nothin
   await ui.unmount()
 })
 
-test('the done check names open tasks', async ($, on) => {
-  const clock = mock.clock(on)
-  const prompts: string[] = []
-  engine(on)
-  fable(on, ['OK'], prompts)
-  on('tool.call', () => ({ result: {} }))
-  on('turn.start', (_, e) => ({ turnId: e.turnId }))
-  on('turn.complete', (_, e) => ({ text: e.answer }))
-
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.turn.start({ text: 'build it', turnId: 'm1' })
-  await $.tool.call({ tool: 'TodoWrite', todos: [...TODOS] })
-  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Read', file_path: `/f${i}` })
-  await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Done.' })
-  await clock.settle()
-
-  expect(prompts.at(-1)).toContain('Open tasks:\n- in_progress: Write tests\n- pending: Ship it')
-})
-
 test('elapsed and reset times read at a glance', () => {
   expect(ago(45_000)).toBe('45 s')
   expect(ago(2_970_000)).toBe('49 min')
@@ -903,7 +838,7 @@ test('a failed check moves its section to the top', async ($, on) => {
   await clock.settle()
   const ui = await $.ui.mount(PANE)
   // Focus is always on top; with nothing to look at it is one line.
-  expect((await titles()).slice(0, 3)).toEqual(['● FOCUS', '● TASKS', '● FABLE'])
+  expect((await titles()).slice(0, 3)).toEqual(['● FOCUS', '● TASKS', '● DONE GATE · CHECKED BEFORE CLAUDE STOPS'])
   await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
   await clock.settle()
   // Needs attention stays above every section.
