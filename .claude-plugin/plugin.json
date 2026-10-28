@@ -1,6 +1,6 @@
 {
   "name": "agentmon-live",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "AgentMon Live: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
   "types": "./types/index.d.ts",
   "userConfig": {

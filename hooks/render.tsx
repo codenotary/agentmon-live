@@ -323,6 +323,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         )}
       </Text>
       {usage.cost && <Text>{fit('cost', 18)}${usage.cost.usd.toFixed(2)}</Text>}
+      {adv.calls > 0 && <Text>{fit('fable', 18)}{t.calls} {adv.calls}{cfg.advisorBudget > 0 ? `/${cfg.advisorBudget}` : ''} · {t.advisorTokens(kilo(adv.tokensIn ?? 0), kilo(adv.tokensOut ?? 0))}</Text>}
       {usage.rateLimits.map(r => (
         <Text>
           {fit(r.kind, 18)}
