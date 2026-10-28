@@ -211,6 +211,18 @@ test('gate mode checks the facts and never calls a model', { options: { advisorM
   expect(prompts.length).toBe(0)
 })
 
+test('a verdict that reasons first and ends in OK passes; "not OK" does not', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [], ['The task asked for X; the answer covers X. That addresses the task. OK', 'The task asked for X.\nThat addresses it.\nOK.', 'The tests are not OK\n→ Run them.'])
+  await start($)
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
+  expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
+  expect((await $.classic.Stop({ ...STOP })).block).toContain('The tests are not OK')
+})
+
 test('the old plan mode maps to gate mode', { options: { advisorMode: 'plan' } }, async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []

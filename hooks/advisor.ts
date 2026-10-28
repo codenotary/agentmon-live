@@ -50,7 +50,8 @@ export async function consult($: EngineInterface, question: string, body: string
   const [head = '', ...rest] = r.text.split('\n').map(l => l.trim()).filter(Boolean)
   const text = rest.filter(l => !l.startsWith('→')).reduce((a, l) => `${a} ${l}`, head)
   const fix = rest.find(l => l.startsWith('→'))?.replace(/^→\s*/, '') || undefined
-  const ok = /^OK\b/i.test(text)
+  // A verdict that reasons first may end in OK, on its own line or after a sentence; "not OK" is no pass.
+  const ok = /^OK\b/i.test(text) || /(^|[.!]\s+)OK\.?$/i.test(rest.filter(l => !l.startsWith('→')).at(-1) ?? head)
   return { ok, text: ok ? '' : text, fix: ok ? undefined : fix }
 }
 
