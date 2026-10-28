@@ -132,7 +132,11 @@ async function checkMemory($: EngineInterface) {
     if (text !== undefined) files.push({ path, text, inDir: path.startsWith(`${memDir}/`) })
   }
   const missing = new Map<string, string>()
-  for (const [ref, file] of refsOf(files, home)) if (!(await $.fs.exists(ref).catch(() => true))) missing.set(ref, file)
+  for (const [ref, file] of refsOf(files, home)) {
+    // A ref whose top folder is missing (`/api/config`) is a URL route, not a path.
+    if (!(await $.fs.exists(ref.slice(0, ref.indexOf('/', 1))).catch(() => true))) continue
+    if (!(await $.fs.exists(ref).catch(() => true))) missing.set(ref, file)
+  }
   const mem = memRules(files, dir, missing)
   await save($, l => ({ ...l, mem }))
 }

@@ -107,7 +107,7 @@ At the end of each turn the mod keeps a small record of the session, per project
 - **flaky**: a tool that failed in at least 25% of 10 or more calls over 3 or more sessions, with its last error. Its first call in a session also gives a toast.
 - **unused**: an MCP server loaded in 5 or more sessions and never called, with the schema tokens it costs each time.
 - **habit**: a tool that put 10k+ tokens into context 4 or more times over 3 or more sessions.
-- **memory**: the memory and instruction files the session loads, plus the project's auto-memory folder, checked at start and after each edit of one. It finds a memory name used twice, MEMORY.md entries without a file and files without an entry, backticked paths that no longer exist, files over about 10k tokens and lines copied between files.
+- **memory**: the memory and instruction files the session loads, plus the project's auto-memory folder, checked at start and after each edit of one. It finds a memory name used twice, MEMORY.md entries without a file and files without an entry, backticked paths that no longer exist (a `/api/...` route whose top folder is not on disk does not count), files over about 10k tokens and lines copied between files.
 
 
 ```sh
