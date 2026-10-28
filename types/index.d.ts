@@ -34,6 +34,8 @@ export type TurnTime = {
   ctxEnd?: number
   mode?: string
   since?: number
+  // Doc files the main loop read in a turn that changed code and was not a refactor.
+  docs?: string[]
 }
 
 export type SlowCall = { tool: string; what: string; who: string; ms: number; at: number }

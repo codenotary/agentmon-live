@@ -254,6 +254,10 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
     })
   }
 
+  if (last?.docs?.length) {
+    out.push({ key: `docs:${last.startedAt}`, score: 32, tag: t.tag.docs, color: 'blue', text: t.docs(last.docs.map(shortPath).join(', ')), prompt: t.promptDocs(last.docs.join(', ')) })
+  }
+
   if (last) {
     const you = last.buckets.you ?? 0
     if (you >= WAIT_MIN_MS && last.wallMs > 0 && you / last.wallMs >= WAIT_SHARE) {

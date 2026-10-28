@@ -9,7 +9,7 @@ import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, 
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, pathOf, pushDuration } from './insights'
-import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, watched } from './sizeguard'
+import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
@@ -223,13 +223,14 @@ async function watchCache($: EngineInterface, at: number) {
 }
 
 // The main turn ended: its time joins the session's, and the window is broken down once, locally.
-async function finishTurn($: EngineInterface, durationMs: number) {
+async function finishTurn($: EngineInterface, durationMs: number, docs?: string[]) {
   if (!clk.inTurn) return
   const endedAt = await $.clock.now()
   book(clk, endedAt)
   const done: TurnTime = { ...snapshot(clk), mode: undefined, since: undefined }
   // The engine's figure for the turn's length, when it has one, over the clock's.
   done.wallMs = Math.max(done.wallMs, durationMs || 0)
+  if (docs?.length) done.docs = docs
   clk.inTurn = false
   const ended = await update($, insights, v => {
     const session = { ...v.session }
@@ -260,7 +261,8 @@ async function finishTurn($: EngineInterface, durationMs: number) {
 
 // What the main loop did this turn, so Fable judges the work and not only the answer.
 // `before` holds the checks as they stood at the prompt; `codeEditAt` and `lastCodeEditAt` are the turn's first and last edit of a file that is not a doc.
-type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number }
+// `docs` are the doc files the main loop read this turn.
+type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number }
 
 // The request, this turn's subagents and the observed checks are kept whole; the trail gives way.
 async function material($: EngineInterface, turn: Turn): Promise<string> {
@@ -317,7 +319,7 @@ export const register: Register = (on, options) => {
   // Who runs each Skill call under way, for the `skill.prompt` it raises; none matches when the person typed the command.
   const skillRuns: { skill: string; who: string }[] = []
   // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
-  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), before: [] }
+  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), docs: new Set(), before: [] }
   // Fable judges an answer, so "check now" during a turn waits for the turn's answer.
   let isTurnLive = false
   let isCheckQueued = false
@@ -455,6 +457,7 @@ export const register: Register = (on, options) => {
       turn.delegated = 0
       turn.trail = []
       turn.edited = new Set()
+      turn.docs = new Set()
       await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const, lastKey: undefined, lastAt: {} }))
       await refreshStatus($)
       return { text: t.cleared }
@@ -476,6 +479,7 @@ export const register: Register = (on, options) => {
       turn.startedAt = await $.clock.now()
       turn.trail = []
       turn.edited = new Set()
+      turn.docs = new Set()
       turn.before = await read($, checks)
       turn.codeEditAt = undefined
       turn.lastCodeEditAt = undefined
@@ -650,6 +654,8 @@ export const register: Register = (on, options) => {
           turn.lastCodeEditAt = at
         }
       }
+      // Project docs only: not memory files, files outside the project, or .txt (requirements.txt, CMakeLists.txt).
+      if (touched && cat === 'read' && isDoc(touched) && !/\.txt$/i.test(touched) && !isMemoryPath(touched) && relPath(touched, cwd) !== undefined && e.agentId === undefined && sameTurn) turn.docs.add(touched)
       if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)
       // Insights: how long it took, what it cost the context, where the main loop works.
       const ms = Math.max(0, at - startedAt)
@@ -820,7 +826,9 @@ export const register: Register = (on, options) => {
       }
       await refreshStatus($)
     } else {
-      await finishTurn($, e.durationMs)
+      // Docs read and code changed: the docs-vs-code hint in Focus; a refactor changes the code on purpose.
+      const isRefactor = /refactor|refaktor|重构|重構|リファクタ/i.test(turn.prompt)
+      await finishTurn($, e.durationMs, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined)
       isTurnLive = false
       lastAnswer = e.answer
     }

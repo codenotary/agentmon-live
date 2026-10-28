@@ -139,7 +139,7 @@ const en = {
     reread: 're-read',
     editedOften: 'edited',
     modelSwitches: (n: number) => `${n}× model or effort changed`,
-    tag: { slow: 'slow', silent: 'quiet', loop: 'loop', context: 'context', big: 'big', reread: 're-read', churn: 'churn', wait: 'waiting', cache: 'cache', switches: 'switching', sink: 'time', mcp: 'mcp', size: 'size', pace: 'pace', cold: 'cold', peak: 'peak' },
+    tag: { slow: 'slow', silent: 'quiet', loop: 'loop', context: 'context', big: 'big', reread: 're-read', churn: 'churn', wait: 'waiting', cache: 'cache', switches: 'switching', sink: 'time', mcp: 'mcp', size: 'size', pace: 'pace', cold: 'cold', peak: 'peak', docs: 'docs' },
     slow: (tool: string, what: string, d: string, usual?: string) => `${tool} ${what} running ${d}${usual ? ` · usually ${usual}` : ''}`,
     silent: (type: string, d: string, tools: number) => `${type} quiet for ${d} · ${tools} tools so far`,
     loop: (n: number, what: string) => `failed ${n}× in a row: ${what}`,
@@ -166,6 +166,8 @@ const en = {
     cold: (idle: string, k: string) => `prompt cache expired · idle ${idle} · the next prompt re-writes ≈${k} tokens · /compact first`,
     peak: (until: string) => `peak hours until ${until} · usage now counts more toward the weekly limit`,
     promptPace: (win: string, fullIn: string) => `At this pace the ${win} usage window runs out in about ${fullIn}, before it resets. Finish the step in progress, start no new subagents, and say what is done and what is left.`,
+    docs: (files: string) => `read docs (${files}) and changed code · where they disagree, the existing code's conventions win`,
+    promptDocs: (files: string) => `Where the documentation (${files}) and the existing code disagree, follow the conventions in the existing code. In your reply, list each inconsistency you found between the documentation and the code.`,
     promptWait: (list: string) => `These calls waited for my approval most often: ${list}. Suggest permission allow rules for the safe ones; change nothing yet.`,
   },
 }

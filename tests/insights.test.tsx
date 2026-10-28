@@ -181,6 +181,38 @@ test('focus moves between project areas are counted per turn', async ($, on) => 
   await ui.unmount()
 })
 
+test('docs read and code changed in one turn bring the docs hint; a refactor or a docs-only turn does not', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {}, text: 'ok' }))
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const docsHint = async (prompt: string, edit?: string, doc = '/repo/README.md') => {
+    await $.turn.start({ text: prompt, turnId: prompt })
+    await $.tool.call({ tool: 'Read', file_path: doc })
+    if (edit) await $.tool.call({ tool: 'Edit', file_path: edit, old_string: 'a', new_string: 'b' } as never)
+    await clock.settle()
+    await $.turn.complete({ answer: 'ok', durationMs: 1000, isAborted: false, turnId: prompt, reason: 'answer' })
+    await clock.settle()
+    const ui = await $.ui.mount(PANE)
+    const found = await ui.find({ type: 'Text', text: /read docs \(.*\) and changed code/ })
+    await ui.unmount()
+    return Boolean(found)
+  }
+  expect(await docsHint('add a flag', '/repo/src/x.ts')).toBe(true)
+  expect(await docsHint('refactor the parser', '/repo/src/x.ts')).toBe(false)
+  expect(await docsHint('explain it')).toBe(false)
+  for (const doc of ['/repo/requirements.txt', '/repo/CLAUDE.md', '/home/me/.claude/projects/x/memory/MEMORY.md', '/elsewhere/README.md']) {
+    expect(await docsHint(`edit after ${doc}`, '/repo/src/x.ts', doc)).toBe(false)
+  }
+})
+
+test('the docs hint drafts the docs-vs-code rule', async () => {
+  const last = { startedAt: 1, wallMs: 1000, buckets: {}, steps: 1, docs: ['/r/README.md'] }
+  const [hint] = focusList({ ins: { ...EMPTY_INSIGHTS, last }, doing: [], agents: [], window: 1000000, now: 2000 }).filter(x => x.tag === 'docs')
+  expect(hint?.prompt).toBe('Where the documentation (/r/README.md) and the existing code disagree, follow the conventions in the existing code. In your reply, list each inconsistency you found between the documentation and the code.')
+  expect(focusList({ ins: EMPTY_INSIGHTS, doing: [], agents: [], window: 1000000, now: 2000 }).some(x => x.tag === 'docs')).toBe(false)
+})
+
 test('a plan window filling faster than it resets is worth a look', async () => {
   const at = 3 * 3_600_000
   const reading = (min: number, pct: number) => ({ at: at - min * 60_000, pct, resetsAt: at + 2 * 3_600_000 })
