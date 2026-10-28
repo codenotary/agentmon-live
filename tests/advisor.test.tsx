@@ -192,6 +192,10 @@ test('with no recorded gap, Fable judges whether the answer covers the request',
   expect(prompts[0]).toContain('Final answer:\nParser fixed.')
   expect(r.block).toContain('- Fable, a reviewing model that may be wrong, says: The README part was not done.')
   expect(r.block).toContain('- → Update the README.')
+  // The usage box counts what the advisor spent: one call, its tokens in / out.
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^fable\s+calls 1\/30 · tokens 1 \/ 1$/ })).toBeTruthy()
+  await ui.unmount()
 })
 
 test('gate mode checks the facts and never calls a model', { options: { advisorMode: 'gate' } }, async ($, on) => {
