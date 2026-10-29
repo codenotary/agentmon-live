@@ -1,7 +1,8 @@
-import type { Bench, BenchRow, PromptBench, SessionRecord } from '../types'
+import type { Bench, BenchRow, GapKind, PromptBench, SessionRecord } from '../types'
 import { decimal, findCheck, kilo } from './format'
 import { isDoc } from './gate'
 import { LANGUAGES } from './i18n'
+import type { Strings } from './i18n'
 import { median } from './insights'
 import { LEARN } from './learn-strings'
 import { cfg } from './state'
@@ -18,6 +19,33 @@ const WEEK_MS = 7 * 24 * 3600_000
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 // The first line of the done gate's Stop reason, in every language, to find it in a transcript.
 const GATE = Object.values(LANGUAGES).map(l => l.gateReason('').split('\n')[0] ?? '')
+
+// Each gap line the gate writes, in every language, as a pattern: the template with its values as wildcards.
+// Most specific first, across languages: Fable may quote another gap, and a failed check's wording sits inside others (zh, ja).
+const HOLE = '\u0001'
+const gapPattern = (s: string) => new RegExp(`^${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll(HOLE, '.*')}$`, 's')
+const TEMPLATES: [GapKind, (l: Strings) => string][] = [
+  ['fable', l => l.fableSays(HOLE)],
+  ['agent', l => l.gapAgent(HOLE, HOLE)],
+  ['stale', l => l.gapStale(HOLE, HOLE)],
+  ['claim', l => l.gapClaim(HOLE)],
+  ['todos', l => l.gapTodos(HOLE as unknown as number, HOLE)],
+  ['failed', l => l.gapFailed(HOLE, HOLE)],
+]
+const GAPS = TEMPLATES.flatMap(([kind, of]) => Object.values(LANGUAGES).map(l => [kind, gapPattern(of(l))] as const))
+
+// The kinds of gap in one Stop-hook feedback, when the done gate wrote it; one per gap line.
+export function gapKinds(feedback: string): GapKind[] {
+  if (!GATE.some(g => g && feedback.includes(g))) return []
+  const out: GapKind[] = []
+  for (const line of feedback.split('\n')) {
+    // `- → …` is a suggested fix, not a gap.
+    if (!line.startsWith('- ') || line.startsWith('- →')) continue
+    const hit = GAPS.find(([, re]) => re.test(line.slice(2)))
+    if (hit) out.push(hit[0])
+  }
+  return out
+}
 
 const lb = () => (LEARN[cfg.lang] ?? LEARN.en!).bench
 

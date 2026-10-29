@@ -1,5 +1,5 @@
-import type { Learned, MemFinding, SessionRecord, ToolTally } from '../types'
-import { benchOf, textOf, upsertRow } from './bench'
+import type { GapKind, Learned, MemFinding, SessionRecord, ToolTally } from '../types'
+import { benchOf, gapKinds, textOf, upsertRow } from './bench'
 import { kilo, mask } from './format'
 import { BIG_RESULT_TOKENS, estTokens, median } from './insights'
 import type { Insight } from './insights'
@@ -17,6 +17,7 @@ export const FLAKY_SHARE = 0.25
 export const UNUSED_SESSIONS = 5
 export const UNUSED_TOKENS = 1000
 export const HABIT_BIG = 4
+const GAP_KINDS: readonly GapKind[] = ['failed', 'stale', 'claim', 'todos', 'agent', 'fable']
 // Suggest a plan this far below where past sessions compacted; with no history, at this share of the window.
 export const CTX_MARGIN = 0.9
 export const CTX_FALLBACK = 0.7
@@ -38,7 +39,7 @@ export function shapeLearned(v: unknown): Learned {
 }
 
 export function newRecord(id: string, at: number): SessionRecord {
-  return { id, at, model: '', effort: '', peak: 0, window: 0, compactAt: [], turns: 0, tools: {}, mcp: {} }
+  return { id, at, model: '', effort: '', peak: 0, window: 0, compactAt: [], turns: 0, tools: {}, mcp: {}, gaps: {} }
 }
 
 // Adds one call to a session record, in place: the record is the session's own working copy.
@@ -50,6 +51,10 @@ export function tally(rec: SessionRecord, tool: string, isError: boolean, error:
     t.lastErr = mask(error.replace(/\s+/g, ' ').trim()).slice(0, 120) || undefined
   }
   if (resultTokens >= BIG_RESULT_TOKENS) t.big += 1
+}
+
+export function addGaps(rec: SessionRecord, kinds: readonly GapKind[]) {
+  for (const k of kinds) rec.gaps = { ...rec.gaps, [k]: (rec.gaps?.[k] ?? 0) + 1 }
 }
 
 function trimTools(rec: SessionRecord): SessionRecord {
@@ -96,6 +101,8 @@ export function parseTranscript(id: string, text: string): SessionRecord {
         names.set(b.id, b.name)
         tally(rec, b.name, false, '', 0)
       }
+    } else if (o.type === 'user' && o.isMeta) {
+      addGaps(rec, gapKinds(textOf(content)))
     } else if (o.type === 'user' && Array.isArray(content)) {
       for (const b of content) {
         if (b?.type !== 'tool_result') continue
@@ -223,6 +230,15 @@ export function learnedItems(learned: Learned, live: Live): Insight[] {
     .filter(([, v]) => v.big >= HABIT_BIG && v.sessions >= MIN_SESSIONS)
     .sort((a, b) => b[1].big - a[1].big)[0]
   if (habit) out.push({ key: `habit:${habit[0]}`, score: 18, tag: t.tag.habit, color: 'blue', text: t.habit(habit[0], habit[1].big, habit[1].sessions) })
+
+  // The gap the done gate sent back in the most sessions; a CLAUDE.md rule may stop it.
+  const [kind, n] = GAP_KINDS.map(k => [k, learned.sessions.filter(s => (s.gaps?.[k] ?? 0) > 0).length] as const).sort((a, b) => b[1] - a[1])[0]!
+  if (n >= MIN_SESSIONS) {
+    const what = t.gateKind[kind]
+    const rule = t.gateRule[kind === 'failed' || kind === 'stale' || kind === 'claim' ? 'check' : kind]
+    const total = Math.max(n, learned.sessions.filter(s => s.bench?.mod).length)
+    out.push({ key: `gate:${kind}`, score: 30, tag: t.tag.gate, color: 'yellow', text: t.gateHabit(what, n, total), prompt: t.promptGateRule(what, rule) })
+  }
 
   for (const f of learned.mem) out.push(memItem(f))
   return out

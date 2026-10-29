@@ -5,7 +5,7 @@ import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
 import { addNote, consult } from './advisor'
 import { doneGaps, isDoc } from './gate'
 import { PROMPT_CHURN_EDITS } from './bench'
-import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, notePrompt, queueMemoryCheck, saveTurn, startLearning } from './learning'
+import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, notePrompt, queueMemoryCheck, saveTurn, startLearning } from './learning'
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
@@ -922,7 +922,9 @@ export const register: Register = (on, options) => {
     await benchPrompt($, turn, blockAt, isPassed)
     if (!isSent) return r
     isGateUsed = true
-    return { ...r, block: t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n')) }
+    const block = t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n'))
+    noteGaps(block)
+    return { ...r, block }
   }).catch(($, e, next) => failOpen($, 'classic.Stop', next.error, () => next(e)))
 
   // The pane's "check now" button; taken here, where this turn's material is at hand.

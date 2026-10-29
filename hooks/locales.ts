@@ -152,6 +152,8 @@ export const de: Strings = {
     mcp: (k, pct) => `MCP-Werkzeugschemas belegen ${k} (${pct}%) des Fensters`,
     promptSlow: (tool, what, d) =>
       `Der Aufruf ${tool} ${what} läuft seit ${d}, viel länger als sonst. Hängt er oder wartet er auf eine Eingabe? Finde es heraus und stoppe ihn, wenn er hängt.`,
+    promptSlowDone: (tool, what, d) =>
+      `Der Aufruf ${tool} ${what} dauerte ${d}. Warum war er so langsam, und wie wird der nächste Lauf schneller (ein engerer Befehl, ein Cache, im Hintergrund laufen lassen)? Erst nachsehen, noch nichts ändern.`,
     promptLoop: (n, what) => `Derselbe Aufruf ist ${n}× in Folge fehlgeschlagen:\n${fenced(what)}\n\nHör auf, ihn zu wiederholen. Finde zuerst die Ursache, dann ändere den Ansatz.`,
     promptContext: pct => `Der Kontext ist zu ${pct}% voll. Bevor er verdichtet wird: Liste in wenigen Zeilen auf, was erledigt ist, was fehlt und welche Dateien zählen.`,
     promptReread: (file, n) => `Du hast ${file} ${n}× gelesen. Arbeite mit dem, was du schon gelesen hast, oder lies nur die Zeilen, die du brauchst.`,
@@ -320,6 +322,8 @@ export const fr: Strings = {
     mcp: (k, pct) => `les schémas d'outils MCP occupent ${k} (${pct} %) de la fenêtre`,
     promptSlow: (tool, what, d) =>
       `L'appel ${tool} ${what} tourne depuis ${d}, bien plus longtemps que d'habitude. Est-il bloqué ou attend-il une saisie ? Vérifie, et arrête-le s'il est bloqué.`,
+    promptSlowDone: (tool, what, d) =>
+      `L'appel ${tool} ${what} a pris ${d}. Pourquoi a-t-il été si lent, et comment rendre le prochain plus rapide (une commande plus ciblée, un cache, le lancer en arrière-plan) ? Regarde d'abord ; ne change rien pour l'instant.`,
     promptLoop: (n, what) => `Le même appel a échoué ${n} fois de suite :\n${fenced(what)}\n\nArrête de le relancer. Trouve d'abord la cause, puis change d'approche.`,
     promptContext: pct => `Le contexte est plein à ${pct} %. Avant le compactage, résume en quelques lignes ce qui est fait, ce qui reste et quels fichiers comptent.`,
     promptReread: (file, n) => `Tu as lu ${file} ${n} fois. Travaille avec ce que tu as déjà lu, ou ne lis que les lignes nécessaires.`,
@@ -488,6 +492,8 @@ export const es: Strings = {
     mcp: (k, pct) => `los esquemas de herramientas MCP ocupan ${k} (${pct} %) de la ventana`,
     promptSlow: (tool, what, d) =>
       `La llamada ${tool} ${what} lleva ${d}, mucho más de lo normal. ¿Está colgada o esperando una entrada? Averígualo y detenla si está colgada.`,
+    promptSlowDone: (tool, what, d) =>
+      `La llamada ${tool} ${what} tardó ${d}. ¿Por qué fue tan lenta y cómo puede ser más rápida la próxima vez (un comando más acotado, una caché, ejecutarla en segundo plano)? Primero mira; no cambies nada aún.`,
     promptLoop: (n, what) => `La misma llamada falló ${n} veces seguidas:\n${fenced(what)}\n\nDeja de repetirla. Busca primero la causa y luego cambia el enfoque.`,
     promptContext: pct => `El contexto está al ${pct} %. Antes de que se compacte, resume en pocas líneas qué está hecho, qué falta y qué archivos importan.`,
     promptReread: (file, n) => `Has leído ${file} ${n} veces. Trabaja con lo que ya leíste, o lee solo las líneas que necesitas.`,
@@ -654,6 +660,7 @@ export const zh: Strings = {
     sink: (cat, pct, d) => `${cat} 占用上一轮 ${pct}%（${d}）`,
     mcp: (k, pct) => `MCP 工具模式占用窗口 ${k}（${pct}%）`,
     promptSlow: (tool, what, d) => `调用 ${tool} ${what} 已运行 ${d}，远超平常。它是否卡住或在等待输入？请查明，如果卡住就停止它。`,
+    promptSlowDone: (tool, what, d) => `调用 ${tool} ${what} 用了 ${d}。为什么这么慢？下次怎样更快（更窄的命令、缓存、放到后台运行）？先查看，暂时不要修改。`,
     promptLoop: (n, what) => `同一调用连续失败了 ${n} 次：\n${fenced(what)}\n\n不要再重试。先找出原因，再改变做法。`,
     promptContext: pct => `上下文已用 ${pct}%。在压缩之前，用几行列出已完成的、剩余的以及重要的文件。`,
     promptReread: (file, n) => `你已读取 ${file} ${n} 次。请基于已读内容工作，或只读取需要的行。`,
@@ -821,6 +828,7 @@ export const ja: Strings = {
     sink: (cat, pct, d) => `${cat} が前のターンの ${pct}%（${d}）`,
     mcp: (k, pct) => `MCP ツールスキーマがウィンドウの ${k}（${pct}%）を占有`,
     promptSlow: (tool, what, d) => `呼び出し ${tool} ${what} が ${d} 実行中で、通常よりはるかに長い。止まっているか入力待ちか調べ、止まっていれば停止して。`,
+    promptSlowDone: (tool, what, d) => `呼び出し ${tool} ${what} に ${d} かかった。なぜそこまで遅かったのか、次回はどうすれば速くなるか（より絞ったコマンド、キャッシュ、バックグラウンド実行）。まず調べ、まだ何も変更しないこと。`,
     promptLoop: (n, what) => `同じ呼び出しが ${n} 回連続で失敗した：\n${fenced(what)}\n\n再試行をやめて、まず原因を突き止めてからやり方を変えて。`,
     promptContext: pct => `コンテキストが ${pct}% に達した。圧縮の前に、完了したこと・残っていること・重要なファイルを数行でまとめて。`,
     promptReread: (file, n) => `${file} を ${n} 回読んでいる。既に読んだ内容で作業するか、必要な行だけを読んで。`,

@@ -521,12 +521,19 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Text>
       )}
       {ins.slow.length > 0 && <Text dimColor>{ti.slowest}</Text>}
-      {ins.slow.slice(0, lay.isDetailed ? 8 : 3).map(s => (
-        <Text>
-          <Text color={s.ms >= 60_000 ? 'yellow' : undefined}>{dur(s.ms).padStart(7)}</Text> <Text bold>{fit(s.tool, 10)}</Text>
-          {fit(cut(s.what, whatRoom), whatRoom + 1)}
-          <Text dimColor>{s.who.slice(0, 16)}</Text>
-        </Text>
+      {ins.slow.slice(0, lay.isDetailed ? 8 : 3).map((s, i) => (
+        <Box gap={1}>
+          <Text>
+            <Text color={s.ms >= 60_000 ? 'yellow' : undefined}>{dur(s.ms).padStart(7)}</Text> <Text bold>{fit(s.tool, 10)}</Text>
+            {fit(cut(s.what, whatRoom), whatRoom + 1)}
+            {/* A narrow pane keeps room for investigate over who ran the call. */}
+            {isWide && <Text dimColor>{s.who.slice(0, 16)}</Text>}
+          </Text>
+          {/* `i` belongs to Focus when it has something to ask; else to the slowest call. */}
+          <Button key={`investigate:slow:${i}`} plain hotkey={i === 0 && firstPrompt < 0 ? 'i' : undefined} onPress={() => investigate(ti.promptSlowDone(s.tool, s.what, dur(s.ms)))}>
+            {t.investigate}
+          </Button>
+        </Box>
       ))}
       {ins.ctx.length > 0 && (
         <Text>

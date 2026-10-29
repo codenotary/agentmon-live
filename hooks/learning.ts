@@ -2,8 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { ContextMcpTool, EngineInterface } from 'claude-code'
 
 import type { Bench, Learned, PromptBench, SessionRecord } from '../types'
-import { addPrompt, benchReport, emptyBench, KEEP_BENCH, upsertRow } from './bench'
-import { lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare } from './learn'
+import { addPrompt, benchReport, emptyBench, gapKinds, KEEP_BENCH, upsertRow } from './bench'
+import { addGaps, lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare } from './learn'
 import { memRules, refsOf } from './memcheck'
 import type { MemFile } from './memcheck'
 import { cfg, INIT } from './state'
@@ -80,6 +80,11 @@ export function notePrompt(p: PromptBench) {
   rec.bench = { ...addPrompt(base, p), mod: true, live: true, outTokens: rec.bench?.outTokens ?? 0, fable: rec.bench?.fable ?? 0 }
 }
 
+// The done gate sent the turn back: what it found, read from its own words as a transcript would be.
+export function noteGaps(feedback: string) {
+  if (rec) addGaps(rec, gapKinds(feedback))
+}
+
 export function noteCompact(tokens: number | undefined) {
   if (rec && tokens) rec.compactAt.push(tokens)
 }
@@ -118,12 +123,15 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
     .slice(0, KEEP_BENCH)
   if (entries.length === 0) return t.learnNone(dir)
   // A session recorded live knows more (MCP schemas, window, effort) than its transcript: keep it.
-  const have = new Set(shapeLearned(await $.store.get(storeKey(cwd)).catch(() => undefined)).sessions.map(s => s.id))
+  // One from a version that did not count the done gate's catches gets only those from its transcript.
+  const have = new Map(shapeLearned(await $.store.get(storeKey(cwd)).catch(() => undefined)).sessions.map(s => [s.id, s]))
   const recs: SessionRecord[] = []
+  const filled: SessionRecord[] = []
   let skipped = 0
   for (const e of entries) {
     const id = e.name.slice(0, -'.jsonl'.length)
-    if (id === rec.id || have.has(id)) continue
+    const old = have.get(id)
+    if (id === rec.id || (old && old.gaps)) continue
     const path = `${dir}/${e.name}`
     // shortcut: a transcript over the 4 MiB read cap is learned from its last 4 MiB only; read it in parts if early turns matter.
     const text = await $.fs.read(path).catch(async () => {
@@ -131,6 +139,7 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
       return r?.exitCode === 0 ? r.stdout : undefined
     })
     if (text === undefined) skipped++
+    else if (old) filled.push({ ...old, gaps: parseTranscript(id, text).gaps })
     else {
       const r = parseTranscript(id, text)
       // A session that ran with the mod left an `active:` key, gate block or not.
@@ -138,7 +147,7 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
       recs.push(r)
     }
   }
-  await save($, l => recs.reduce(upsert, l))
+  await save($, l => [...filled, ...recs].reduce(upsert, l))
   const calls = recs.reduce((n, r) => n + Object.values(r.tools).reduce((m, x) => m + x.calls, 0), 0)
   const compactions = recs.reduce((n, r) => n + r.compactAt.length, 0)
   return t.learned(recs.length, calls, compactions, skipped)

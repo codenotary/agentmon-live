@@ -3,6 +3,8 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { EMPTY_INSIGHTS } from '../hooks/state'
 import { focusList } from '../hooks/insights'
+import { gapKinds } from '../hooks/bench'
+import { LANGUAGES } from '../hooks/i18n'
 import { KEEP_SESSIONS, learnedItems, newRecord, parseTranscript, shapeLearned, tally, totals, upsert } from '../hooks/learn'
 import { memRules, refsOf } from '../hooks/memcheck'
 import type { Learned, SessionRecord } from '../types'
@@ -51,6 +53,41 @@ test('a transcript becomes a session record', async () => {
   expect(r.tools.Bash?.errors).toBe(0)
   expect(r.tools.Read?.big).toBe(1)
   expect(r.at).toBe(Date.parse('2026-10-01T10:00:00.000Z'))
+})
+
+test('the done gate feedback reads as kinds of gap, in every language', async () => {
+  for (const l of Object.values(LANGUAGES)) {
+    const block = l.gateReason(
+      [l.gapFailed(l.check.test, 'npm test'), l.gapStale(l.check.lint, 'npm run lint'), l.gapClaim('tests pass'), l.gapTodos(2, 'a; b'), l.gapAgent('Explore', 'FAIL'), l.fableSays(l.gapFailed('x', 'y')), `→ check why it ${l.gapFailed('build', 'tsc')}`]
+        .map(g => `- ${g}`)
+        .join('\n'),
+    )
+    expect(gapKinds(`Stop hook feedback:\n${block}`)).toEqual(['failed', 'stale', 'claim', 'todos', 'agent', 'fable'])
+  }
+  // Another Stop hook's feedback is not the gate's.
+  expect(gapKinds('Stop hook feedback:\n- test failed: npm test')).toEqual([])
+})
+
+test('a transcript counts what the done gate sent back; resumed entries count once', async () => {
+  const en = LANGUAGES.en!
+  const fb = line({ type: 'user', uuid: 'g1', isMeta: true, message: { content: `Stop hook feedback:\n${en.gateReason(`- ${en.gapFailed('test', 'npm test')}`)}` } })
+  expect(parseTranscript('s1', [TRANSCRIPT, fb, fb].join('\n')).gaps).toEqual({ failed: 1 })
+  expect(parseTranscript('s1', TRANSCRIPT).gaps).toEqual({})
+})
+
+test('a gap the done gate caught in 3 sessions becomes a hint with a CLAUDE.md rule', async () => {
+  const caught = (n: number) => history(n + 2, (r, i) => {
+    r.bench = { mod: true, live: true, editTurns: 0, verified: 0, churn: 0, outTokens: 0, turnMs: [], blocks: 0, acted: 0, passed: 0, fable: 0 }
+    if (i < n) r.gaps = { stale: 1, ...(i === 0 ? { todos: 2 } : {}) }
+  })
+  expect(learnedItems(caught(2), LIVE).some(x => x.key.startsWith('gate:'))).toBe(false)
+  const item = learnedItems(caught(3), LIVE).find(x => x.key.startsWith('gate:'))
+  expect(item?.key).toBe('gate:stale')
+  expect(item?.text).toBe('done gate caught tests run before the last edit in 3 of 5 sessions')
+  expect(item?.prompt).toContain('CLAUDE.md')
+  expect(item?.prompt).toContain('Run the tests after your last edit')
+  // Records from older versions have no gaps and still load.
+  expect(learnedItems(history(4, () => {}), LIVE).some(x => x.key.startsWith('gate:'))).toBe(false)
 })
 
 test('the store keeps one record per session, the newest ones', async () => {
@@ -221,20 +258,46 @@ test('a turn writes this session to the store; a known-flaky tool warns once', a
   expect(live?.peak).toBe(50_000)
 })
 
+test('a stop the done gate sends back is kept in the session record', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>()
+  engine(on, store, [])
+  on('classic.Stop', () => ({}))
+  on('tool.call', (_, e) => ((e as { tool: string }).tool === 'Bash' ? { result: {}, isError: true, text: 'test failed' } : { result: {} }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
+  await $.tool.call({ tool: 'Edit', file_path: '/p/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  expect((await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'All done.' })).block).toContain('test failed: npm test')
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
+  await clock.settle()
+  expect(shapeLearned(store.get('proj:/p')).sessions.find(s => s.id === 'live')?.gaps).toEqual({ failed: 1 })
+})
+
 test('/agentmon learn keeps a session recorded live and adds the new ones', async ($, on) => {
   const clock = mock.clock(on)
   const store = new Map<string, unknown>()
   const live = newRecord('old', 1)
   live.mcp = { mcp__jira: 3000 }
-  store.set('proj:/p', { sessions: [live], mem: [] })
-  engine(on, store, [], ['old', 'new'])
+  // Recorded by a version that did not count the done gate's catches.
+  const { gaps: _, ...older } = { ...newRecord('older', 2), mcp: { mcp__jira: 3000 } }
+  store.set('proj:/p', { sessions: [live, older], mem: [] })
+  engine(on, store, [], ['old', 'older', 'new'])
   const line = JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2026-01-01T00:00:00Z', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] } })
-  on('fs.read', () => ({ value: `${line}\n${line}` }))
+  const en = LANGUAGES.en!
+  const gate = JSON.stringify({ type: 'user', uuid: 'g1', isMeta: true, message: { content: `Stop hook feedback:\n${en.gateReason(`- ${en.gapFailed('test', 'npm test')}`)}` } })
+  on('fs.read', () => ({ value: `${line}\n${line}\n${gate}` }))
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
   await clock.settle()
   await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'learn' } as never)
   const saved = shapeLearned(store.get('proj:/p'))
   expect(saved.sessions.find(s => s.id === 'old')?.mcp).toEqual({ mcp__jira: 3000 })
+  expect(saved.sessions.find(s => s.id === 'old')?.gaps).toEqual({})
+  // The older record keeps what it knew and gains the gate's catches.
+  expect(saved.sessions.find(s => s.id === 'older')).toMatchObject({ mcp: { mcp__jira: 3000 }, gaps: { failed: 1 } })
+  expect(saved.sessions.find(s => s.id === 'older')?.tools).toEqual({})
   // The repeated entry counts once.
   expect(saved.sessions.find(s => s.id === 'new')?.tools.Bash?.calls).toBe(1)
 })

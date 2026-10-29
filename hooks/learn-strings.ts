@@ -1,6 +1,6 @@
 // Strings for what AgentMon Live learns across sessions, kept apart from locales.ts so that file does not grow.
 const en = {
-  tag: { plan: 'plan', flaky: 'flaky', unused: 'unused', habit: 'habit', memory: 'memory' },
+  tag: { plan: 'plan', flaky: 'flaky', unused: 'unused', habit: 'habit', memory: 'memory', gate: 'gate' },
   kind: 'memory',
   ctxPlan: (pct: number, tips: string, n: number, typical?: number) =>
     `context ${pct}%${typical === undefined ? '' : ` · ${n} past sessions compacted near ${typical}%`} · ${tips}`,
@@ -12,6 +12,10 @@ const en = {
   flakyToast: (tool: string, pct: number) => `AgentMon Live: ${tool} failed ${pct}% of its calls in past sessions`,
   unused: (server: string, sessions: number, k: string) => `${server} loaded in ${sessions} sessions, never used · ${k} schema tokens each time`,
   habit: (tool: string, n: number, sessions: number) => `${tool} put 10k+ tokens into context ${n}× over ${sessions} sessions`,
+  gateKind: { failed: 'failing tests', stale: 'tests run before the last edit', claim: '"tests pass" with nothing run after the edit', todos: 'open todo items', agent: 'failing subagent tests', fable: 'parts of the request left unanswered' },
+  gateHabit: (what: string, n: number, total: number) => `done gate caught ${what} in ${n} of ${total} sessions`,
+  gateRule: { check: 'Run the tests after your last edit and report the result before you say done.', todos: 'Close or remove todo items before you say done.', agent: 'Read each subagent\'s test report before you say done.', fable: 'Answer every part of the request, and say plainly what you skipped.' },
+  promptGateRule: (what: string, rule: string) => `The done gate keeps catching ${what} in this project. Propose adding this rule to the project CLAUDE.md, or a better one; change nothing yet: "${rule}"`,
   mem: {
     dupName: (d: string) => `memory name used twice: ${d}`,
     missingIndex: (d: string) => `MEMORY.md points to a missing file: ${d}`,
@@ -51,7 +55,7 @@ const en = {
 export type LearnStrings = typeof en
 
 const de: LearnStrings = {
-  tag: { plan: 'Plan', flaky: 'wackelig', unused: 'ungenutzt', habit: 'Muster', memory: 'Gedächtnis' },
+  tag: { plan: 'Plan', flaky: 'wackelig', unused: 'ungenutzt', habit: 'Muster', memory: 'Gedächtnis', gate: 'Prüfung' },
   kind: 'Gedächtnis',
   ctxPlan: (pct, tips, n, typical) => `Kontext ${pct}%${typical === undefined ? '' : ` · ${n} frühere Sitzungen verdichteten bei etwa ${typical}%`} · ${tips}`,
   tipCompact: '/compact <Fokus>',
@@ -61,6 +65,10 @@ const de: LearnStrings = {
   flakyToast: (tool, pct) => `AgentMon Live: ${tool} scheiterte bei ${pct}% seiner Aufrufe in früheren Sitzungen`,
   unused: (server, sessions, k) => `${server} in ${sessions} Sitzungen geladen, nie genutzt · jedes Mal ${k} Schema-Tokens`,
   habit: (tool, n, sessions) => `${tool} brachte ${n}× über 10k Tokens in den Kontext, in ${sessions} Sitzungen`,
+  gateKind: { failed: 'fehlschlagende Tests', stale: 'Tests vor der letzten Änderung', claim: '„Tests bestanden“ ohne Lauf nach der Änderung', todos: 'offene Aufgaben', agent: 'fehlschlagende Tests von Subagenten', fable: 'unbeantwortete Teile der Anfrage' },
+  gateHabit: (what, n, total) => `Fertig-Prüfung fand ${what} in ${n} von ${total} Sitzungen`,
+  gateRule: { check: 'Führe die Tests nach deiner letzten Änderung aus und nenne das Ergebnis, bevor du fertig meldest.', todos: 'Schließe oder entferne offene Aufgaben, bevor du fertig meldest.', agent: 'Lies den Testbericht jedes Subagenten, bevor du fertig meldest.', fable: 'Beantworte jeden Teil der Anfrage und sag offen, was du ausgelassen hast.' },
+  promptGateRule: (what, rule) => `Die Fertig-Prüfung findet in diesem Projekt immer wieder ${what}. Schlag vor, diese Regel in die CLAUDE.md des Projekts aufzunehmen, oder eine bessere; ändere noch nichts: „${rule}“`,
   mem: {
     dupName: d => `Gedächtnisname doppelt: ${d}`,
     missingIndex: d => `MEMORY.md verweist auf eine fehlende Datei: ${d}`,
@@ -98,7 +106,7 @@ const de: LearnStrings = {
 }
 
 const fr: LearnStrings = {
-  tag: { plan: 'plan', flaky: 'instable', unused: 'inutilisé', habit: 'habitude', memory: 'mémoire' },
+  tag: { plan: 'plan', flaky: 'instable', unused: 'inutilisé', habit: 'habitude', memory: 'mémoire', gate: 'contrôle' },
   kind: 'mémoire',
   ctxPlan: (pct, tips, n, typical) => `contexte ${pct} %${typical === undefined ? '' : ` · ${n} sessions passées compactées vers ${typical} %`} · ${tips}`,
   tipCompact: '/compact <focus>',
@@ -108,6 +116,10 @@ const fr: LearnStrings = {
   flakyToast: (tool, pct) => `AgentMon Live : ${tool} a échoué ${pct} % de ses appels lors des sessions passées`,
   unused: (server, sessions, k) => `${server} chargé dans ${sessions} sessions, jamais utilisé · ${k} tokens de schéma à chaque fois`,
   habit: (tool, n, sessions) => `${tool} a mis plus de 10k tokens dans le contexte ${n}× sur ${sessions} sessions`,
+  gateKind: { failed: 'des tests en échec', stale: 'des tests lancés avant la dernière modification', claim: '« les tests passent » sans test après la modification', todos: 'des tâches encore ouvertes', agent: 'des tests de sous-agent en échec', fable: 'des parties de la demande sans réponse' },
+  gateHabit: (what, n, total) => `le contrôle de fin a trouvé ${what} dans ${n} sessions sur ${total}`,
+  gateRule: { check: 'Lance les tests après ta dernière modification et donne le résultat avant de dire que c’est fini.', todos: 'Termine ou retire les tâches ouvertes avant de dire que c’est fini.', agent: 'Lis le rapport de tests de chaque sous-agent avant de dire que c’est fini.', fable: 'Réponds à chaque partie de la demande et dis clairement ce que tu as laissé de côté.' },
+  promptGateRule: (what, rule) => `Le contrôle de fin trouve souvent ${what} dans ce projet. Propose d’ajouter cette règle au CLAUDE.md du projet, ou une meilleure ; ne change rien pour l’instant : « ${rule} »`,
   mem: {
     dupName: d => `nom de mémoire en double : ${d}`,
     missingIndex: d => `MEMORY.md pointe vers un fichier absent : ${d}`,
@@ -145,7 +157,7 @@ const fr: LearnStrings = {
 }
 
 const es: LearnStrings = {
-  tag: { plan: 'plan', flaky: 'inestable', unused: 'sin uso', habit: 'hábito', memory: 'memoria' },
+  tag: { plan: 'plan', flaky: 'inestable', unused: 'sin uso', habit: 'hábito', memory: 'memoria', gate: 'control' },
   kind: 'memoria',
   ctxPlan: (pct, tips, n, typical) => `contexto ${pct} %${typical === undefined ? '' : ` · ${n} sesiones pasadas compactaron cerca del ${typical} %`} · ${tips}`,
   tipCompact: '/compact <foco>',
@@ -155,6 +167,10 @@ const es: LearnStrings = {
   flakyToast: (tool, pct) => `AgentMon Live: ${tool} falló el ${pct} % de sus llamadas en sesiones pasadas`,
   unused: (server, sessions, k) => `${server} cargado en ${sessions} sesiones, nunca usado · ${k} tokens de esquema cada vez`,
   habit: (tool, n, sessions) => `${tool} metió más de 10k tokens en el contexto ${n}× en ${sessions} sesiones`,
+  gateKind: { failed: 'tests que fallan', stale: 'tests ejecutados antes del último cambio', claim: '«los tests pasan» sin ejecutar nada tras el cambio', todos: 'tareas aún abiertas', agent: 'tests de subagentes que fallan', fable: 'partes de la petición sin respuesta' },
+  gateHabit: (what, n, total) => `el control de fin encontró ${what} en ${n} de ${total} sesiones`,
+  gateRule: { check: 'Ejecuta los tests después de tu último cambio e informa del resultado antes de decir que has terminado.', todos: 'Cierra o quita las tareas abiertas antes de decir que has terminado.', agent: 'Lee el informe de tests de cada subagente antes de decir que has terminado.', fable: 'Responde a cada parte de la petición y di claramente qué omitiste.' },
+  promptGateRule: (what, rule) => `El control de fin encuentra a menudo ${what} en este proyecto. Propón añadir esta regla al CLAUDE.md del proyecto, u otra mejor; no cambies nada aún: «${rule}»`,
   mem: {
     dupName: d => `nombre de memoria repetido: ${d}`,
     missingIndex: d => `MEMORY.md apunta a un archivo que falta: ${d}`,
@@ -192,7 +208,7 @@ const es: LearnStrings = {
 }
 
 const zh: LearnStrings = {
-  tag: { plan: '计划', flaky: '不稳', unused: '未用', habit: '习惯', memory: '记忆' },
+  tag: { plan: '计划', flaky: '不稳', unused: '未用', habit: '习惯', memory: '记忆', gate: '完成检查' },
   kind: '记忆',
   ctxPlan: (pct, tips, n, typical) => `上下文 ${pct}%${typical === undefined ? '' : ` · 过去 ${n} 个会话约在 ${typical}% 时压缩`} · ${tips}`,
   tipCompact: '/compact <重点>',
@@ -202,6 +218,10 @@ const zh: LearnStrings = {
   flakyToast: (tool, pct) => `AgentMon Live：${tool} 在过去会话中失败 ${pct}%`,
   unused: (server, sessions, k) => `${server} 在 ${sessions} 个会话中加载但从未使用 · 每次 ${k} 个 schema token`,
   habit: (tool, n, sessions) => `${tool} 在 ${sessions} 个会话中 ${n} 次向上下文放入 10k 以上 token`,
+  gateKind: { failed: '失败的测试', stale: '在最后一次修改前运行的测试', claim: '修改后未运行就声称“测试通过”', todos: '未完成的待办', agent: '子代理报告的失败测试', fable: '请求中未回答的部分' },
+  gateHabit: (what, n, total) => `完成检查在 ${total} 个会话中的 ${n} 个发现了${what}`,
+  gateRule: { check: '最后一次修改后运行测试，并在说完成之前报告结果。', todos: '说完成之前，关闭或删除未完成的待办。', agent: '说完成之前，阅读每个子代理的测试报告。', fable: '回答请求的每个部分，并明确说明跳过了什么。' },
+  promptGateRule: (what, rule) => `在这个项目中，完成检查反复发现${what}。请建议把这条规则加入项目的 CLAUDE.md，或提出更好的规则；暂时不要修改：“${rule}”`,
   mem: {
     dupName: d => `记忆名称重复：${d}`,
     missingIndex: d => `MEMORY.md 指向不存在的文件：${d}`,
@@ -238,7 +258,7 @@ const zh: LearnStrings = {
 }
 
 const ja: LearnStrings = {
-  tag: { plan: '計画', flaky: '不安定', unused: '未使用', habit: '傾向', memory: 'メモリ' },
+  tag: { plan: '計画', flaky: '不安定', unused: '未使用', habit: '傾向', memory: 'メモリ', gate: '完了チェック' },
   kind: 'メモリ',
   ctxPlan: (pct, tips, n, typical) => `コンテキスト ${pct}%${typical === undefined ? '' : ` · 過去 ${n} セッションは約 ${typical}% で圧縮`} · ${tips}`,
   tipCompact: '/compact <焦点>',
@@ -248,6 +268,10 @@ const ja: LearnStrings = {
   flakyToast: (tool, pct) => `AgentMon Live：${tool} は過去のセッションで ${pct}% 失敗しています`,
   unused: (server, sessions, k) => `${server} は ${sessions} セッションで読み込まれ未使用 · 毎回 ${k} のスキーマトークン`,
   habit: (tool, n, sessions) => `${tool} が ${sessions} セッションで ${n} 回 10k 以上のトークンをコンテキストに入れた`,
+  gateKind: { failed: '失敗したテスト', stale: '最後の変更より前に実行されたテスト', claim: '変更後に何も実行せずに「テスト成功」と報告', todos: '未完了のタスク', agent: 'サブエージェントの失敗したテスト', fable: '依頼の未回答の部分' },
+  gateHabit: (what, n, total) => `完了チェックが ${total} セッション中 ${n} 回、${what}を検出`,
+  gateRule: { check: '最後の変更の後にテストを実行し、完了と言う前に結果を報告すること。', todos: '完了と言う前に、未完了のタスクを閉じるか削除すること。', agent: '完了と言う前に、各サブエージェントのテスト報告を読むこと。', fable: '依頼のすべての部分に答え、省いたことは明確に伝えること。' },
+  promptGateRule: (what, rule) => `このプロジェクトでは完了チェックが${what}を繰り返し検出しています。このルール、またはより良いルールをプロジェクトの CLAUDE.md に追加する案を出してください。まだ何も変更しないこと：「${rule}」`,
   mem: {
     dupName: d => `メモリ名が重複：${d}`,
     missingIndex: d => `MEMORY.md が存在しないファイルを指す：${d}`,

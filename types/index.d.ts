@@ -64,7 +64,11 @@ export type SessionRecord = {
   tools: Record<string, ToolTally>
   mcp: Record<string, number>
   bench?: Bench
+  // What the done gate sent back, per kind of gap; missing in records from older versions, which `/agentmon learn` fills in from the transcript.
+  gaps?: Partial<Record<GapKind, number>>
 }
+
+export type GapKind = 'failed' | 'stale' | 'claim' | 'todos' | 'agent' | 'fable'
 
 // What one session's work came to, for `/agentmon bench`: `mod` when AgentMon Live ran in it, `live` when recorded as it ran (not read back from a transcript).
 // Turn counts are per prompt: a turn the done gate sent back is the same prompt. `turnMs` holds the durations of prompts that used tools.

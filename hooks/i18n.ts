@@ -151,6 +151,8 @@ const en = {
     mcp: (k: string, pct: number) => `MCP tool schemas take ${k} (${pct}%) of the window`,
     promptSlow: (tool: string, what: string, d: string) =>
       `The call ${tool} ${what} has run for ${d}, far longer than usual. Is it stuck or waiting for input? Find out, and stop it if it hangs.`,
+    promptSlowDone: (tool: string, what: string, d: string) =>
+      `The call ${tool} ${what} took ${d}. Why was it that slow, and how can the next run be faster (a narrower command, a cache, running it in the background)? Look first; change nothing yet.`,
     promptLoop: (n: number, what: string) => `The same call failed ${n} times in a row:\n${fenced(what)}\n\nStop retrying it. Find the cause first, then change the approach.`,
     promptContext: (pct: number) => `Context is ${pct}% full. Before it compacts, list in a few lines what is done, what is left and which files matter.`,
     promptReread: (file: string, n: number) => `You have read ${file} ${n} times. Work from what you already read, or read only the lines you need.`,

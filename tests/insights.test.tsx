@@ -132,6 +132,9 @@ test('a turn is split into model, tool and approval time', async ($, on) => {
   // Investigate drafts a question about allow rules.
   await ui.press({ key: 'investigate:0' })
   expect(drafted).toMatch(/allow rules/)
+  // A slow call has its own investigate: why it was slow, not whether it hangs.
+  await ui.press({ key: 'investigate:slow:0' })
+  expect(drafted).toMatch(/^The call Read .*big\.json took 6\.0s\. Why was it that slow/)
   await ui.unmount()
 })
 
