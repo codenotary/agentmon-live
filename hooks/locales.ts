@@ -106,7 +106,8 @@ export const de: Strings = {
   uptime: d => `läuft ${d}`,
   toolsWord: 'Tools',
   agentsWord: 'Agenten',
-  contextWord: 'Kontext',
+  ctxShort: 'Ktx',
+  costWord: 'Kosten',
   limitsWord: 'Limits',
   dismiss: 'ausblenden',
   investigateCheck: (kind, command, error) =>
@@ -279,7 +280,8 @@ export const fr: Strings = {
   uptime: d => `actif ${d}`,
   toolsWord: 'outils',
   agentsWord: 'agents',
-  contextWord: 'contexte',
+  ctxShort: 'ctx',
+  costWord: 'coût',
   limitsWord: 'limites',
   dismiss: 'masquer',
   investigateCheck: (kind, command, error) =>
@@ -452,7 +454,8 @@ export const es: Strings = {
   uptime: d => `activo ${d}`,
   toolsWord: 'herramientas',
   agentsWord: 'agentes',
-  contextWord: 'contexto',
+  ctxShort: 'ctx',
+  costWord: 'coste',
   limitsWord: 'límites',
   dismiss: 'ocultar',
   investigateCheck: (kind, command, error) =>
@@ -624,7 +627,8 @@ export const zh: Strings = {
   uptime: d => `运行 ${d}`,
   toolsWord: '工具',
   agentsWord: '代理',
-  contextWord: '上下文',
+  ctxShort: '上下文',
+  costWord: '费用',
   limitsWord: '限额',
   dismiss: '隐藏',
   investigateCheck: (kind, command, error) =>
@@ -796,7 +800,8 @@ export const ja: Strings = {
   uptime: d => `稼働 ${d}`,
   toolsWord: 'ツール',
   agentsWord: 'エージェント',
-  contextWord: 'コンテキスト',
+  ctxShort: '文脈',
+  costWord: 'コスト',
   limitsWord: '制限',
   dismiss: '非表示',
   investigateCheck: (kind, command, error) =>

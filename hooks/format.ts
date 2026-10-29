@@ -38,7 +38,8 @@ export function brief(call: object): string {
 }
 
 // A quoted value is masked to its closing quote (spaces and all), an unquoted one to the next space.
-const SECRET_NAME = /((?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40})(\s*[=:]\s*|\s+)(?:(["'])((?:bearer|basic)\s+)?[^"'\n]{1,200}\3|((?:bearer|basic)\s+)?[^\s"']+)/gi
+// After a bare space only a secret-looking value counts (a digit, 16+ characters or a quote), so `token refresh bug` stays.
+const SECRET_NAME = /((?<![a-z])(?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40})(\s*[=:]\s*|\s+(?=["']|(?:bearer|basic)\s|[^\s"']*\d|[^\s"']{16}))(?:(["'])((?:bearer|basic)\s+)?[^"'\n]{1,200}\3|((?:bearer|basic)\s+)?[^\s"']+)/gi
 // Only `[^\s:@/]` and `[^\s@/]` follow `://`, so each scan stops at the next slash or space: linear.
 const URL_CREDENTIALS = /:\/\/([^\s:@/]+):[^\s@/]+@/g
 const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|[sr]k_(?:live|test)_\w{16,}|ghp_\w{20,}|github_pat_\w{20,}|glpat-[\w-]{20,}|xox[bp]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|npm_\w{36}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]+)/g
@@ -63,22 +64,30 @@ export function describe(tool: string, call: object): string {
 
 const WIDE = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/
 
-// Cut `s` to `width - 1` terminal columns and pad it to `width`; CJK and full-width characters take two columns.
-export function fit(s: string, width: number): string {
+// Terminal columns `s` takes: CJK and full-width characters take two.
+export function width(s: string): number {
+  let used = 0
+  for (const c of s) used += WIDE.test(c) ? 2 : 1
+  return used
+}
+
+// The longest start of `s` that fits in `cols` columns; whole characters only, so an emoji is never split.
+export function clip(s: string, cols: number): string {
   let out = ''
   let used = 0
   for (const c of s) {
     const w = WIDE.test(c) ? 2 : 1
-    if (used + w > width - 1) break
+    if (used + w > cols) break
     out += c
     used += w
   }
-  return out + ' '.repeat(width - used)
+  return out
 }
 
-export function effortBar(effort: string): string {
-  const n = ({ low: 1, medium: 2, high: 3, xhigh: 4, max: 4 } as Record<string, number>)[effort] ?? 0
-  return '█'.repeat(n) + '▯'.repeat(4 - n)
+// Cut `s` to `width - 1` terminal columns and pad it to `width`.
+export function fit(s: string, cols: number): string {
+  const out = clip(s, cols - 1)
+  return out + ' '.repeat(cols - width(out))
 }
 
 export function clockTime(ms: number): string {
@@ -165,8 +174,9 @@ export function findChecks(command: string): { kind: CheckKind; part: string }[]
 }
 
 // A pipe hides the check's own exit status unless pipefail is set, so success there is only `unknown`.
+// `||` turns a failure into exit 0 the same way.
 export function hidesExit(command: string): boolean {
-  return /[^|]\|[^|]/.test(command) && !/pipefail/.test(command)
+  return /\|\|/.test(command) || (/[^|]\|[^|]/.test(command) && !/pipefail/.test(command))
 }
 
 const FAIL_COUNT = /\b[1-9]\d*\s+(?:tests?\s+)?fail(?:ed|ures?|ing)?\b|\bfail(?:ed|ures?)?:?\s+[1-9]/i

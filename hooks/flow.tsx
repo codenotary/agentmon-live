@@ -3,7 +3,8 @@ import type { EngineInterface, RenderChildren } from 'claude-code'
 import { ago, fit, modelName, smoothBar } from './format'
 import type { Strings } from './i18n'
 import type { Topo } from './topology'
-import { fillEighths, isHigh, isMid, isRunning, limitName } from './topology'
+import { isLive } from './state'
+import { fillEighths, isHigh, isMid, limitName } from './topology'
 
 // The elements every surface draws.
 type Els = Pick<ReturnType<EngineInterface['ui']['resolve']>, 'Box' | 'Text'>
@@ -92,15 +93,15 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
       ))}
     </Box>
   )
-  const running = topo.agents.filter(isRunning).length
-  const shown = [...topo.agents.filter(isRunning), ...topo.agents.filter(a => !isRunning(a)).reverse()].slice(0, 8)
+  const running = topo.agents.filter(isLive).length
+  const shown = [...topo.agents.filter(isLive), ...topo.agents.filter(a => !isLive(a)).reverse()].slice(0, 8)
   const agents = (
     <Box flexDirection="column" borderStyle="round" borderColor="blue" paddingX={1} flexGrow={1}>
       {header(t.agentsWord, 'blue', pipe(`${running} ${t.status.running}`, running > 0, 'blue'))}
       {shown.length === 0 && <Text dimColor>—</Text>}
       {shown.map(a => (
-        <Text dimColor={!isRunning(a) && !a.isFail} wrap="truncate">
-          <Text color={a.isFail ? 'red' : isRunning(a) ? 'cyan' : undefined}>{a.isFail ? '✗' : isRunning(a) ? (phase % 2 ? '◉' : '●') : '○'} </Text>
+        <Text dimColor={!isLive(a) && !a.isFail} wrap="truncate">
+          <Text color={a.isFail ? 'red' : isLive(a) ? 'cyan' : undefined}>{a.isFail ? '✗' : isLive(a) ? (phase % 2 ? '◉' : '●') : '○'} </Text>
           {fit(a.type, 18)}
           <Text color="blue">{modelName(a.model)}</Text>
         </Text>
@@ -127,7 +128,7 @@ export function drawFlow({ Box, Text }: Els, topo: Topo, cols: number, phase: nu
     <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
       {title(t.limitsWord, 'white')}
       <Box gap={1}>
-        {tank('ctx', topo.context)}
+        {tank(t.ctxShort, topo.context)}
         {topo.limits.map(l => tank(limitName(l.kind), l.percent))}
       </Box>
     </Box>

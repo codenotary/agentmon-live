@@ -37,7 +37,7 @@ export const VIEWS: View[] = ['git', 'shell', 'mcp']
 const MAX_FINISHED = 12
 
 // Set from the options on each load.
-export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true }
+export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true, defaultView: 'radar', hidden: [] as string[] }
 
 // Each module declares the atoms it reads or writes itself, as the engine's scan needs; they share these first values.
 export const INIT = {
@@ -69,7 +69,7 @@ export function listening(isOn: boolean): boolean {
   return isOn && cfg.advisorMode !== 'off'
 }
 
-export function isLive(a: Card): boolean {
+export function isLive(a: Pick<Card, 'status'>): boolean {
   return a.status === 'running' || a.status === 'waiting'
 }
 

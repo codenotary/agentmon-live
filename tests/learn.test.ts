@@ -128,18 +128,20 @@ test('memory rules: duplicates, index, stale paths, copied lines', async () => {
   const dir = '/c/projects/p/memory'
   const shared = ['- Always run the tests before you commit anything here', '- Prefer PASETO tokens over JWT for every new service', '- Store docs under the docs folder, never the root']
   const files = [
-    { path: `${dir}/MEMORY.md`, text: '- [A](a.md) — one\n- [Gone](gone.md) — two', inDir: true },
+    { path: `${dir}/MEMORY.md`, text: '- [A](a.md) — one\n- [Gone](gone.md) — two\n- [Spec](https://x.dev/spec.md)\n- [Sub](notes/x.md)', inDir: true },
     { path: `${dir}/a.md`, text: '---\nname: auth\n---\nUses `/data/old/config.yml` and `~/notes/x.md` and `/tmp/*.log` and `/etc/agentxnet`\n- `/src` - Source code\n- `/docs/` - Docs', inDir: true },
     { path: `${dir}/b.md`, text: '---\nname: auth\n---\nbody', inDir: true },
+    { path: `${dir}/c.md`, text: '---\nname: ci\n---\n```yaml\nname: auth\n```\nSee `/srv2/app/main.ts:42` and `/srv2/app/x.md#setup`', inDir: true },
     { path: '/h/CLAUDE.md', text: shared.join('\n'), inDir: false },
     { path: '/p/CLAUDE.md', text: `${shared.join('\n')}\n${'y'.repeat(41_000)}`, inDir: false },
   ]
   const refs = refsOf(files, '/h')
-  expect([...refs.keys()]).toEqual(['/data/old/config.yml', '/h/notes/x.md'])
-  const found = memRules(files, ['MEMORY.md', 'a.md', 'b.md'], new Map([['/data/old/config.yml', `${dir}/a.md`]]))
+  expect([...refs.keys()]).toEqual(['/data/old/config.yml', '/h/notes/x.md', '/srv2/app/main.ts', '/srv2/app/x.md'])
+  const found = memRules(files, ['MEMORY.md', 'a.md', 'b.md', 'c.md'], new Map([['/data/old/config.yml', `${dir}/a.md`]]))
   const kinds = found.map(f => `${f.kind}:${f.detail}`)
   expect(kinds).toContain('dupName:auth (a.md, b.md)')
   expect(kinds).toContain('missingIndex:gone.md')
+  expect(kinds.filter(k => k.startsWith('missingIndex'))).toEqual(['missingIndex:gone.md'])
   expect(kinds).toContain('notIndexed:b.md')
   expect(found.some(f => f.kind === 'staleRef' && f.detail.endsWith('/data/old/config.yml'))).toBe(true)
   expect(found.some(f => f.kind === 'dupLine' && f.detail.endsWith('(3)'))).toBe(true)
@@ -163,7 +165,7 @@ test('an instruction file over 200 lines or full of shouted rules is flagged; me
 })
 
 // What the engine answers; the store is a map the test reads back.
-function engine(on: On, store: Map<string, unknown>, toasts: string[]) {
+function engine(on: On, store: Map<string, unknown>, toasts: string[], transcripts: string[] = []) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -184,7 +186,7 @@ function engine(on: On, store: Map<string, unknown>, toasts: string[]) {
     return { value: undefined }
   })
   on('env.get', () => ({ value: '/h' }))
-  on('fs.list', () => ({ value: [] }))
+  on('fs.list', () => ({ value: transcripts.map(n => ({ name: `${n}.jsonl`, kind: 'file', size: 10, mtimeMs: 1 })) as never }))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
   on('store.set', (_, e) => {
     store.set(e.key, e.value)
@@ -217,4 +219,22 @@ test('a turn writes this session to the store; a known-flaky tool warns once', a
   expect(live?.tools['mcp__gh__issue']).toEqual({ calls: 2, errors: 2, big: 0, lastErr: 'timeout' })
   expect(live?.mcp).toEqual({ mcp__docs: 3000 })
   expect(live?.peak).toBe(50_000)
+})
+
+test('/agentmon learn keeps a session recorded live and adds the new ones', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>()
+  const live = newRecord('old', 1)
+  live.mcp = { mcp__jira: 3000 }
+  store.set('proj:/p', { sessions: [live], mem: [] })
+  engine(on, store, [], ['old', 'new'])
+  const line = JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2026-01-01T00:00:00Z', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] } })
+  on('fs.read', () => ({ value: `${line}\n${line}` }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'learn' } as never)
+  const saved = shapeLearned(store.get('proj:/p'))
+  expect(saved.sessions.find(s => s.id === 'old')?.mcp).toEqual({ mcp__jira: 3000 })
+  // The repeated entry counts once.
+  expect(saved.sessions.find(s => s.id === 'new')?.tools.Bash?.calls).toBe(1)
 })

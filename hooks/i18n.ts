@@ -104,7 +104,8 @@ const en = {
   uptime: (d: string) => `up ${d}`,
   toolsWord: 'tools',
   agentsWord: 'agents',
-  contextWord: 'context',
+  ctxShort: 'ctx',
+  costWord: 'cost',
   limitsWord: 'limits',
   dismiss: 'dismiss',
   investigateCheck: (kind: string, command: string, error: string) =>

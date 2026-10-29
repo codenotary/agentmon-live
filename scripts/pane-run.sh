@@ -146,8 +146,9 @@ while IFS= read -r line || [[ -n $line ]]; do
     wait)
       case ${rest%% *} in
         idle) wait_idle ${rest#idle} ;;
-        text) args=${rest#text }; wait_text "${args% [0-9]*}" "$( [[ $args =~ \ ([0-9]+)$ ]] && echo "${BASH_REMATCH[1]}" || echo 120)" ;;
-        gone) args=${rest#gone }; wait_gone "${args% [0-9]*}" "$( [[ $args =~ \ ([0-9]+)$ ]] && echo "${BASH_REMATCH[1]}" || echo 180)" ;;
+        # Only a number at the very end is the time limit; `learned from 3 sessions` keeps its 3.
+        text) args=${rest#text }; if [[ $args =~ ^(.*)\ ([0-9]+)$ ]]; then wait_text "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; else wait_text "$args" 120; fi ;;
+        gone) args=${rest#gone }; if [[ $args =~ ^(.*)\ ([0-9]+)$ ]]; then wait_gone "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; else wait_gone "$args" 180; fi ;;
         *) fail "unknown wait: $rest" ;;
       esac
       ;;

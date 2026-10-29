@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { ContextMcpTool, EngineInterface } from 'claude-code'
 
 import type { Bench, Learned, PromptBench, SessionRecord } from '../types'
-import { addPrompt, benchReport, emptyBench, upsertRow } from './bench'
+import { addPrompt, benchReport, emptyBench, KEEP_BENCH, upsertRow } from './bench'
 import { lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare } from './learn'
 import { memRules, refsOf } from './memcheck'
 import type { MemFile } from './memcheck'
@@ -32,8 +32,15 @@ export function isMemoryPath(path: string): boolean {
   return /(^|\/)(CLAUDE(\.local)?\.md|MEMORY\.md)$|\/memory\/[^/]+\.md$/.test(path)
 }
 
+// Saves run one after another, so a memory check and a turn end that overlap do not drop one another's write.
+let saving = Promise.resolve()
+function save($: EngineInterface, change: (l: Learned) => Learned): Promise<void> {
+  saving = saving.then(() => saveNow($, change))
+  return saving
+}
+
 // Reads the store again before writing, so a second session in the same project keeps its own record.
-async function save($: EngineInterface, change: (l: Learned) => Learned) {
+async function saveNow($: EngineInterface, change: (l: Learned) => Learned) {
   const key = storeKey(cwd)
   const next = change(shapeLearned(await $.store.get(key).catch(() => undefined)))
   const { current: _, ...kept } = next
@@ -104,13 +111,19 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
   if (!cfg.learning || !rec) return t.learningOff
   const { conf } = await configDir($)
   const dir = arg || `${conf}/projects/${slug(cwd)}`
-  const entries = (await $.fs.list(dir).catch(() => [])).filter(e => e.kind === 'file' && e.name.endsWith('.jsonl'))
+  // Only the newest KEEP_BENCH can be kept, so older files are not read at all.
+  const entries = (await $.fs.list(dir).catch(() => []))
+    .filter(e => e.kind === 'file' && e.name.endsWith('.jsonl'))
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .slice(0, KEEP_BENCH)
   if (entries.length === 0) return t.learnNone(dir)
+  // A session recorded live knows more (MCP schemas, window, effort) than its transcript: keep it.
+  const have = new Set(shapeLearned(await $.store.get(storeKey(cwd)).catch(() => undefined)).sessions.map(s => s.id))
   const recs: SessionRecord[] = []
   let skipped = 0
   for (const e of entries) {
     const id = e.name.slice(0, -'.jsonl'.length)
-    if (id === rec.id) continue
+    if (id === rec.id || have.has(id)) continue
     const path = `${dir}/${e.name}`
     // shortcut: a transcript over the 4 MiB read cap is learned from its last 4 MiB only; read it in parts if early turns matter.
     const text = await $.fs.read(path).catch(async () => {

@@ -174,6 +174,31 @@ test('an answer that says the tests pass with no check after the last edit is se
   expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
 })
 
+test('a check that still fails does not back a claim, even when it failed at the prompt too', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  await start($)
+  await $.tool.call({ tool: 'Bash', command: 'npm test -- fail' })
+  await clock.advance(1000)
+  await $.turn.start({ text: 'fix the tests', turnId: 'm2' })
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test -- fail' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toContain('the answer says "All tests pass"')
+})
+
+test('a check chained with git, or behind ||, is still recorded with its real outcome', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test && git commit -am wip' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
+})
+
 test('claims are found in each language and negations are not claims', async () => {
   expect(claimOf('Build succeeds and lint is clean.')).toBe('Build succeeds')
   expect(claimOf("The tests didn't pass.")).toBe(undefined)

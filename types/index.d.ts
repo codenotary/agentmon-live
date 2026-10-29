@@ -186,9 +186,6 @@ export type Advisor = {
   state?: 'idle' | 'checking' | 'unavailable' | 'budget'
   // Why the last call got no answer: the API error and status, `aborted` or `empty-reply`.
   why?: string
-  // What the last call was asked, and when each kind last ran: for duplicate suppression and the cooldown.
-  lastKey?: string
-  lastAt?: Record<string, number>
   // Fable's own tokens, apart from the session's.
   tokensIn?: number
   tokensOut?: number

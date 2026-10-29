@@ -1,5 +1,6 @@
 import type { MemFinding } from '../types'
 import { kilo, shortPath } from './format'
+import { estTokens } from './insights'
 
 // A memory or instruction file as read: `inDir` when it sits in the project's auto-memory folder.
 export type MemFile = { path: string; text: string; inDir: boolean }
@@ -25,7 +26,8 @@ export function refsOf(files: readonly MemFile[], home: string): Map<string, str
   const out = new Map<string, string>()
   for (const f of files) {
     for (const m of f.text.matchAll(/`(~\/[^\s`]+|\/[^\s`/]+\/[^\s`]+)`/g)) {
-      const ref = m[1]!
+      // `a.ts:42` and `x.md#setup` name the file, not a file of that name.
+      const ref = m[1]!.replace(/(?::\d+)+$|#[^/]*$/, '')
       if (/[*<>${}]/.test(ref) || SYSTEM.test(ref) || out.size >= MAX_REFS) continue
       out.set(ref.startsWith('~/') ? `${home}${ref.slice(1)}` : ref, f.path)
     }
@@ -40,21 +42,23 @@ export function memRules(files: readonly MemFile[], dir: readonly string[], miss
 
   const byName = new Map<string, string[]>()
   for (const f of mem) {
-    const name = f.text.match(/^name:\s*(.+)$/m)?.[1]?.trim()
+    // Only the frontmatter's name; a `name: CI` in a quoted snippet is not one.
+    const name = f.text.match(/^---\n[\s\S]*?\n---/)?.[0].match(/^name:\s*(.+)$/m)?.[1]?.trim()
     if (name) byName.set(name, [...(byName.get(name) ?? []), base(f.path)])
   }
   for (const [name, list] of byName) if (list.length > 1) out.push({ kind: 'dupName', file: list[0]!, detail: `${name} (${list.join(', ')})` })
 
   const index = mem.find(f => base(f.path) === 'MEMORY.md')
   if (index) {
-    const linked = new Set([...index.text.matchAll(/\]\(([^)\s]+\.md)\)/g)].map(m => base(m[1]!)))
+    // Links to the web or into subfolders are not entries of this folder.
+    const linked = new Set([...index.text.matchAll(/\]\(([^)\s/]+\.md)\)/g)].map(m => m[1]!))
     for (const l of linked) if (!dir.includes(l)) out.push({ kind: 'missingIndex', file: index.path, detail: l })
     for (const d of dir) if (d.endsWith('.md') && d !== 'MEMORY.md' && !linked.has(d)) out.push({ kind: 'notIndexed', file: index.path, detail: d })
   }
 
   for (const [ref, file] of missing) out.push({ kind: 'staleRef', file, detail: `${shortPath(file)} → ${ref}` })
 
-  for (const f of files) if (f.text.length > BIG_CHARS) out.push({ kind: 'tooBig', file: f.path, detail: `${shortPath(f.path)} ≈${kilo(Math.ceil(f.text.length / 4))}` })
+  for (const f of files) if (f.text.length > BIG_CHARS) out.push({ kind: 'tooBig', file: f.path, detail: `${shortPath(f.path)} ≈${kilo(estTokens(f.text))}` })
 
   // Instruction files (CLAUDE.md and the like), not the memory folder's notes: long ones and shouted rules.
   for (const f of files) {

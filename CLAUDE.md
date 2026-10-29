@@ -1,6 +1,6 @@
 # AgentMon Live
 
-Claude Code mod (plugin): a live pane beside the chat, a done gate on Stop, learning across sessions, and a self benchmark. User docs are in `README.md`; keep it in step with every user-visible change.
+Claude Code mod (plugin): a live pane beside the chat, a done gate on Stop, learning across sessions, and a self benchmark. User docs: `README.md` (pitch, install, keys) and `docs/guide.md` (full reference); keep both in step with every user-visible change. Developer docs: `docs/develop.md`.
 
 ## Check before you report done
 
@@ -20,6 +20,7 @@ npx -p typescript tsc --noEmit -p .
 - `hooks/learn.ts` (pure rules, `parseTranscript`), `hooks/learning.ts` (store, `/agentmon learn|memory|bench`), `hooks/bench.ts` (self benchmark: per-prompt numbers, transcript parse, report).
 - `hooks/gate.ts`, `hooks/advisor.ts`: done-gate facts and the Fable call.
 - `hooks/i18n.ts` (English), `hooks/locales.ts` (de, fr, es, zh, ja), `hooks/learn-strings.ts` (learning and bench text, all six).
+- `skills/agentmon-config/SKILL.md`: tells Claude how to change the options from chat; keep its table in step with `userConfig`.
 - `types/index.d.ts`: state contract. `SessionRecord`, `Bench`, `BenchRow`, `Learned` live here.
 - `tests/*.test.ts(x)`: one file per part; transcript fixtures in `tests/fixtures/`.
 

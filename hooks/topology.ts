@@ -61,8 +61,6 @@ export function topology(input: {
 // A limit's short name for a narrow label: five_hour -> 5h.
 export const limitName = (kind: string) => kind.replace('five_hour', '5h').replace('seven_day', '7d').replace(/_/g, ' ')
 
-export const isRunning = (a: Topo['agents'][number]) => a.status === 'running' || a.status === 'waiting'
-
 // The one place the gauges turn warning and alarm colours.
 export const isHigh = (p: number) => p >= 80
 export const isMid = (p: number) => p >= 50

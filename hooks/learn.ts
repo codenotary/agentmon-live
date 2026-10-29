@@ -1,7 +1,7 @@
 import type { Learned, MemFinding, SessionRecord, ToolTally } from '../types'
-import { benchOf, upsertRow } from './bench'
+import { benchOf, textOf, upsertRow } from './bench'
 import { kilo, mask } from './format'
-import { median } from './insights'
+import { BIG_RESULT_TOKENS, estTokens, median } from './insights'
 import type { Insight } from './insights'
 import { LEARN } from './learn-strings'
 import { cfg } from './state'
@@ -22,7 +22,6 @@ export const CTX_MARGIN = 0.9
 export const CTX_FALLBACK = 0.7
 // Early manual /compacts teach nothing: the plan never warns below half the window.
 export const CTX_FLOOR = 0.5
-export const BIG_TOKENS = 10_000
 
 export const EMPTY_LEARNED: Learned = { current: '', sessions: [], mem: [], bench: [] }
 
@@ -50,7 +49,7 @@ export function tally(rec: SessionRecord, tool: string, isError: boolean, error:
     t.errors += 1
     t.lastErr = mask(error.replace(/\s+/g, ' ').trim()).slice(0, 120) || undefined
   }
-  if (resultTokens >= BIG_TOKENS) t.big += 1
+  if (resultTokens >= BIG_RESULT_TOKENS) t.big += 1
 }
 
 function trimTools(rec: SessionRecord): SessionRecord {
@@ -72,6 +71,8 @@ const REJECTED = /^The user doesn't want to proceed|tool use was rejected/i
 export function parseTranscript(id: string, text: string): SessionRecord {
   const rec = newRecord(id, 0)
   const names = new Map<string, string>()
+  // A resumed session repeats entries; each counts once, as in `benchOf`.
+  const seen = new Set<string>()
   for (const line of text.split('\n')) {
     if (!line.startsWith('{')) continue
     let o: Record<string, any>
@@ -79,6 +80,10 @@ export function parseTranscript(id: string, text: string): SessionRecord {
       o = JSON.parse(line)
     } catch {
       continue
+    }
+    if (typeof o.uuid === 'string') {
+      if (seen.has(o.uuid)) continue
+      seen.add(o.uuid)
     }
     if (!rec.at && typeof o.timestamp === 'string') rec.at = Date.parse(o.timestamp) || 0
     const content = o.message?.content
@@ -97,12 +102,12 @@ export function parseTranscript(id: string, text: string): SessionRecord {
         const tool = names.get(b.tool_use_id)
         const t = tool === undefined ? undefined : rec.tools[tool]
         if (!t) continue
-        const body = typeof b.content === 'string' ? b.content : Array.isArray(b.content) ? b.content.map((c: { text?: string }) => c?.text ?? '').join('\n') : ''
+        const body = textOf(b.content)
         if (b.is_error && !REJECTED.test(body)) {
           t.errors += 1
           t.lastErr = mask(body.replace(/\s+/g, ' ').trim()).slice(0, 120) || undefined
         }
-        if (Math.ceil(body.length / 4) >= BIG_TOKENS) t.big += 1
+        if (estTokens(body) >= BIG_RESULT_TOKENS) t.big += 1
       }
     } else if (o.type === 'system' && o.subtype === 'compact_boundary') {
       const pre = Number(o.compactMetadata?.preTokens)

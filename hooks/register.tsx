@@ -4,7 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
 import { addNote, consult } from './advisor'
 import { doneGaps, isDoc } from './gate'
-import { CHURN_EDITS } from './bench'
+import { PROMPT_CHURN_EDITS } from './bench'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, notePrompt, queueMemoryCheck, saveTurn, startLearning } from './learning'
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
@@ -311,7 +311,7 @@ async function benchPrompt($: EngineInterface, turn: Turn, blockAt: number | und
   notePrompt({
     edit: turn.lastCodeEditAt !== undefined,
     verified: after.length > 0 && after.every(c => c.result === 'ok'),
-    churn: [...turn.edits.values()].some(n => n >= CHURN_EDITS),
+    churn: [...turn.edits.values()].some(n => n >= PROMPT_CHURN_EDITS),
     ms: turn.tools > 0 ? now - turn.startedAt : 0,
     block: blockAt !== undefined,
     acted: blockAt !== undefined && turn.tools > blockAt,
@@ -335,6 +335,8 @@ export const register: Register = (on, options) => {
   cfg.advisorBudget = Number.isFinite(budget) && budget >= 0 ? budget : 30
   configureSize(options.sizeLimit, options.sizeExclude)
   cfg.learning = String(options.learning ?? 'on') !== 'off'
+  cfg.defaultView = String(options.defaultView) === 'flow' ? 'flow' : 'radar'
+  cfg.hidden = String(options.hiddenSections ?? '').split(',').map(s => s.trim()).filter(Boolean)
   // Module variables reset on reload; the atoms above keep the shown state.
   const effortByCall = new Map<string, string>()
   const filesByAgent = new Map<string, Set<string>>()
@@ -370,6 +372,8 @@ export const register: Register = (on, options) => {
       argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|flow|radar|details|learn|memory]`,
     })
     cwd = e.cwd
+    // After a reload mid-turn, older todos and agent results must not count as this turn's.
+    turn.startedAt = await $.clock.now()
     // The project's own size exceptions, each with a reason.
     void $.fs.read(`${cwd}/.agentmon-size`).then(
       text => configureSize(options.sizeLimit, options.sizeExclude, parseExceptions(text)),
@@ -487,7 +491,7 @@ export const register: Register = (on, options) => {
       turn.edited = new Set()
       turn.edits = new Map()
       turn.docs = new Set()
-      await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const, lastKey: undefined, lastAt: {} }))
+      await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const }))
       await refreshStatus($)
       return { text: t.cleared }
     }
@@ -499,6 +503,8 @@ export const register: Register = (on, options) => {
     // A turn the done gate sent back goes on as the same turn: its checks and edits still count.
     if (e.agentId === undefined && e.text === '' && isGateUsed) {
       isTurnLive = true
+      // The first turn.complete stopped the clock; the work after the send-back is still this turn's.
+      if (!clk.inTurn) clk = newClock(await $.clock.now(), true)
     } else if (e.agentId === undefined) {
       isTurnLive = true
       isGateUsed = false
@@ -627,7 +633,7 @@ export const register: Register = (on, options) => {
 
     const command = e.tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
     // One row per kind; the row names the part that ran the check, not a script the same command ran first.
-    const kinds = cat === 'shell' ? findChecks(command) : []
+    const kinds = e.tool === 'Bash' ? findChecks(command) : []
     const found = [...new Map(kinds.map(c => [c.kind, c])).values()]
     const lastKind = kinds.at(-1)?.kind
     const isMine = (c: Check) => c.at === startedAt && found.some(f => f.kind === c.kind)
@@ -883,7 +889,7 @@ export const register: Register = (on, options) => {
     // Another hook already sends it back: never stack.
     if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
     // A light turn has nothing to gate; while subagents still run, the work is not over yet.
-    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0) || (await read($, agents)).some(isLive)) return r
+    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0) || (await read($, agents)).some(a => a.status === 'running')) return r
     const found = await openGaps($, turn, e.last_assistant_message ?? '')
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
     const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active

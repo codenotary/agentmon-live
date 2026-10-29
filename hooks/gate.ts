@@ -39,7 +39,7 @@ export function doneGaps(t: Strings, { checks, before, tasks, agents, since, cod
   }
   // Code changed, the answer says the checks pass, and nothing ran after the change: the claim has no evidence.
   const claim = lastCodeEditAt === undefined || gaps.length > 0 ? undefined : claimOf(answer)
-  if (claim && !checks.some(c => c.at >= lastCodeEditAt! && c.result !== 'running')) gaps.push(t.gapClaim(claim))
+  if (claim && !checks.some(c => c.at >= lastCodeEditAt! && c.result !== 'running' && c.result !== 'failed')) gaps.push(t.gapClaim(claim))
   const open = tasks.filter(k => k.status !== 'completed')
   // A list left from an earlier turn is not this turn's unfinished work.
   if (open.length > 0 && tasks.some(k => (k.at ?? 0) >= since)) gaps.push(t.gapTodos(open.length, open.slice(0, 3).map(k => k.subject).join('; ')))

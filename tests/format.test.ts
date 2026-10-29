@@ -31,6 +31,9 @@ test('mask hides secret values', () => {
   expect(mask('export AWS_SECRET_ACCESS_KEY=xyz')).toBe('export AWS_SECRET_ACCESS_KEY=***')
   expect(mask('gh auth ghp_abcdefghijklmnopqrstuvwxyz0123456789')).toBe('gh auth ***')
   expect(mask('cat src/token.ts')).toBe('cat src/token.ts')
+  expect(mask('fix the token refresh bug')).toBe('fix the token refresh bug')
+  expect(mask('the monkey patch breaks the keyboard handler')).toBe('the monkey patch breaks the keyboard handler')
+  expect(mask('bearer abc123')).toBe('bearer ***')
 })
 
 test('mask hides flag secrets, cookies, quoted values with spaces and common key shapes', () => {

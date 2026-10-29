@@ -11,7 +11,7 @@ export const KEEP_BENCH = 300
 // Durations kept per session, enough for a median.
 const KEEP_MS = 50
 // Edits of one file in one prompt that count as churn.
-export const CHURN_EDITS = 4
+export const PROMPT_CHURN_EDITS = 4
 // A column needs this many sessions before its numbers say anything.
 export const MIN_BENCH = 5
 const WEEK_MS = 7 * 24 * 3600_000
@@ -57,6 +57,11 @@ export function upsertRow(rows: readonly BenchRow[], rec: SessionRecord): BenchR
 
 type Prompt = { t0: number; t1: number; tools: number; edits: Map<string, number>; lastEdit: number; checks: { seq: number; id: string; kind: string }[]; blockAt?: number }
 
+// A message's or tool result's text: a plain string, or the text blocks joined.
+export function textOf(content: unknown): string {
+  return typeof content === 'string' ? content : Array.isArray(content) ? content.map((c: { text?: string }) => c?.text ?? '').join('\n') : ''
+}
+
 // The same numbers from a transcript, main loop only. A resumed session repeats its entries, so each uuid and message counts once.
 export function benchOf(text: string): Bench {
   let b = emptyBench(false, false)
@@ -71,7 +76,7 @@ export function benchOf(text: string): Bench {
     b = addPrompt(b, {
       edit: p.lastEdit >= 0,
       verified: after.length > 0 && after.every(c => !failed.has(c.id)),
-      churn: [...p.edits.values()].some(n => n >= CHURN_EDITS),
+      churn: [...p.edits.values()].some(n => n >= PROMPT_CHURN_EDITS),
       ms: p.tools > 0 ? Math.max(0, p.t1 - p.t0) : 0,
       block: p.blockAt !== undefined,
       acted: p.blockAt !== undefined && p.tools > p.blockAt,
@@ -119,7 +124,7 @@ export function benchOf(text: string): Bench {
         for (const c of content) if (c?.type === 'tool_result' && c.is_error) failed.add(c.tool_use_id)
         continue
       }
-      const said = typeof content === 'string' ? content : Array.isArray(content) ? content.map((c: { text?: string }) => c?.text ?? '').join('\n') : ''
+      const said = textOf(content)
       if (said.startsWith('Stop hook feedback:')) {
         if (GATE.some(g => g && said.includes(g))) {
           b.mod = true

@@ -81,6 +81,36 @@ test('v switches between the dashboard and the flow view', async ($, on) => {
   await ui.unmount()
 })
 
+test('defaultView flow opens in the flow view', { options: { defaultView: 'flow' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.settle()
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBeTruthy()
+  await ui.press({ key: 'view' })
+  expect(await ui.find({ type: 'Text', text: /^● SESSION$/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /USAGE/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('hiddenSections drops those boxes', { options: { hiddenSections: ' usage, skills' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.settle()
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /USAGE/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /FOCUS/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('the desktop gets the same two views', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)

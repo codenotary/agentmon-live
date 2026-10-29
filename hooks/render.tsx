@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import type { Card, Check, Note } from '../types'
-import { ago, clockTime, fit, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner } from './format'
+import { ago, clip, clockTime, fit, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { drawFlow } from './flow'
@@ -69,7 +69,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const cols = e.props.bodyColumns
   const isWide = cols >= 100
   // The view switch; a mode an older version saved and this one no longer draws counts as the dashboard.
-  const mode = lay.mode === 'flow' ? 'flow' : 'radar'
+  const mode = (lay.mode ?? cfg.defaultView) === 'flow' ? 'flow' : 'radar'
   const isRadar = mode === 'radar'
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   const most = Math.max(1, ...Object.values(counts))
@@ -83,7 +83,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const shown = recent.filter(c => c.view === tab).slice(-5)
   const secs = (from: number) => ago(now - from)
   // Details off cuts long texts to the room they have; on, they are drawn whole.
-  const cut = (s: string, n: number) => (lay.isDetailed || s.length <= n ? s : `${s.slice(0, n - 1)}…`)
+  const cut = (s: string, n: number) => (lay.isDetailed || width(s) <= n ? s : `${clip(s, n - 1)}…`)
   const isStale = (c: Check) => c.result !== 'running' && touched.editedAt > c.at
   const bar = (part: number, color: string) => (
     <Text>
@@ -194,7 +194,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const card = (a: Card) => (
     <Box flexDirection="column" borderStyle="round" borderColor={isLive(a) ? 'cyan' : 'blue'} paddingX={1} width={CARD}>
       <Text>
-        <Text bold>{cut(a.type, CARD - 7 - (a.tests === 'FAIL' ? 4 : t.status[a.status].length))}</Text> {statusChip(a)}
+        <Text bold>{cut(a.type, CARD - 7 - width(a.tests === 'FAIL' ? 'FAIL' : t.status[a.status]))}</Text> {statusChip(a)}
       </Text>
       <Text color="blue">
         {modelName(a.model)} <Text dimColor>· {a.effort || '?'}</Text>
@@ -322,7 +322,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           </Text>
         )}
       </Text>
-      {usage.cost && <Text>{fit('cost', 18)}${usage.cost.usd.toFixed(2)}</Text>}
+      {usage.cost && <Text>{fit(t.costWord, 18)}${usage.cost.usd.toFixed(2)}</Text>}
       {adv.calls > 0 && <Text>{fit('fable', 18)}{t.calls} {adv.calls}{cfg.advisorBudget > 0 ? `/${cfg.advisorBudget}` : ''} · {t.advisorTokens(kilo(adv.tokensIn ?? 0), kilo(adv.tokensOut ?? 0))}</Text>}
       {usage.rateLimits.map(r => (
         <Text>
@@ -560,16 +560,15 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // What each section last did and whether it needs the person now; `rank` orders them by it. Listed in the usual order.
   const latest = (...at: number[]) => Math.max(0, ...at)
-  const lastNote = adv.notes.at(-1)
   const sections = !isRadar ? [] : rank(
     [
       { key: 'tasks', node: taskBox, isUrgent: false, at: latest(...planned.map(k => k.at ?? 0)) },
       { key: 'insights', node: insightBox, isUrgent: false, at: ins.turn ? now : ins.last ? ins.last.startedAt + ins.last.wallMs : 0 },
       { key: 'skills', node: skillBox, isUrgent: false, at: latest(...loaded.map(s => s.at)) },
-      { key: 'advisor', node: advisorBox, isUrgent: lastNote?.ok === false && now - latest(...Object.values(adv.lastAt ?? {})) < 10 * 60_000, at: latest(...Object.values(adv.lastAt ?? {})) },
+      { key: 'advisor', node: advisorBox, isUrgent: !!verdict && !verdict.ok && !verdict.isSent, at: verdict?.at ?? 0 },
       { key: 'changes', node: changes, isUrgent: checked.some(c => c.result === 'failed' && !isStale(c)), at: latest(touched.editedAt, ...checked.map(c => c.at)) },
       { key: 'usage', node: usageBox, isUrgent: isHigh(pct ?? 0) || usage.rateLimits.some(r => isHigh(r.percentUsed)), at: 0 },
-    ].filter(s => s.node),
+    ].filter(s => s.node && !cfg.hidden.includes(s.key)),
     now,
   )
 

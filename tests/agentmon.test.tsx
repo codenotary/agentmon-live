@@ -376,7 +376,7 @@ test('shell commands are told apart by the check they run', () => {
   expect(findCheck('cd api && uv run pytest "tests/a b.py" | tail')).toEqual({ kind: 'test', part: 'uv run pytest "tests/a b.py"' })
   expect(hidesExit('npm test | tail -5')).toBe(true)
   expect(hidesExit('set -o pipefail; npm test | tail')).toBe(false)
-  expect(hidesExit('npm test || echo x')).toBe(false)
+  expect(hidesExit('npm test || echo x')).toBe(true)
   expect(outcomeOf(' 40 pass\n 0 fail\nRan 40 tests across 1 file.', 'test')).toBe('ok')
   expect(outcomeOf(' 39 pass\n 1 fail', 'test')).toBe('failed')
   expect(outcomeOf('Tests: 2 failed, 10 passed', 'test')).toBe('failed')
