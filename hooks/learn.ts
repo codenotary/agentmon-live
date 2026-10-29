@@ -1,4 +1,5 @@
 import type { Learned, MemFinding, SessionRecord, ToolTally } from '../types'
+import { benchOf, upsertRow } from './bench'
 import { kilo, mask } from './format'
 import { median } from './insights'
 import type { Insight } from './insights'
@@ -23,7 +24,7 @@ export const CTX_FALLBACK = 0.7
 export const CTX_FLOOR = 0.5
 export const BIG_TOKENS = 10_000
 
-export const EMPTY_LEARNED: Learned = { current: '', sessions: [], mem: [] }
+export const EMPTY_LEARNED: Learned = { current: '', sessions: [], mem: [], bench: [] }
 
 export const lt = () => LEARN[cfg.lang] ?? LEARN.en!
 
@@ -34,7 +35,7 @@ export function storeKey(cwd: string): string {
 // A store written by an older version, or by nothing yet, comes back as a valid shape.
 export function shapeLearned(v: unknown): Learned {
   const o = (v ?? {}) as Partial<Learned>
-  return { ...EMPTY_LEARNED, ...o, sessions: Array.isArray(o.sessions) ? o.sessions : [], mem: Array.isArray(o.mem) ? o.mem : [] }
+  return { ...EMPTY_LEARNED, ...o, sessions: Array.isArray(o.sessions) ? o.sessions : [], mem: Array.isArray(o.mem) ? o.mem : [], bench: Array.isArray(o.bench) ? o.bench : [] }
 }
 
 export function newRecord(id: string, at: number): SessionRecord {
@@ -61,7 +62,7 @@ function trimTools(rec: SessionRecord): SessionRecord {
 // Puts a session's record in place of its earlier one, oldest first, the last KEEP_SESSIONS kept.
 export function upsert(learned: Learned, rec: SessionRecord): Learned {
   const sessions = [...learned.sessions.filter(s => s.id !== rec.id), trimTools(rec)].sort((a, b) => a.at - b.at).slice(-KEEP_SESSIONS)
-  return { ...learned, sessions }
+  return { ...learned, sessions, bench: upsertRow(learned.bench, rec) }
 }
 
 // A rejected call says nothing about the tool.
@@ -110,6 +111,7 @@ export function parseTranscript(id: string, text: string): SessionRecord {
       rec.turns += 1
     }
   }
+  rec.bench = benchOf(text)
   return rec
 }
 

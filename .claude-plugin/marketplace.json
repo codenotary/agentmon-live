@@ -13,7 +13,7 @@
       "name": "agentmon-live",
       "source": "./",
       "description": "AgentMon Live: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
-      "version": "0.12.1",
+      "version": "0.13.0",
       "author": {
         "name": "vchaindz",
         "email": "dennis@dzlabs.ch",

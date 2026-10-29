@@ -66,7 +66,7 @@ test('the store keeps one record per session, the newest ones', async () => {
 })
 
 function history(n: number, each: (r: SessionRecord, i: number) => void): Learned {
-  let l: Learned = { current: 'now', sessions: [], mem: [] }
+  let l: Learned = { current: 'now', sessions: [], mem: [], bench: [] }
   for (let i = 0; i < n; i++) {
     const r = newRecord(`s${i}`, i)
     each(r, i)

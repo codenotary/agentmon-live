@@ -58,7 +58,7 @@ export const INIT = {
   skills: [],
   flow: [],
   insights: EMPTY_INSIGHTS,
-  learned: { current: '', sessions: [], mem: [] } as Learned,
+  learned: { current: '', sessions: [], mem: [], bench: [] } as Learned,
 }
 
 // The main turn's clock as it stands, set by register: the pane reads it live instead of each call writing it to an atom.

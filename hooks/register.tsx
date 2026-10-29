@@ -4,7 +4,8 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
 import { addNote, consult } from './advisor'
 import { doneGaps, isDoc } from './gate'
-import { isMemoryPath, learnCommand, memoryCommand, noteCall, noteCompact, queueMemoryCheck, saveTurn, startLearning } from './learning'
+import { CHURN_EDITS } from './bench'
+import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, notePrompt, queueMemoryCheck, saveTurn, startLearning } from './learning'
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
@@ -255,14 +256,15 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
     const memoryTokens = b.memoryFiles.reduce((n, m) => n + m.tokens, 0)
     await update($, insights, v => ({ ...v, breakdown, mcpTokens, memoryTokens }))
     const m = await read($, main)
-    await saveTurn($, { tokens: u.context.tokens, window: u.context.window, mcpTools: b.mcpTools, model: m.model, effort: m.effort })
+    const fable = (await read($, advisor)).calls
+    await saveTurn($, { tokens: u.context.tokens, window: u.context.window, mcpTools: b.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable })
   })
 }
 
 // What the main loop did this turn, so Fable judges the work and not only the answer.
 // `before` holds the checks as they stood at the prompt; `codeEditAt` and `lastCodeEditAt` are the turn's first and last edit of a file that is not a doc.
-// `docs` are the doc files the main loop read this turn.
-type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number }
+// `docs` are the doc files the main loop read this turn; `edits` counts the edits per code file.
+type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number }
 
 // The request, this turn's subagents and the observed checks are kept whole; the trail gives way.
 async function material($: EngineInterface, turn: Turn): Promise<string> {
@@ -295,6 +297,22 @@ async function openGaps($: EngineInterface, turn: Turn, answer: string): Promise
   return v && !v.ok ? { lines: [t.fableSays(mask(v.text))], fix: v.fix && mask(v.fix) } : { lines: [] }
 }
 
+// This prompt's part of the self benchmark, recomputed at each main turn end and stop.
+// `blockAt` is the prompt's tool count when the gate sent it back; `isPassed` when a stop found nothing open.
+async function benchPrompt($: EngineInterface, turn: Turn, blockAt: number | undefined, isPassed: boolean) {
+  const [checked, now] = await Promise.all([read($, checks), $.clock.now()])
+  const after = checked.filter(c => c.at >= (turn.lastCodeEditAt ?? Infinity) && c.result !== 'running')
+  notePrompt({
+    edit: turn.lastCodeEditAt !== undefined,
+    verified: after.length > 0 && after.every(c => c.result === 'ok'),
+    churn: [...turn.edits.values()].some(n => n >= CHURN_EDITS),
+    ms: turn.tools > 0 ? now - turn.startedAt : 0,
+    block: blockAt !== undefined,
+    acted: blockAt !== undefined && turn.tools > blockAt,
+    passed: isPassed,
+  })
+}
+
 // "check now": the gate's own look, shown in the pane and never sent.
 async function checkNow($: EngineInterface, turn: Turn, answer: string, ref: string) {
   const found = await openGaps($, turn, answer)
@@ -319,13 +337,16 @@ export const register: Register = (on, options) => {
   // Who runs each Skill call under way, for the `skill.prompt` it raises; none matches when the person typed the command.
   const skillRuns: { skill: string; who: string }[] = []
   // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
-  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), docs: new Set(), before: [] }
+  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), edits: new Map(), docs: new Set(), before: [] }
   // Fable judges an answer, so "check now" during a turn waits for the turn's answer.
   let isTurnLive = false
   let isCheckQueued = false
   let lastAnswer = ''
   // The done gate sends a turn back once; set until the person's next prompt.
   let isGateUsed = false
+  // For the self benchmark: the prompt's tool count when the gate sent it back, and whether a stop found nothing open.
+  let blockAt: number | undefined
+  let isPassed = false
   // A note names the request it is about, so an old note is not taken for a current one.
   const workRef = () => {
     const ask = turn.prompt.replace(/\s+/g, ' ').trim()
@@ -425,6 +446,7 @@ export const register: Register = (on, options) => {
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
     if (arg === 'memory') return { text: await memoryCommand($) }
+    if (arg === 'bench') return { text: await benchCommand($) }
     if (arg === 'details') {
       const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
       return { text: `AgentMon Live: ${t.details} ${l.isDetailed ? 'on' : 'off'}` }
@@ -457,6 +479,7 @@ export const register: Register = (on, options) => {
       turn.delegated = 0
       turn.trail = []
       turn.edited = new Set()
+      turn.edits = new Map()
       turn.docs = new Set()
       await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const, lastKey: undefined, lastAt: {} }))
       await refreshStatus($)
@@ -479,10 +502,14 @@ export const register: Register = (on, options) => {
       turn.startedAt = await $.clock.now()
       turn.trail = []
       turn.edited = new Set()
+      turn.edits = new Map()
       turn.docs = new Set()
       turn.before = await read($, checks)
       turn.codeEditAt = undefined
       turn.lastCodeEditAt = undefined
+      blockAt = undefined
+      isPassed = false
+      newPrompt()
       effortByCall.clear()
       askedCalls.clear()
       const turnAt = turn.startedAt
@@ -652,6 +679,7 @@ export const register: Register = (on, options) => {
         if (!isDoc(touched)) {
           turn.codeEditAt ??= at
           turn.lastCodeEditAt = at
+          turn.edits.set(touched, (turn.edits.get(touched) ?? 0) + 1)
         }
       }
       // Project docs only: not memory files, files outside the project, or .txt (requirements.txt, CMakeLists.txt).
@@ -828,6 +856,7 @@ export const register: Register = (on, options) => {
     } else {
       // Docs read and code changed: the docs-vs-code hint in Focus; a refactor changes the code on purpose.
       const isRefactor = /refactor|refaktor|重构|重構|リファクタ/i.test(turn.prompt)
+      await benchPrompt($, turn, blockAt, isPassed)
       await finishTurn($, e.durationMs, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined)
       isTurnLive = false
       lastAnswer = e.answer
@@ -850,6 +879,9 @@ export const register: Register = (on, options) => {
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
     const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
     await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
+    if (found.lines.length === 0) isPassed = true
+    if (isSent) blockAt = turn.tools
+    await benchPrompt($, turn, blockAt, isPassed)
     if (!isSent) return r
     isGateUsed = true
     return { ...r, block: t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n')) }

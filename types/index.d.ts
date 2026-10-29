@@ -59,13 +59,36 @@ export type SessionRecord = {
   turns: number
   tools: Record<string, ToolTally>
   mcp: Record<string, number>
+  bench?: Bench
 }
+
+// What one session's work came to, for `/agentmon bench`: `mod` when AgentMon Live ran in it, `live` when recorded as it ran (not read back from a transcript).
+// Turn counts are per prompt: a turn the done gate sent back is the same prompt. `turnMs` holds the durations of prompts that used tools.
+export type Bench = {
+  mod: boolean
+  live: boolean
+  editTurns: number
+  verified: number
+  churn: number
+  outTokens: number
+  turnMs: number[]
+  blocks: number
+  acted: number
+  passed: number
+  fable: number
+}
+
+// One prompt's part of a Bench.
+export type PromptBench = { edit: boolean; verified: boolean; churn: boolean; ms: number; block: boolean; acted: boolean; passed: boolean }
+
+// A session's Bench with its totals, kept longer than the session records so the trend reaches back.
+export type BenchRow = Bench & { id: string; at: number; turns: number; calls: number; errors: number; compactions: number }
 
 // A memory-file problem found by the local rules.
 export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine'; file: string; detail: string }
 
 // The project's sessions as the store keeps them, last 30; `current` is this session's id.
-export type Learned = { current: string; sessions: SessionRecord[]; mem: MemFinding[] }
+export type Learned = { current: string; sessions: SessionRecord[]; mem: MemFinding[]; bench: BenchRow[] }
 
 export type Insights = {
   // The main loop's turn under way, or undefined between turns; `last` the last finished one.

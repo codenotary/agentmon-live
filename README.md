@@ -64,6 +64,7 @@ those options for the plugin in my user settings. Tell me to restart Claude Code
 | `/agentmon details` | Shows cut-off texts whole (`d` in the pane) |
 | `/agentmon learn [dir]` | Learns from this project's past transcripts (or the `.jsonl` files in `dir`) |
 | `/agentmon memory` | Checks the memory and instruction files now and lists what it found |
+| `/agentmon bench` | Compares this project's sessions with and without the mod, and the last 7 days |
 | `/agentmon clear` | Resets counters, finished cards, log and the done gate's results; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
 The pane opens by itself at session start when the terminal is wide enough.
@@ -109,6 +110,11 @@ At the end of each turn the mod keeps a small record of the session, per project
 - **habit**: a tool that put 10k+ tokens into context 4 or more times over 3 or more sessions.
 - **memory**: the memory and instruction files the session loads, plus the project's auto-memory folder, checked at start and after each edit of one. It finds a memory name used twice, MEMORY.md entries without a file and files without an entry, backticked paths that no longer exist (a `/api/...` route whose top folder is not on disk does not count), files over about 10k tokens and lines copied between files.
 
+### Self benchmark
+
+`/agentmon bench` puts this project's sessions without the mod, with it, and with it in the last 7 days side by side: edit prompts checked after their last edit (the last test, lint, typecheck or build of each kind passed), edit prompts that edited one file 4 or more times, the tool error rate, compactions per session, the median time of a prompt that used tools, output tokens per turn, and for the done gate how often it sent Claude back, how often more tool calls followed, how often it found nothing open, and Fable's calls. The mod records each session as it runs and keeps the last 300 per project. `/agentmon learn` adds past sessions from their transcripts; one that ran with the mod counts as with it. A column with fewer than 5 sessions shows `–`. It is a before-and-after comparison, not a controlled test, so it cannot prove cause.
+
+## Develop
 
 ```sh
 git clone https://github.com/codenotary/agentmon-live.git
@@ -128,11 +134,11 @@ npx -p typescript tsc --noEmit -p .
 | --- | --- |
 | `hooks/register.tsx` | Hooks, state and the pane |
 | `hooks/insights.ts` | The Focus rules and their thresholds, time and context helpers |
-| `hooks/learn.ts`, `hooks/learning.ts` | What is learned across sessions: the pure rules, and the store and commands |
+| `hooks/learn.ts`, `hooks/learning.ts`, `hooks/bench.ts` | What is learned across sessions: the pure rules, the store and commands, and the self benchmark |
 | `hooks/memcheck.ts` | The memory-file rules |
-| `hooks/i18n.ts` | All text, one block per language |
+| `hooks/i18n.ts`, `hooks/locales.ts`, `hooks/learn-strings.ts` | All text, one block per language: English in `i18n.ts`, the others in `locales.ts`, the learning and benchmark text in `learn-strings.ts` |
 | `types/index.d.ts` | State contract |
-| `tests/agentmon.test.tsx` | Tests |
+| `tests/*.test.ts(x)` | Tests, one file per part (`bench.test.ts` for the self benchmark) |
 
 ### See the pane from a script
 

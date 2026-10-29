@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { ContextMcpTool, EngineInterface } from 'claude-code'
 
-import type { Learned, SessionRecord } from '../types'
+import type { Bench, Learned, PromptBench, SessionRecord } from '../types'
+import { addPrompt, benchReport, emptyBench, upsertRow } from './bench'
 import { lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare } from './learn'
 import { memRules, refsOf } from './memcheck'
 import type { MemFile } from './memcheck'
@@ -11,6 +12,8 @@ const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.
 
 // This session's own record; it is rebuilt from the store on a reload.
 let rec: SessionRecord | undefined
+// The session's bench as it stood when this prompt came in: each turn end recomputes the prompt's part from it, so a turn the done gate sent back counts once.
+let base: Bench | undefined
 let cwd = ''
 let memQueued = false
 const warned = new Set<string>()
@@ -60,14 +63,27 @@ export async function noteCall($: EngineInterface, tool: string, isError: boolea
   if (t && isFlaky(t)) $.ui.toast(lt().flakyToast(tool, Math.round(errorShare(t) * 100)))
 }
 
+export function newPrompt() {
+  base = rec?.bench
+}
+
+export function notePrompt(p: PromptBench) {
+  if (!rec) return
+  base ??= rec.bench ?? emptyBench(true, true)
+  rec.bench = { ...addPrompt(base, p), mod: true, live: true, outTokens: rec.bench?.outTokens ?? 0, fable: rec.bench?.fable ?? 0 }
+}
+
 export function noteCompact(tokens: number | undefined) {
   if (rec && tokens) rec.compactAt.push(tokens)
 }
 
 // The end of each main turn: the session's record so far replaces its earlier one in the store.
-export async function saveTurn($: EngineInterface, u: { tokens?: number; window: number; mcpTools: readonly ContextMcpTool[]; model: string; effort: string }) {
+export async function saveTurn($: EngineInterface, u: { tokens?: number; window: number; mcpTools: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number }) {
   if (!rec) return
   const r = rec
+  // Session totals; the larger one survives a reload or `/agentmon clear`, which start them again from 0.
+  const b = r.bench ?? emptyBench(true, true)
+  r.bench = { ...b, mod: true, live: true, outTokens: Math.max(b.outTokens, u.outTokens), fable: Math.max(b.fable, u.fable) }
   r.turns += 1
   r.peak = Math.max(r.peak, u.tokens ?? 0)
   r.window = u.window
@@ -102,12 +118,24 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
       return r?.exitCode === 0 ? r.stdout : undefined
     })
     if (text === undefined) skipped++
-    else recs.push(parseTranscript(id, text))
+    else {
+      const r = parseTranscript(id, text)
+      // A session that ran with the mod left an `active:` key, gate block or not.
+      if (r.bench && (await $.store.get(`active:${id}`).catch(() => undefined))) r.bench.mod = true
+      recs.push(r)
+    }
   }
   await save($, l => recs.reduce(upsert, l))
   const calls = recs.reduce((n, r) => n + Object.values(r.tools).reduce((m, x) => m + x.calls, 0), 0)
   const compactions = recs.reduce((n, r) => n + r.compactAt.length, 0)
   return t.learned(recs.length, calls, compactions, skipped)
+}
+
+// `/agentmon bench`: this project's sessions with and without the mod, this one included as it stands.
+export async function benchCommand($: EngineInterface): Promise<string> {
+  if (!cfg.learning || !rec) return lt().learningOff
+  const [stored, now] = await Promise.all([$.store.get(storeKey(cwd)).catch(() => undefined), $.clock.now()])
+  return benchReport(upsertRow(shapeLearned(stored).bench, rec), now)
 }
 
 export function queueMemoryCheck($: EngineInterface) {
