@@ -87,6 +87,41 @@ test('a failed test sends Claude back once, then the pane shows what was left op
   await ui.unmount()
 })
 
+test('earlier gate results stay listed in the box: three, all with details on', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [])
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test -- fail' })
+  await clock.settle()
+  await $.classic.Stop({ ...STOP })
+  await $.turn.start({ text: '', turnId: 'm1' })
+  await clock.settle()
+  await $.classic.Stop({ ...STOP, stop_hook_active: true })
+  for (const [i, text] of ['Second', 'Third'].entries()) {
+    await clock.advance(1000)
+    await $.turn.start({ text, turnId: `m${i + 2}` })
+    await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'b', new_string: 'c' })
+    await clock.advance(1000)
+    await $.tool.call({ tool: 'Bash', command: 'npm test' })
+    await clock.settle()
+    await $.classic.Stop({ ...STOP })
+  }
+  await clock.advance(1000)
+  await $.turn.start({ text: 'Fourth', turnId: 'm4' })
+  await clock.settle()
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^earlier this session:$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^ {2}✓ .* ago · "Third"$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^ {2}⚠ .* ago · "Fix the parser" · test failed: npm test -- fail$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^ {2}↩ / })).toBe(undefined)
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ type: 'Text', text: /^ {2}↩ .* ago · "Fix the parser" · test failed: npm test -- fail$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('a failure this turn could not have caused is not sent back', async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []

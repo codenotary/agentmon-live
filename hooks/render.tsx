@@ -342,6 +342,8 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const lastVerdict = adv.notes.findLast(n => n.kind === 'done' || n.kind === 'check')
   const verdict = lastVerdict && isCurrent(lastVerdict) ? lastVerdict : undefined
   const gaps = [...(verdict?.text.split('\n').filter(Boolean) ?? []), ...(verdict?.fix ? [`→ ${verdict.fix}`] : [])]
+  // The session's earlier results, newest first: three, all with details on.
+  const earlier = adv.notes.filter(n => (n.kind === 'done' || n.kind === 'check') && n !== verdict).reverse()
   const advisorBox = (
     <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1}>
       <Text>
@@ -376,6 +378,14 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           )}
         </Box>
       )}
+      {earlier.length > 0 && <Text dimColor>{t.gateEarlier}</Text>}
+      {earlier.slice(0, lay.isDetailed ? earlier.length : 3).map(n => (
+        <Text>
+          {'  '}
+          {n.ok ? <Text color="green">✓</Text> : n.isSent ? <Text color="cyan">↩</Text> : <Text color="yellow">⚠</Text>}{' '}
+          <Text dimColor>{cut([t.ago(secs(n.at ?? now)), n.ref, n.ok ? undefined : n.text.split('\n')[0]].filter(Boolean).join(' · '), whatRoom + 30)}</Text>
+        </Text>
+      ))}
       {adv.calls > 0 && (
         <Text dimColor>
           {t.calls}  {adv.calls}{cfg.advisorBudget > 0 ? `/${cfg.advisorBudget}` : ''} · {t.advisorTokens(kilo(adv.tokensIn ?? 0), kilo(adv.tokensOut ?? 0))}

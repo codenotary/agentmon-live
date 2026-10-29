@@ -62,6 +62,7 @@ const en = {
   gateTitle: 'Done gate · checked before Claude stops',
   gatePassed: 'nothing left open at the last stop',
   gateLeft: 'stopped with this left open:',
+  gateEarlier: 'earlier this session:',
   gateSent: 'sent back to Claude:',
   fableSays: (text: string) => `Fable, a reviewing model that may be wrong, says: ${text}`,
   gateReason: (gaps: string) => `Before you report done, this looks unfinished:\n${gaps}\n\nFinish it, or say plainly why not.`,

@@ -57,5 +57,5 @@ export async function consult($: EngineInterface, question: string, body: string
 
 // A gate result or a manual check, kept for the pane; `isSent` when it went back to Claude.
 export async function addNote($: EngineInterface, note: Note) {
-  await update($, advisor, a => ({ ...a, notes: [...a.notes, note].slice(-6) }))
+  await update($, advisor, a => ({ ...a, notes: [...a.notes, note].slice(-20) }))
 }
