@@ -217,3 +217,9 @@ const FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 export function spinner(now: number): string {
   return FRAMES[Math.floor(now / 500) % FRAMES.length] ?? '⠋'
 }
+
+// A limit's short name for a narrow label: five_hour -> 5h.
+export const limitName = (kind: string) => kind.replace('five_hour', '5h').replace('seven_day', '7d').replace(/_/g, ' ')
+
+// The one place the gauges turn the alarm colour.
+export const isHigh = (p: number) => p >= 80

@@ -1,12 +1,8 @@
-# The dashboard with a task list and two checks, then the flow view and details.
+# The dashboard with a task list and two checks, then details.
 allow Bash(npm test:*) Bash(npm run lint:*) TodoWrite
 prompt Make a todo list with three items (read package.json, run the tests, run the lint), then run `npm test` and `npm run lint`, marking the items done as you go. Reply in one short sentence.
 wait idle
 snap dashboard
-cmd /agentmon flow
-wait idle
-snap flow
 cmd /agentmon details
-cmd /agentmon radar
 wait idle
 snap details

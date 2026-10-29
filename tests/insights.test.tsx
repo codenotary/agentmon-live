@@ -268,7 +268,7 @@ test('peak hours are weekdays 05:00 to 11:00 Pacific, and show only with plan wi
   const now = Date.parse('2026-10-27T15:00:00Z')
   const peak = (limits: typeof EMPTY_INSIGHTS.limits) => focusList({ ins: { ...EMPTY_INSIGHTS, limits }, doing: [], agents: [], window: 1000000, now }).filter(x => x.tag === 'peak')
   expect(peak({})).toEqual([])
-  expect(peak({ seven_day: [{ at: now, pct: 30 }] }).map(x => x.text)).toEqual([expect.stringMatching(/^peak hours until .+ · usage now counts more toward the weekly limit$/)])
+  expect(peak({ seven_day: [{ at: now, pct: 30 }] }).map(x => x.text)).toEqual([expect.stringMatching(/^peak hours until .+ · limits may be used up faster during this time$/)])
 })
 
 test('the german pane names the insights', { options: { language: 'de' } }, async ($, on) => {

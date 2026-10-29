@@ -2,12 +2,10 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import type { Card, Check, Note } from '../types'
-import { ago, clip, clockTime, fit, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
+import { ago, clip, clockTime, fit, isHigh, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
-import { drawFlow } from './flow'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
-import { isHigh, topology } from './topology'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 
@@ -37,8 +35,7 @@ const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 're
 // Order, as the review asks: needs attention, running now, changes and verification, usage, then the folding history.
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
-  const ui = $.ui.resolve(e)
-  const { Box, Button, Text } = ui
+  const { Box, Button, Text } = $.ui.resolve(e)
   const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt] = await Promise.all([
     read($, main),
     read($, tools),
@@ -68,9 +65,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const cols = e.props.bodyColumns
   const isWide = cols >= 100
-  // The view switch; a mode an older version saved and this one no longer draws counts as the dashboard.
-  const mode = (lay.mode ?? cfg.defaultView) === 'flow' ? 'flow' : 'radar'
-  const isRadar = mode === 'radar'
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
   const most = Math.max(1, ...Object.values(counts))
   // Two columns less than the row leaves, for the bar's end caps.
@@ -81,6 +75,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const rows = [...CATEGORIES, 'other' as const].map(c => [c, counts[c] ?? 0] as const).filter(([, n]) => n > 0)
   const whatRoom = Math.max(10, Math.min(40, cols - 50))
   const shown = recent.filter(c => c.view === tab).slice(-5)
+  const perMin = (cat: string) => flows.filter(f => f.cat === cat && now - f.at < 60_000).length
   const secs = (from: number) => ago(now - from)
   // Details off cuts long texts to the room they have; on, they are drawn whole.
   const cut = (s: string, n: number) => (lay.isDetailed || width(s) <= n ? s : `${clip(s, n - 1)}…`)
@@ -223,7 +218,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Text>
   )
   const MAX_CARDS = 6
-  const liveAgents = isRadar ? list.filter(isLive) : []
+  const liveAgents = list.filter(isLive)
 
   const runningNow = (
     <Box flexDirection="column">
@@ -255,7 +250,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   // The session's task list: how far it is, what runs now, and every task with details on.
   const doneTasks = planned.filter(k => k.status === 'completed').length
   const current = planned.find(k => k.status === 'in_progress')
-  const taskBox = isRadar && planned.length > 0 && (
+  const taskBox = planned.length > 0 && (
     <Box flexDirection="column">
       <Text>
         {title(t.tasks, 'green')} {doneTasks}/{planned.length} {bar(doneTasks / planned.length, 'green')}
@@ -276,7 +271,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   )
 
   // Skills and prompt commands whose text the session loaded, the latest first.
-  const skillBox = isRadar && loaded.length > 0 && (
+  const skillBox = loaded.length > 0 && (
     <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1}>
       {title(`${t.cat.skills} · ${loaded.length}`, 'yellow')}
       {loaded.slice(lay.isDetailed ? -30 : -5).reverse().map(s => (
@@ -288,7 +283,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     </Box>
   )
 
-  const changes = isRadar && (touched.edited.length > 0 || touched.read.length > 0 || checked.length > 0) && (
+  const changes = (touched.edited.length > 0 || touched.read.length > 0 || checked.length > 0) && (
     <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} flexGrow={1}>
       {title(t.changes, 'cyan')}
       <Text>
@@ -308,7 +303,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   )
 
   const pct = usage.context.percent
-  const usageBox = isRadar && (
+  const usageBox = (
     <Box flexDirection="column" borderStyle="round" borderDimColor paddingX={1} flexGrow={1}>
       {title(t.usage)}
       <Text>
@@ -347,7 +342,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const lastVerdict = adv.notes.findLast(n => n.kind === 'done' || n.kind === 'check')
   const verdict = lastVerdict && isCurrent(lastVerdict) ? lastVerdict : undefined
   const gaps = [...(verdict?.text.split('\n').filter(Boolean) ?? []), ...(verdict?.fix ? [`→ ${verdict.fix}`] : [])]
-  const advisorBox = isRadar && (
+  const advisorBox = (
     <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1}>
       <Text>
         {title(t.gateTitle, 'magenta')}{' '}
@@ -395,7 +390,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   )
 
   const finished = list.filter(a => !isLive(a))
-  const history = isRadar && lay.isHistoryOpen && (
+  const history = lay.isHistoryOpen && (
     <Box flexDirection="column">
       <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
         <Box justifyContent="space-between">
@@ -407,6 +402,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             <Text color={c === 'git' ? 'yellow' : undefined} bold={c === 'git'}>{fit(t.cat[c], 18)}</Text>
             {bar(n / most, c === 'git' ? 'yellow' : 'green')}
             {String(n).padStart(4)}
+            {perMin(c) > 0 && <Text color="cyan"> {perMin(c)}/min</Text>}
             {st.errors[c] ? <Text> <Text color="red">{t.errors(st.errors[c])}</Text></Text> : ''}
           </Text>
         ))}
@@ -496,7 +492,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const rereads = top(ins.reads, 2, 2).map(([p, n]) => `${shortPath(p)} ${n}×`).join(', ')
   const churned = top(ins.edits, 2, 2).map(([p, n]) => `${shortPath(p)} ${n}×`).join(', ')
   const hasInsights = shownTurn !== undefined || ins.slow.length > 0 || ins.ctx.length > 0
-  const insightBox = isRadar && hasInsights && (
+  const insightBox = hasInsights && (
     <Box flexDirection="column" borderStyle="round" borderColor="blue" paddingX={1} flexGrow={1}>
       {title(ti.title, 'blue')}
       {shownTurn && turnBuckets && (
@@ -560,7 +556,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // What each section last did and whether it needs the person now; `rank` orders them by it. Listed in the usual order.
   const latest = (...at: number[]) => Math.max(0, ...at)
-  const sections = !isRadar ? [] : rank(
+  const sections = rank(
     [
       { key: 'tasks', node: taskBox, isUrgent: false, at: latest(...planned.map(k => k.at ?? 0)) },
       { key: 'insights', node: insightBox, isUrgent: false, at: ins.turn ? now : ins.last ? ins.last.startedAt + ins.last.wallMs : 0 },
@@ -571,19 +567,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     ].filter(s => s.node && !cfg.hidden.includes(s.key)),
     now,
   )
-
-  const nextMode = mode === 'radar' ? ('flow' as const) : ('radar' as const)
-  const viewButton = (
-    <Button key="view" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, mode: nextMode }))}>
-      {`${t.view}: ${t.modes[mode]}`}
-    </Button>
-  )
-  const topo =
-    isRadar
-      ? undefined
-      : topology({ main: m, counts, errors: st.errors, compactions: st.compactions, agents: list, usage, advisor: adv, isListening: listening(adv.isOn), checks: checked, flow: flows, now })
-  const phase = Math.floor(now / 500)
-  const topoView = topo && drawFlow(ui, topo, cols, phase, t)
 
   return (
     <Box flexDirection="column">
@@ -623,22 +606,16 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           )}
         </Text>
       )}
-      {topoView}
-      {isRadar && runningNow}
-      {isRadar && (
-        // A wrapping column measures notes one line high, a shrinking one squeezes boxes below their text.
-        <Box flexDirection={isWide ? 'row' : 'column'} flexWrap={isWide ? 'wrap' : 'nowrap'} gap={isWide ? 1 : 0}>
-          {sections.map(s => (
-            <Box key={s.key} flexDirection="column" flexShrink={0} flexGrow={isWide ? 1 : 0}>
-              {s.node}
-            </Box>
-          ))}
-        </Box>
-      )}
-      {!isRadar && <Box gap={2}>{viewButton}</Box>}
-      {isRadar && (
+      {runningNow}
+      {/* A wrapping column measures notes one line high, a shrinking one squeezes boxes below their text. */}
+      <Box flexDirection={isWide ? 'row' : 'column'} flexWrap={isWide ? 'wrap' : 'nowrap'} gap={isWide ? 1 : 0}>
+        {sections.map(s => (
+          <Box key={s.key} flexDirection="column" flexShrink={0} flexGrow={isWide ? 1 : 0}>
+            {s.node}
+          </Box>
+        ))}
+      </Box>
       <Box gap={2}>
-        {viewButton}
         <Button key="fold:history" plain hotkey="h" onPress={() => update($, layout, l => ({ ...l, isHistoryOpen: !l.isHistoryOpen }))}>
           {`${lay.isHistoryOpen ? '▾' : '▸'} ${t.history}`}
         </Button>
@@ -646,7 +623,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
           {`${lay.isDetailed ? '●' : '○'} ${t.details}`}
         </Button>
       </Box>
-      )}
       {history}
     </Box>
   )

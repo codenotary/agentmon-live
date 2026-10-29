@@ -15,7 +15,7 @@ npx -p typescript tsc --noEmit -p .
 ## Layout
 
 - `hooks/register.tsx`: every hook, the per-turn state (`Turn`), commands (`/agentmon <arg>`), the done gate (`classic.Stop`).
-- `hooks/render.tsx`, `hooks/flow.tsx`: the pane.
+- `hooks/render.tsx`: the pane.
 - `hooks/insights.ts`: Focus rules and thresholds.
 - `hooks/learn.ts` (pure rules, `parseTranscript`), `hooks/learning.ts` (store, `/agentmon learn|memory|bench`), `hooks/bench.ts` (self benchmark: per-prompt numbers, transcript parse, report).
 - `hooks/gate.ts`, `hooks/advisor.ts`: done-gate facts and the Fable call.

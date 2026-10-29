@@ -167,10 +167,10 @@ export type LastCall = { tool: string; what: string; who: string; model?: string
 
 // What the pane shows folded or in full.
 // `dismissed` holds the keys of Needs attention items the person put away.
-// `mode` is the pane's view: the dashboard or the flow diagram.
+// `mode` is unused since the flow view was dropped; kept so older stores load.
 export type Layout = { isHistoryOpen: boolean; isDetailed: boolean; dismissed?: string[]; mode?: 'radar' | 'flow' }
 
-// One tool call by category and time, for the topology views' rates.
+// One tool call by category and time, for the calls-per-minute rate.
 export type Flow = { cat: string; at: number }
 
 // `streak` counts the main loop's failed calls in a row this turn.

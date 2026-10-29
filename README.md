@@ -24,7 +24,7 @@ AGENTMON LIVE · OPUS 5.5 PLANS (high)
 │ context   ▕████▋               ▏  19 % 190k / 1000k          │
 │ seven_day ▕██████████████▌     ▏  77 % resets 15:00          │
 ╰──────────────────────────────────────────────────────────────╯
-v: view   h: history   d: details
+h: history   d: details
 ```
 
 ## Why you want it
@@ -70,11 +70,10 @@ those options for the plugin in my user settings. Tell me to restart Claude Code
 
 ## Make it yours
 
-Just ask Claude: *"hide the usage box"*, *"open the pane in flow view"*, *"switch AgentMon to German"*, *"turn the done gate off"*. Then run `/reload-plugins`. Or set the options in `/config`.
+Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn the done gate off"*. Then run `/reload-plugins`. Or set the options in `/config`.
 
 | Key | Does |
 | --- | --- |
-| `v` | Dashboard or flow view |
 | `i` | Draft a question about the top Focus item |
 | `x` | Put Focus items away |
 | `d` | Show everything, uncut |

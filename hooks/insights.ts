@@ -1,8 +1,7 @@
 import type { Active, Card, Insights, TurnTime } from '../types'
-import { clockTime, decimal, kilo, modelName, shortPath } from './format'
+import { clockTime, decimal, isHigh, kilo, limitName, modelName, shortPath } from './format'
 import { isOversized, sizeCfg } from './sizeguard'
 import { cfg } from './state'
-import { isHigh, limitName } from './topology'
 
 // Thresholds: what counts as long, big, often. Kept here so the rules read in one place.
 export const LONG_CALL_MS = 60_000
@@ -340,7 +339,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
     out.push({ key: `cold:${ins.lastActive}`, score: 50, tag: t.tag.cold, color: 'yellow', text: t.cold(dur(now - ins.lastActive), kilo(size)) })
   }
 
-  // Peak hours count more toward a plan's weekly limit; only plans report a `seven_day` window.
+  // Limits may be used up faster in peak hours; only plans report a `seven_day` window.
   const peak = ins.limits.seven_day ? peakEnd(now) : undefined
   if (peak) out.push({ key: `peak:${new Date(now).toDateString()}`, score: 20, tag: t.tag.peak, color: 'blue', text: t.peak(clockTime(peak)) })
 

@@ -168,7 +168,7 @@ test('git commands get their own row and no log line', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   expect((await ui.find({ type: 'Text', text: /total 2/ }))?.text).toBe('total 2')
   expect(await ui.find({ type: 'Text', text: /^git status$/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /^git\s+▕.*▏\s+1$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^git\s+▕.*▏\s+1 1\/min$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^read files/ })).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /^\d\d:\d\d main session\s+git status/ })).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /EXECUTES/ })).toBe(undefined)

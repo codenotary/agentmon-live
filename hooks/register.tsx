@@ -335,7 +335,6 @@ export const register: Register = (on, options) => {
   cfg.advisorBudget = Number.isFinite(budget) && budget >= 0 ? budget : 30
   configureSize(options.sizeLimit, options.sizeExclude)
   cfg.learning = String(options.learning ?? 'on') !== 'off'
-  cfg.defaultView = String(options.defaultView) === 'flow' ? 'flow' : 'radar'
   cfg.hidden = String(options.hiddenSections ?? '').split(',').map(s => s.trim()).filter(Boolean)
   // Module variables reset on reload; the atoms above keep the shown state.
   const effortByCall = new Map<string, string>()
@@ -369,7 +368,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'agentmon',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|flow|radar|details|learn|memory]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|learn|memory]`,
     })
     cwd = e.cwd
     // After a reload mid-turn, older todos and agent results must not count as this turn's.
@@ -446,17 +445,11 @@ export const register: Register = (on, options) => {
       $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
       return { text: t.checking }
     }
-    // The pane's views and details from the prompt, so a script reaches them without focusing the pane.
-    if (arg === 'flow' || arg === 'radar') {
-      const mode: 'flow' | 'radar' = arg
-      await update($, layout, l => ({ ...l, mode }))
-      await $.ui.open({ id: PANE, title: 'AgentMon Live' })
-      return { text: `AgentMon Live: ${t.modes[mode]}` }
-    }
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
     if (arg === 'memory') return { text: await memoryCommand($) }
     if (arg === 'bench') return { text: await benchCommand($) }
+    // Details from the prompt, so a script reaches it without focusing the pane.
     if (arg === 'details') {
       const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
       return { text: `AgentMon Live: ${t.details} ${l.isDetailed ? 'on' : 'off'}` }
@@ -708,6 +701,8 @@ export const register: Register = (on, options) => {
       if (touched && cat === 'edit' && isMemoryPath(touched)) queueMemoryCheck($)
       const workPath = e.agentId === undefined && sameTurn && r.deny === undefined ? pathOf(e) : undefined
       const area = workPath === undefined ? undefined : areaOf(workPath, cwd)
+      // The history's calls-per-minute rate drops this call after a minute; an idle pane draws nothing on its own.
+      $.clock.after(60_000, async () => $.ui.invalidate('ui.render'))
       // One batch of writes, so the pane redraws once per call.
       const [s] = await Promise.all([
         (r.isError || isMain) &&
