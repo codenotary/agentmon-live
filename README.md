@@ -27,7 +27,7 @@ AGENTMON LIVE · OPUS 5.5 PLANS (high)
 h: history   d: details
 ```
 
-[![AgentMon Live demo: the done gate catches a failing test before Claude stops](https://asciinema.org/a/1270436.png)](https://asciinema.org/a/1270436)
+[![AgentMon Live demo: the done gate catches a failing test before Claude stops](docs/demo.png)](https://asciinema.org/a/1270436)
 
 ## Why you want it
 
