@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { brief, describe, failLine, findCheck, findChecks, mask, outcomeOf, percent, testsOf } from '../hooks/format'
+import { brief, describe, failLine, findCheck, findChecks, isNewer, mask, outcomeOf, percent, testsOf } from '../hooks/format'
 
 test('findCheck on a 200 KB command of unterminated heredocs stays fast', () => {
   const command = 'npm test\n' + '<<A\n'.repeat(50_000)
@@ -71,4 +71,14 @@ test('a share never claims 100 % unless it is', () => {
   expect(percent(555_000, 555_000)).toBe('100')
   expect(percent(1, 3)).toBe('33')
   expect(percent(0, 10)).toBe('0')
+})
+
+test('isNewer compares release numbers, not text', () => {
+  expect(isNewer('0.17.0', '0.16.0')).toBe(true)
+  expect(isNewer('0.16.10', '0.16.9')).toBe(true)
+  expect(isNewer('1.0.0', '0.99.99')).toBe(true)
+  expect(isNewer('0.16.0', '0.16.0')).toBe(false)
+  expect(isNewer('0.15.0', '0.16.0')).toBe(false)
+  expect(isNewer('0.17.0', '')).toBe(false)
+  expect(isNewer('latest', '0.16.0')).toBe(false)
 })

@@ -75,6 +75,8 @@ Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn t
 | Key | Does |
 | --- | --- |
 | `i` | Draft a question about the top Focus item |
+| `u` | Draft the update commands, when a new release is out |
+| `l` | Show the new release's changelog |
 | `x` | Put Focus items away |
 | `d` | Show everything, uncut |
 | `h` | Fold the history |

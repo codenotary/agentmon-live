@@ -95,6 +95,10 @@ const en = {
   gateOnly: 'checks only, no model',
   attention: 'needs attention',
   investigate: 'investigate',
+  update: 'update',
+  changelog: 'changelog',
+  promptUpdate: (from: string, to: string) =>
+    `Update AgentMon Live from ${from} to ${to}: run \`claude plugin marketplace update agentmon-live\`, then \`claude plugin update agentmon-live\`, then tell me to run /reload-plugins.`,
   costWord: 'cost',
   dismiss: 'dismiss',
   investigateCheck: (kind: string, command: string, error: string) =>

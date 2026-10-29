@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
 
 import type { Card, Check, Note } from '../types'
-import { ago, clip, clockTime, fit, isHigh, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
+import { ago, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
@@ -568,8 +568,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
     now,
   )
 
+  // A newer GitHub release: `update` drafts the commands, `changelog` folds out what changed.
+  const release = cfg.release && isNewer(cfg.release.version, cfg.version) ? cfg.release : undefined
+
   return (
     <Box flexDirection="column">
+      <Box gap={1}>
       <Text bold>
         AGENTMON LIVE · <Text color="#d97757">{modelName(m.model).toUpperCase()} {t.plans}</Text>
         {m.effort && <Text color="#d97757" bold={false}> ({m.effort})</Text>}
@@ -577,6 +581,23 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {listening(adv.isOn) && <Text color="magenta"> · {t.watches}</Text>}
         {cfg.build && <Text dimColor bold={false}> {cfg.build}</Text>}
       </Text>
+      {release && (
+        <Button key="update" plain hotkey="u" onPress={() => investigate(t.promptUpdate(cfg.version, release.version))}>
+          {t.update}
+        </Button>
+      )}
+      {release && release.notes && (
+        <Button key="changelog" plain hotkey="l" dimColor={!lay.isChangelogOpen} onPress={() => update($, layout, l => ({ ...l, isChangelogOpen: !l.isChangelogOpen }))}>
+          {`${lay.isChangelogOpen ? '▾' : '▸'} ${t.changelog}`}
+        </Button>
+      )}
+      </Box>
+      {release && lay.isChangelogOpen && release.notes && (
+        <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
+          {title(`${t.changelog} ${release.version}`, 'green')}
+          {release.notes.split('\n').filter(line => line.trim()).map(line => <Text>{line}</Text>)}
+        </Box>
+      )}
       {attention.length > 0 ? (
         <Box flexDirection="column" borderStyle="round" borderColor={urgent.length > 0 ? 'red' : 'yellow'} paddingX={1}>
           <Box justifyContent="space-between">

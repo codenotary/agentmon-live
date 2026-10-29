@@ -97,6 +97,10 @@ export const de: Strings = {
   gateOnly: 'nur Prüfungen, kein Modell',
   attention: 'braucht Aufmerksamkeit',
   investigate: 'untersuchen',
+  update: 'aktualisieren',
+  changelog: 'Änderungen',
+  promptUpdate: (from, to) =>
+    `Aktualisiere AgentMon Live von ${from} auf ${to}: führe \`claude plugin marketplace update agentmon-live\` aus, dann \`claude plugin update agentmon-live\`, und sag mir dann, dass ich /reload-plugins ausführen soll.`,
   costWord: 'Kosten',
   dismiss: 'ausblenden',
   investigateCheck: (kind, command, error) =>
@@ -260,6 +264,10 @@ export const fr: Strings = {
   gateOnly: 'contrôles seuls, sans modèle',
   attention: 'à traiter',
   investigate: 'examiner',
+  update: 'mettre à jour',
+  changelog: 'nouveautés',
+  promptUpdate: (from, to) =>
+    `Mets à jour AgentMon Live de ${from} vers ${to} : lance \`claude plugin marketplace update agentmon-live\`, puis \`claude plugin update agentmon-live\`, puis dis-moi de lancer /reload-plugins.`,
   costWord: 'coût',
   dismiss: 'masquer',
   investigateCheck: (kind, command, error) =>
@@ -423,6 +431,10 @@ export const es: Strings = {
   gateOnly: 'solo comprobaciones, sin modelo',
   attention: 'requiere atención',
   investigate: 'investigar',
+  update: 'actualizar',
+  changelog: 'novedades',
+  promptUpdate: (from, to) =>
+    `Actualiza AgentMon Live de ${from} a ${to}: ejecuta \`claude plugin marketplace update agentmon-live\`, luego \`claude plugin update agentmon-live\`, y después dime que ejecute /reload-plugins.`,
   costWord: 'coste',
   dismiss: 'ocultar',
   investigateCheck: (kind, command, error) =>
@@ -585,6 +597,10 @@ export const zh: Strings = {
   gateOnly: '仅检查，不调用模型',
   attention: '需要处理',
   investigate: '调查',
+  update: '更新',
+  changelog: '更新日志',
+  promptUpdate: (from, to) =>
+    `将 AgentMon Live 从 ${from} 更新到 ${to}：运行 \`claude plugin marketplace update agentmon-live\`，然后运行 \`claude plugin update agentmon-live\`，然后提醒我运行 /reload-plugins。`,
   costWord: '费用',
   dismiss: '隐藏',
   investigateCheck: (kind, command, error) =>
@@ -747,6 +763,10 @@ export const ja: Strings = {
   gateOnly: 'チェックのみ、モデルなし',
   attention: '要対応',
   investigate: '調査',
+  update: '更新',
+  changelog: '変更履歴',
+  promptUpdate: (from, to) =>
+    `AgentMon Live を ${from} から ${to} に更新して: \`claude plugin marketplace update agentmon-live\` を実行し、次に \`claude plugin update agentmon-live\` を実行してから、/reload-plugins を実行するよう私に伝えて。`,
   costWord: 'コスト',
   dismiss: '非表示',
   investigateCheck: (kind, command, error) =>

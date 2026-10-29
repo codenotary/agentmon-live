@@ -168,6 +168,7 @@ async function build($: EngineInterface): Promise<string> {
   const read = (path: string) => $.fs.read(`${root}/${path}`).catch(() => '')
   const manifest = await read('.claude-plugin/plugin.json')
   const version = String((manifest ? (JSON.parse(manifest) as { version?: unknown }) : {}).version ?? '')
+  cfg.version = version
   const head = (await read('.git/HEAD')).trim()
   const ref = head.match(/^ref: (\S+)$/)?.[1]
   // A ref with `..` would read outside .git.
@@ -180,6 +181,29 @@ async function build($: EngineInterface): Promise<string> {
           ((await read('.git/packed-refs')).split('\n').find(line => line.endsWith(` ${ref}`))?.split(' ')[0] ?? '')
   // A worktree's `.git` is a file (`gitdir: …`), so what reads here need not be a commit.
   return [version, /^[0-9a-f]{40}$/.test(sha) ? sha.slice(0, 7) : ''].filter(Boolean).join(' · ')
+}
+
+const RELEASES = 'https://api.github.com/repos/codenotary/agentmon-live/releases/latest'
+// GitHub allows 60 unauthenticated calls an hour; one a day per machine is plenty.
+const RELEASE_TTL_MS = 24 * 3_600_000
+
+// The latest GitHub release, so Focus can offer the update; cached a day in the store, silent on any failure.
+async function checkRelease($: EngineInterface) {
+  cfg.release = undefined
+  if (await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')) return
+  const now = await $.clock.now()
+  const kept = (await $.store.get('release')) as { at?: unknown; version?: unknown; notes?: unknown } | undefined
+  let release = typeof kept?.at === 'number' && now - kept.at < RELEASE_TTL_MS && typeof kept.version === 'string' ? { version: kept.version, notes: String(kept.notes ?? '') } : undefined
+  if (!release) {
+    const r = await $.http.fetch(RELEASES, { headers: { accept: 'application/vnd.github+json' } })
+    if (!r.ok) return
+    const body = JSON.parse(r.text) as { tag_name?: unknown; body?: unknown }
+    if (typeof body.tag_name !== 'string') return
+    release = { version: body.tag_name.replace(/^v/, ''), notes: mask(String(body.body ?? '')).slice(0, 1500) }
+    await $.store.set('release', { at: now, ...release })
+  }
+  cfg.release = release
+  $.ui.invalidate('ui.render')
 }
 
 // The session's task list as its own calls change it; `deleted` removes a task.
@@ -401,6 +425,8 @@ export const register: Register = (on, options) => {
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
       await refreshStatus($)
+      // The network need not hold up learning.
+      void checkRelease($).catch(() => undefined)
       // Learning is extra: an engine without a store or session id leaves the rest working.
       await startLearning($, cwd).catch(() => undefined)
       const kept = (await $.session.id().then(id => $.store.get(`active:${id}`)).catch(() => undefined)) as { at?: unknown; tokens?: unknown } | undefined

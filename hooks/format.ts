@@ -223,3 +223,13 @@ export const limitName = (kind: string) => kind.replace('five_hour', '5h').repla
 
 // The one place the gauges turn the alarm colour.
 export const isHigh = (p: number) => p >= 80
+
+// Whether release `a` is newer than `b`, both `major.minor.patch`; anything else is never newer.
+export function isNewer(a: string, b: string): boolean {
+  const parse = (v: string) => (/^\d+\.\d+\.\d+$/.test(v) ? v.split('.').map(Number) : undefined)
+  const x = parse(a)
+  const y = parse(b)
+  if (!x || !y) return false
+  const i = x.findIndex((n, k) => n !== y[k])
+  return i >= 0 && x[i]! > y[i]!
+}

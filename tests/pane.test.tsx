@@ -68,3 +68,69 @@ test('the tools history shows calls in the last minute, and drops them when idle
   expect(await ui.find({ type: 'Text', text: /^shell\s+▕.*▏\s+3$/ })).toBeTruthy()
   await ui.unmount()
 })
+
+test('a newer GitHub release puts update and changelog by the version, and is fetched once a day', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('fs.read', (_, e) => {
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{ "name": "agentmon-live", "version": "0.16.0" }' }
+    throw new Error('ENOENT')
+  })
+  const store = new Map<string, unknown>()
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('env.get', () => ({ value: undefined }))
+  let fetches = 0
+  on('http.fetch', () => {
+    fetches++
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ tag_name: 'v0.17.0', body: 'Update check' }) } }
+  })
+  let drafted = ''
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('prompt.fill', (_, e) => {
+    drafted = e.text
+    return { isFilled: true }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Button', text: /^update$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /is out/ })).toBe(undefined)
+  await ui.press({ key: 'update' })
+  expect(drafted).toBe('Update AgentMon Live from 0.16.0 to 0.17.0: run `claude plugin marketplace update agentmon-live`, then `claude plugin update agentmon-live`, then tell me to run /reload-plugins.')
+  expect(await ui.find({ type: 'Text', text: /^Update check$/ })).toBe(undefined)
+  await ui.press({ key: 'changelog' })
+  expect(await ui.find({ type: 'Text', text: /^Update check$/ })).toBeTruthy()
+  await ui.unmount()
+
+  // A second session the same day reads the cache.
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(fetches).toBe(1)
+})
+
+test('a failed release check shows nothing', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('fs.read', (_, e) => {
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{ "name": "agentmon-live", "version": "0.16.0" }' }
+    throw new Error('ENOENT')
+  })
+  on('env.get', () => ({ value: undefined }))
+  let fetched = false
+  on('store.get', () => ({ value: undefined }))
+  on('http.fetch', () => {
+    fetched = true
+    return { value: { status: 403, ok: false, headers: {}, text: 'rate limited' } }
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(fetched).toBe(true)
+  expect(await ui.find({ type: 'Button', text: /^update/ })).toBe(undefined)
+  await ui.unmount()
+})
