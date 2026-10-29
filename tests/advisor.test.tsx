@@ -1,6 +1,8 @@
 import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { claimOf } from '../hooks/gate'
+
 // The kit declares the hook-adding `on` without exporting its type.
 type On = Parameters<TestBody>[1]
 // What the engine stamps on a command the person typed.
@@ -150,6 +152,35 @@ test('a check that ran before the last code edit is stale; a doc edit after it i
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'b', new_string: 'c' })
   await clock.settle()
   expect((await $.classic.Stop({ ...STOP })).block).toContain('test ran before the last edit: npm test')
+})
+
+test('an answer that says the tests pass with no check after the last edit is sent back', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.settle()
+  // No claim, or a negated one: nothing to back up.
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'I did not run the tests yet.' })).block).toBe(undefined)
+  const r = await $.classic.Stop({ ...STOP, last_assistant_message: 'Fixed the parser. All tests pass.' })
+  expect(r.block).toContain('the answer says "All tests pass", but no test, lint, typecheck or build ran after the last code edit')
+
+  // A check after the edit backs the claim.
+  await $.turn.start({ text: 'again', turnId: 'm2' })
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'b', new_string: 'c' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
+})
+
+test('claims are found in each language and negations are not claims', async () => {
+  expect(claimOf('Build succeeds and lint is clean.')).toBe('Build succeeds')
+  expect(claimOf("The tests didn't pass.")).toBe(undefined)
+  expect(claimOf('Die Tests laufen durch.')).toBe('Tests laufen durch')
+  expect(claimOf('测试全部通过。')).toBe('测试全部通过')
+  expect(claimOf('テストはすべて成功しました')).toBe('テストはすべて成功')
+  expect(claimOf('Refactored the parser.')).toBe(undefined)
 })
 
 test('open todo items keep the turn going, but a list from an earlier turn does not', async ($, on) => {

@@ -10,7 +10,7 @@ claude plugin test .
 npx -p typescript tsc --noEmit -p .
 ```
 
-`tsc` has one known error at `tests/advisor.test.tsx:267` (`{ isAnswered: false; reason: "aborted" }`); anything else is new.
+`tsc` has one known error in `tests/advisor.test.tsx` (`{ isAnswered: false; reason: "aborted" }` in the unanswered-Fable test); anything else is new.
 
 ## Layout
 

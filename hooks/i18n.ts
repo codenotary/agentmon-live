@@ -67,6 +67,7 @@ const en = {
   gateReason: (gaps: string) => `Before you report done, this looks unfinished:\n${gaps}\n\nFinish it, or say plainly why not.`,
   gapFailed: (kind: string, command: string) => `${kind} failed: ${command}`,
   gapStale: (kind: string, command: string) => `${kind} ran before the last edit: ${command}`,
+  gapClaim: (claim: string) => `the answer says "${claim}", but no test, lint, typecheck or build ran after the last code edit`,
   gapTodos: (n: number, list: string) => `${n} todo items still open: ${list}`,
   gapAgent: (type: string, why: string) => `subagent ${type} reported failing tests: ${why}`,
   askClaude: 'ask Claude',
@@ -139,7 +140,7 @@ const en = {
     reread: 're-read',
     editedOften: 'edited',
     modelSwitches: (n: number) => `${n}× model or effort changed`,
-    tag: { slow: 'slow', silent: 'quiet', loop: 'loop', context: 'context', big: 'big', reread: 're-read', churn: 'churn', wait: 'waiting', cache: 'cache', switches: 'switching', sink: 'time', mcp: 'mcp', size: 'size', pace: 'pace', cold: 'cold', peak: 'peak', docs: 'docs' },
+    tag: { slow: 'slow', silent: 'quiet', loop: 'loop', context: 'context', big: 'big', reread: 're-read', churn: 'churn', wait: 'waiting', cache: 'cache', switches: 'switching', sink: 'time', mcp: 'mcp', size: 'size', pace: 'pace', cold: 'cold', peak: 'peak', docs: 'docs', fresh: 'new task', redo: 'redo', model: 'model' },
     slow: (tool: string, what: string, d: string, usual?: string) => `${tool} ${what} running ${d}${usual ? ` · usually ${usual}` : ''}`,
     silent: (type: string, d: string, tools: number) => `${type} quiet for ${d} · ${tools} tools so far`,
     loop: (n: number, what: string) => `failed ${n}× in a row: ${what}`,
@@ -169,6 +170,11 @@ const en = {
     docs: (files: string) => `read docs (${files}) and changed code · where they disagree, the existing code's conventions win`,
     promptDocs: (files: string) => `Where the documentation (${files}) and the existing code disagree, follow the conventions in the existing code. In your reply, list each inconsistency you found between the documentation and the code.`,
     promptWait: (list: string) => `These calls waited for my approval most often: ${list}. Suggest permission allow rules for the safe ones; change nothing yet.`,
+    fresh: (k: string) => `the last turn worked where this ${k} session had not been · /clear before the next unrelated task (/clear <name> to come back)`,
+    redo: (n: number) => `${n} corrections in a row · a third rarely lands: /clear and one new prompt with what you learned`,
+    promptRedo: (n: number) =>
+      `I have corrected this ${n} times. In a few lines: what was tried, what failed and why, and what the fix must do, so I can start fresh with /clear and that summary.`,
+    model: (type: string, model: string) => `${type} ran on ${model} and only read or searched · model: haiku in its definition costs less`,
   },
 }
 

@@ -1,5 +1,5 @@
 import type { Active, Card, Insights, TurnTime } from '../types'
-import { clockTime, decimal, kilo, shortPath } from './format'
+import { clockTime, decimal, kilo, modelName, shortPath } from './format'
 import { isOversized, sizeCfg } from './sizeguard'
 import { cfg } from './state'
 import { isHigh, limitName } from './topology'
@@ -28,6 +28,22 @@ export const PACE_MAX_MS = 15 * 60_000
 // The prompt cache lives an hour; past that a session this large pays to write it again.
 export const CACHE_TTL_MS = 3_600_000
 export const COLD_MIN_TOKENS = 150_000
+// Corrections in a row before Focus suggests starting over, and the reads a subagent needs before its model is questioned.
+export const CORRECTIONS = 2
+export const READ_ONLY_CALLS = 3
+// Built-in agents whose model the person does not set.
+const BUILT_IN = new Set(['Explore', 'Plan', 'general-purpose', 'fork', 'claude-code-guide', 'statusline-setup'])
+// A prompt that says the last change did not work. shortcut: keywords miss rephrased complaints; a model check would catch more.
+const CORRECTION =
+  /\b(still (?:fails?|failing|broken|wrong|not|doesn'?t|does not)|(?:doesn'?t|does not|didn'?t|did not) work|not (?:fixed|working)|you (?:forgot|missed|broke)|same (?:error|issue|problem|bug)|wrong again)\b|funktioniert (?:immer )?noch nicht|geht (?:immer )?noch nicht|immer noch (?:falsch|kaputt|derselbe|der gleiche)|ne (?:marche|fonctionne) (?:toujours )?pas|toujours (?:pas|la même erreur)|sigue (?:sin funcionar|fallando|igual)|no funciona|还是不行|还是错|仍然不行|まだ(?:動かない|直って|同じエラー)|直っていない/i
+// A person's short reply; long texts are pasted logs, teammate messages or summaries that quote such words.
+export const CORRECTION_MAX = 400
+export const isCorrection = (text: string) => text.length <= CORRECTION_MAX && CORRECTION.test(text)
+
+// A turn only in parts of the project the session had not worked in, with the context already large: likely an unrelated task.
+export function isNewTask(here: readonly string[], past: readonly string[], ctxStart = 0): boolean {
+  return here.length > 0 && past.length > 0 && !here.some(a => past.includes(a)) && ctxStart >= COLD_MIN_TOKENS
+}
 const KEEP_KEYS = 200
 const KEEP_DURATIONS = 20
 
@@ -252,6 +268,21 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
       text: t.size(shortPath(path), kb(s.now), kb(sizeCfg.limit), tokensK),
       prompt: t.promptSize(path, kb(s.now), sizeCfg.limit, tokensK),
     })
+  }
+
+  if (last?.isNewTask) {
+    out.push({ key: `fresh:${last.startedAt}`, score: 34, tag: t.tag.fresh, color: 'blue', text: t.fresh(kilo(last.ctxStart ?? 0)) })
+  }
+
+  const redo = ins.corrections ?? 0
+  if (redo >= CORRECTIONS) {
+    out.push({ key: `redo:${ins.turns}:${redo}`, score: 60, tag: t.tag.redo, color: 'yellow', text: t.redo(redo), prompt: t.promptRedo(redo) })
+  }
+
+  // A custom subagent on a large model that only read: a small model does that for less. One item per agent type.
+  const readers = agents.filter(a => a.status === 'done' && !BUILT_IN.has(a.type) && /opus|fable/i.test(a.model) && a.tools >= READ_ONLY_CALLS && a.others === 0)
+  for (const a of new Map(readers.map(a => [a.type, a])).values()) {
+    out.push({ key: `model:${a.type}`, score: 20, tag: t.tag.model, color: 'blue', text: t.model(a.type, modelName(a.model)) })
   }
 
   if (last?.docs?.length) {

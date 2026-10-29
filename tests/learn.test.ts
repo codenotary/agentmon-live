@@ -146,6 +146,22 @@ test('memory rules: duplicates, index, stale paths, copied lines', async () => {
   expect(found.some(f => f.kind === 'tooBig' && f.file === '/p/CLAUDE.md')).toBe(true)
 })
 
+test('an instruction file over 200 lines or full of shouted rules is flagged; memory notes are not', async () => {
+  const long = Array.from({ length: 210 }, (_, i) => `- rule ${i}`).join('\n')
+  const loud = ['IMPORTANT: run tests', 'You MUST lint', 'NEVER push', 'ALWAYS format', 'CRITICAL: no secrets', 'Prefer small files'].join('\n')
+  const found = memRules(
+    [
+      { path: '/p/CLAUDE.md', text: long, inDir: false },
+      { path: '/h/.claude/CLAUDE.md', text: loud, inDir: false },
+      { path: '/c/projects/p/memory/a.md', text: `${long}\n${loud}`, inDir: true },
+    ],
+    ['a.md'],
+    new Map(),
+  )
+  expect(found.filter(f => f.kind === 'longFile').map(f => f.file)).toEqual(['/p/CLAUDE.md'])
+  expect(found.filter(f => f.kind === 'emphasis').map(f => f.detail)).toEqual(['.claude/CLAUDE.md (5)'])
+})
+
 // What the engine answers; the store is a map the test reads back.
 function engine(on: On, store: Map<string, unknown>, toasts: string[]) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))

@@ -10,6 +10,10 @@ export const BIG_CHARS = 40_000
 const DUP_LINES = 3
 const DUP_MIN = 40
 const MAX_REFS = 40
+// The memory guide's line budget for an instruction file, and how many emphasised lines count as piled on.
+export const LONG_LINES = 200
+export const EMPHASIS_LINES = 5
+const EMPHASIS = /\b(IMPORTANT|CRITICAL|MUST|NEVER|ALWAYS|MANDATORY|ABSOLUTE)\b/
 
 const base = (p: string) => p.slice(p.lastIndexOf('/') + 1)
 
@@ -51,6 +55,15 @@ export function memRules(files: readonly MemFile[], dir: readonly string[], miss
   for (const [ref, file] of missing) out.push({ kind: 'staleRef', file, detail: `${shortPath(file)} → ${ref}` })
 
   for (const f of files) if (f.text.length > BIG_CHARS) out.push({ kind: 'tooBig', file: f.path, detail: `${shortPath(f.path)} ≈${kilo(Math.ceil(f.text.length / 4))}` })
+
+  // Instruction files (CLAUDE.md and the like), not the memory folder's notes: long ones and shouted rules.
+  for (const f of files) {
+    if (f.inDir) continue
+    const lines = f.text.split('\n')
+    if (lines.length > LONG_LINES && f.text.length <= BIG_CHARS) out.push({ kind: 'longFile', file: f.path, detail: `${shortPath(f.path)} (${lines.length})` })
+    const loud = lines.filter(l => EMPHASIS.test(l)).length
+    if (loud >= EMPHASIS_LINES) out.push({ kind: 'emphasis', file: f.path, detail: `${shortPath(f.path)} (${loud})` })
+  }
 
   // The same long lines in two files: a copied section the model reads twice, and one copy goes stale.
   const seen = new Map<string, string>()

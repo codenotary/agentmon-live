@@ -1,7 +1,7 @@
 import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
-import { areaOf, cells, dur, focusList, liveBuckets, peakEnd, sparkline } from '../hooks/insights'
+import { areaOf, cells, dur, focusList, isCorrection, isNewTask, liveBuckets, peakEnd, sparkline } from '../hooks/insights'
 import { EMPTY_INSIGHTS, shapeInsights } from '../hooks/state'
 
 type On = Parameters<TestBody>[1]
@@ -304,4 +304,54 @@ test('focus and insights draw on desktop too', async ($, on) => {
     expect(await ui.find({ type: 'Text', text: /^\s+7\.0s Grep/ })).toBeTruthy()
     await ui.unmount()
   }
+})
+
+test('an unrelated task in a large session, corrections in a row and a read-only subagent on a large model each bring a hint', async () => {
+  expect(isNewTask(['web'], ['hooks', 'tests'], 200_000)).toBe(true)
+  expect(isNewTask(['web', 'hooks'], ['hooks'], 200_000)).toBe(false)
+  expect(isNewTask(['web'], ['hooks'], 50_000)).toBe(false)
+  expect(isNewTask(['web'], [], 200_000)).toBe(false)
+
+  expect(isCorrection('still failing with the same error')).toBe(true)
+  expect(isCorrection("that didn't work")).toBe(true)
+  expect(isCorrection('funktioniert immer noch nicht')).toBe(true)
+  expect(isCorrection('add a calendar widget')).toBe(false)
+
+  const card = { id: 'a1', type: 'scanner', model: 'claude-opus-5-5', effort: 'medium', task: 'find imports', status: 'done' as const, files: 4, tools: 5, others: 0, input: 0, output: 0, startedAt: 0 }
+  const list = focusList({
+    ins: { ...EMPTY_INSIGHTS, turns: 4, corrections: 2, last: { startedAt: 1, wallMs: 1000, buckets: {}, steps: 1, ctxStart: 210_000, isNewTask: true } },
+    doing: [],
+    agents: [card, { ...card, id: 'a2' }, { ...card, id: 'a3', type: 'Explore' }, { ...card, id: 'a4', type: 'editor', others: 2 }, { ...card, id: 'a5', type: 'cheap', model: 'claude-haiku-5-5' }],
+    window: 1000000,
+    now: 2000,
+  })
+  const tags = (tag: string) => list.filter(x => x.tag === tag)
+  expect(tags('new task').map(x => x.text)).toEqual(['the last turn worked where this 210.0k session had not been · /clear before the next unrelated task (/clear <name> to come back)'])
+  expect(tags('redo')[0]?.text).toBe('2 corrections in a row · a third rarely lands: /clear and one new prompt with what you learned')
+  expect(tags('redo')[0]?.prompt).toContain('start fresh with /clear')
+  expect(tags('model').map(x => x.text)).toEqual(['scanner ran on Opus 5.5 and only read or searched · model: haiku in its definition costs less'])
+})
+
+test('a prompt that corrects an edit turn counts; two in a row bring the redo hint, a new request resets it', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {}, text: 'ok' }))
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const turn = async (text: string, id: string) => {
+    await $.turn.start({ text, turnId: id })
+    await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' })
+    await clock.settle()
+    await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: id, reason: 'answer' })
+    await clock.settle()
+  }
+  await turn('fix the parser', 'm1')
+  await turn('still failing', 'm2')
+  await turn("that didn't work either", 'm3')
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /2 corrections in a row/ })).toBeTruthy()
+  await ui.unmount()
+  await turn('now add a calendar widget', 'm4')
+  const again = await $.ui.mount(PANE)
+  expect(await again.find({ type: 'Text', text: /corrections in a row/ })).toBeFalsy()
+  await again.unmount()
 })

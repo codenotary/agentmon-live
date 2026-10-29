@@ -9,7 +9,7 @@ import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, not
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
-import { areaOf, bump, CACHE_TTL_MS, estTokens, pathOf, pushDuration } from './insights'
+import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
@@ -38,6 +38,8 @@ const layout = atom({ plugin: 'agentmon-live', key: 'layout' } as const, INIT.la
 // A call slower than this joins the slowest list; a result bigger than this the biggest.
 const SLOW_MIN_MS = 5000
 const BIG_MIN_TOKENS = 2000
+// Areas of the project remembered as worked in, to tell a turn in new ones.
+const KEEP_AREAS = 50
 
 // The main loop's turn clock: every moment of a turn goes to one bucket. A call waiting on an
 // approval puts the time on `you`; running calls share it by category; a request streaming with
@@ -236,7 +238,11 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
   const ended = await update($, insights, v => {
     const session = { ...v.session }
     for (const [k, ms] of Object.entries(done.buckets)) session[k] = (session[k] ?? 0) + ms
-    return { ...v, turn: undefined, last: done, session, sessionWall: v.sessionWall + done.wallMs, turns: v.turns + 1, lastActive: endedAt }
+    const here = Object.keys(v.turnAreas)
+    const past = v.pastAreas ?? []
+    const last = isNewTask(here, past, done.ctxStart) ? { ...done, isNewTask: true } : done
+    const pastAreas = [...new Set([...past, ...here])].slice(-KEEP_AREAS)
+    return { ...v, turn: undefined, last, session, sessionWall: v.sessionWall + done.wallMs, turns: v.turns + 1, lastActive: endedAt, pastAreas }
   })
   // Kept in the store too: a resumed session starts a new process, and the transcript's time is rewritten on resume.
   // shortcut: one key per session, never pruned; prune by age if the store grows.
@@ -290,7 +296,7 @@ const t = cfg.t
 async function openGaps($: EngineInterface, turn: Turn, answer: string): Promise<{ lines: string[]; fix?: string }> {
   const t = cfg.t
   const [checked, planned, list] = await Promise.all([read($, checks), read($, tasks), read($, agents)])
-  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt })
+  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer })
   if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines }
   const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-4000))}` : ''}`)
   // Fable read untrusted tool output; what it says goes to Claude as a claim, never as a fact.
@@ -496,6 +502,8 @@ export const register: Register = (on, options) => {
     } else if (e.agentId === undefined) {
       isTurnLive = true
       isGateUsed = false
+      // A prompt that says the last edit turn's change did not work; read before the turn's files reset.
+      const isFix = turn.edited.size > 0 && isCorrection(e.text)
       turn.prompt = mask(e.text)
       turn.tools = 0
       turn.delegated = 0
@@ -518,7 +526,7 @@ export const register: Register = (on, options) => {
         update($, stats, s => ({ ...s, streak: 0 })),
         update($, main, v => ({ ...v, turnAt })),
         // Loops and switches are this turn's; approvals and re-reads add up over the session.
-        update($, insights, v => ({ ...v, fails: {}, turnSwitches: 0, turnAreas: {} })),
+        update($, insights, v => ({ ...v, fails: {}, turnSwitches: 0, turnAreas: {}, corrections: isFix ? (v.corrections ?? 0) + 1 : 0 })),
       ])
     } else {
       // A finished agent that gets a new message runs again.
@@ -626,7 +634,7 @@ export const register: Register = (on, options) => {
     // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
     await Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
-      id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, files: agentFiles, lastAt: startedAt } : a))),
+      id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
       update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => tick($)),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
       found.length > 0 &&
@@ -808,6 +816,7 @@ export const register: Register = (on, options) => {
       status: 'running',
       files: 0,
       tools: 0,
+      others: 0,
       input: 0,
       output: 0,
       startedAt: await $.clock.now(),

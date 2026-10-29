@@ -19,6 +19,8 @@ export type Card = {
   startedAt: number
   // The agent's last sign of life: a tool call or a model request.
   lastAt?: number
+  // Calls that did more than read or search.
+  others?: number
 }
 
 // Where a main-loop turn's wall time went, in ms per bucket: `model` (requests streaming),
@@ -36,6 +38,8 @@ export type TurnTime = {
   since?: number
   // Doc files the main loop read in a turn that changed code and was not a refactor.
   docs?: string[]
+  // The turn worked only in areas the session had not touched before, in an already large context.
+  isNewTask?: boolean
 }
 
 export type SlowCall = { tool: string; what: string; who: string; ms: number; at: number }
@@ -85,7 +89,7 @@ export type PromptBench = { edit: boolean; verified: boolean; churn: boolean; ms
 export type BenchRow = Bench & { id: string; at: number; turns: number; calls: number; errors: number; compactions: number }
 
 // A memory-file problem found by the local rules.
-export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine'; file: string; detail: string }
+export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine' | 'longFile' | 'emphasis'; file: string; detail: string }
 
 // The project's sessions as the store keeps them, last 30; `current` is this session's id.
 export type Learned = { current: string; sessions: SessionRecord[]; mem: MemFinding[]; bench: BenchRow[] }
@@ -119,6 +123,10 @@ export type Insights = {
   switches: number
   turnSwitches: number
   turnAreas: Record<string, number>
+  // Areas the main loop worked in before this turn.
+  pastAreas?: string[]
+  // Prompts in a row that corrected the turn before, which had edited files.
+  corrections?: number
   modelSwitches: number
   // The window by category at the last turn's end, used rows only, largest first.
   breakdown?: { name: string; tokens: number }[]
