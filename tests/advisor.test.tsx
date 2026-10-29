@@ -135,6 +135,20 @@ test('a failure from before the first code edit is not blamed, but the stale run
   expect(r.block).toContain('test ran before the last edit: npm test -- fail')
 })
 
+test('a test that failed this turn before the first code edit is not blamed when it fails again', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [])
+  await start($)
+  await $.tool.call({ tool: 'Bash', command: 'npm test -- fail' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test -- fail' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
+})
+
 test('a check that ran before the last code edit is stale; a doc edit after it is not', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)

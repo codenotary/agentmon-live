@@ -706,6 +706,8 @@ export const register: Register = (on, options) => {
         r.deny !== undefined ? 'unknown' : r.isError ? (kind === lastKind ? 'failed' : 'unknown') : hidesExit(command) ? outcomeOf(output, kind) : 'ok'
       const sameTurn = turn.startedAt === turnAt
       const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
+      // A check that fails before the turn's first code edit was broken already; it counts as failing at the prompt.
+      if (sameTurn && turn.codeEditAt === undefined) for (const f of found) if (resultOf(f.kind) === 'failed') turn.before.push({ kind: f.kind, command: f.part, who, at, result: 'failed' })
       const touched = path && !failed && (cat === 'edit' || cat === 'read') ? path : undefined
       if (touched && cat === 'edit' && sameTurn) {
         turn.edited.add(touched)
