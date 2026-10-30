@@ -51,80 +51,92 @@ function valueOf<T>($: EngineInterface, key: string): Promise<T | undefined> {
   return $.store.get(key).then(v => v as T | undefined, () => undefined)
 }
 
-// shortcut: any failed write, not only a full store, gives up other projects' oldest keys; match the host's cap error once known.
+// shortcut: a second failed write of any kind is taken for a full store; match the host's cap error once known.
 async function putRoom($: EngineInterface, key: string, value: unknown): Promise<boolean> {
   for (let round = 0; round < EVICT_ROUNDS; round++) {
     if (await $.store.set(key, value).then(() => true, () => false)) return true
+    if (round === 0) continue
     const victims = oldestOfOthers(await keysNow($), cwd, EVICT_BATCH)
     if (victims.length === 0) return false
-    for (const k of victims) await $.store.delete(k).catch(() => undefined)
+    await dropKeys($, victims)
     void debug($, 'store.evict', { keys: victims.length })
   }
   return false
 }
 
-// A live row is not replaced by a transcript's copy of the same session.
-async function putRow($: EngineInterface, row: BenchRow) {
-  const keys = await keysNow($)
+async function dropKeys($: EngineInterface, keys: readonly string[]) {
+  for (const k of keys) await $.store.delete(k).catch(() => undefined)
+}
+
+// Returns whether the row is stored; a live row is not replaced by a transcript's copy, which counts as stored.
+async function putRow($: EngineInterface, row: BenchRow, keys: readonly string[]): Promise<boolean> {
   const key = rowKey(cwd, row)
   const same = sameId(keys, 'row', cwd, row.id, key)
   const current = await Promise.all(same.map(k => valueOf<BenchRow>($, k)))
-  if (!row.live && current.some(c => c?.live)) return
-  if (!(await putRoom($, key, row))) return
-  for (const k of same) await $.store.delete(k).catch(() => undefined)
+  if (!row.live && current.some(c => c?.live)) return true
+  if (!(await putRoom($, key, row))) return false
+  await dropKeys($, same)
+  return true
 }
 
 // Keeps the last KEEP_SESSIONS sessions and KEEP_BENCH bench rows of this project.
 async function prune($: EngineInterface) {
   const keys = await keysNow($)
-  for (const k of [...toDrop(keys, 'sess', cwd, KEEP_SESSIONS), ...toDrop(keys, 'row', cwd, KEEP_BENCH)]) await $.store.delete(k).catch(() => undefined)
+  await dropKeys($, [...toDrop(keys, 'sess', cwd, KEEP_SESSIONS), ...toDrop(keys, 'row', cwd, KEEP_BENCH)])
 }
 
-async function putSession($: EngineInterface, r: SessionRecord) {
+// Returns whether the session and its bench row are stored.
+async function putSession($: EngineInterface, r: SessionRecord): Promise<boolean> {
   const keys = await keysNow($)
   const key = sessKey(cwd, r)
-  if (!(await putRoom($, key, r))) return
-  for (const k of sameId(keys, 'sess', cwd, r.id, key)) await $.store.delete(k).catch(() => undefined)
+  if (!(await putRoom($, key, r))) return false
+  await dropKeys($, sameId(keys, 'sess', cwd, r.id, key))
   const [row] = upsertRow([], r)
-  if (row) await putRow($, row)
+  const isRowStored = row ? await putRow($, row, keys) : true
   await prune($)
+  return isRowStored
 }
 
-// This project as the store holds it: its sessions and bench rows, and the memory findings.
-async function loadProject($: EngineInterface): Promise<Learned> {
+// The last `keep` records of one id each, oldest first.
+function mergeById<T extends { id: string; at: number }>(list: T[], keep: number): T[] {
+  return [...new Map(list.map(x => [x.id, x] as const)).values()].sort((a, b) => a.at - b.at).slice(-keep)
+}
+
+// This project as the store holds it: its sessions and bench rows, and the memory findings. `entry` is the old single entry, read by the caller.
+async function loadProject($: EngineInterface, entry: Learned | undefined): Promise<Learned> {
   const keys = await keysNow($)
-  const [sessions, rows, entry] = await Promise.all([
+  const [sessions, rows] = await Promise.all([
     Promise.all(keysOf(keys, 'sess', cwd).slice(-KEEP_SESSIONS).map(k => valueOf<SessionRecord>($, k))),
     Promise.all(keysOf(keys, 'row', cwd).slice(-KEEP_BENCH).map(k => valueOf<BenchRow>($, k))),
-    valueOf<Learned>($, storeKey(cwd)),
   ])
   // The old single entry may still hold sessions and rows an unfinished migration left behind; the keys win.
   const old = shapeLearned(entry)
-  const bySession = new Map([...old.sessions, ...sessions.filter((s): s is SessionRecord => s !== undefined)].map(s => [s.id, s] as const))
-  const byRow = new Map([...old.bench, ...rows.filter((r): r is BenchRow => r !== undefined)].map(r => [r.id, r] as const))
   return {
     current: '',
     mem: old.mem,
-    sessions: [...bySession.values()].sort((a, b) => a.at - b.at).slice(-KEEP_SESSIONS),
-    bench: [...byRow.values()].sort((a, b) => a.at - b.at).slice(-KEEP_BENCH),
+    sessions: mergeById([...old.sessions, ...sessions.filter((s): s is SessionRecord => s !== undefined)], KEEP_SESSIONS),
+    bench: mergeById([...old.bench, ...rows.filter((r): r is BenchRow => r !== undefined)], KEEP_BENCH),
   }
 }
 
 // Moves sessions and bench rows out of the old single entry into their own keys; the entry keeps the memory findings.
-async function migrate($: EngineInterface) {
-  const old = shapeLearned(await valueOf<Learned>($, storeKey(cwd)))
+async function migrate($: EngineInterface, entry: Learned | undefined) {
+  const old = shapeLearned(entry)
   if (old.sessions.length === 0 && old.bench.length === 0) return
-  for (const r of old.sessions) await putSession($, r)
-  for (const row of old.bench) await putRow($, row)
-  await putRoom($, storeKey(cwd), { mem: old.mem, sessions: [], bench: [] })
+  let isAllMoved = true
+  for (const r of old.sessions) if (!(await putSession($, r))) isAllMoved = false
+  for (const row of old.bench) if (!(await putRow($, row, await keysNow($)))) isAllMoved = false
+  // The old entry is cleared only once every session and row is in its own key; otherwise loadProject still reads it.
+  if (isAllMoved) await putRoom($, storeKey(cwd), { mem: old.mem, sessions: [], bench: [] })
 }
 
 export async function startLearning($: EngineInterface, dir: string) {
   cwd = dir
   if (!cfg.learning) return
   const [id, now] = await Promise.all([$.session.id(), $.clock.now()])
-  await queue(() => migrate($))
-  const stored = await loadProject($)
+  const entry = await valueOf<Learned>($, storeKey(cwd))
+  await queue(() => migrate($, entry))
+  const stored = await loadProject($, entry)
   rec = stored.sessions.find(s => s.id === id) ?? newRecord(id, now)
   await update($, learned, () => ({ ...stored, current: id }))
   queueMemoryCheck($)
@@ -178,7 +190,9 @@ export async function saveTurn($: EngineInterface, u: { tokens?: number; window:
   }
   r.mcp = mcp
   const copy = structuredClone(r)
-  await queue(() => putSession($, copy))
+  await queue(async () => {
+    await putSession($, copy)
+  })
   await update($, learned, l => ({ ...upsert(l, copy), current: copy.id }))
 }
 
@@ -196,7 +210,7 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
   if (entries.length === 0) return t.learnNone(dir)
   // A session recorded live knows more (MCP schemas, window, effort) than its transcript: keep it.
   // One from a version that did not count the done gate's catches gets only those from its transcript.
-  const have = new Map((await loadProject($)).sessions.map(s => [s.id, s]))
+  const have = new Map((await loadProject($, await valueOf<Learned>($, storeKey(cwd)))).sessions.map(s => [s.id, s]))
   const recs: SessionRecord[] = []
   const filled: SessionRecord[] = []
   let skipped = 0
@@ -231,7 +245,7 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
 // `/agentmon bench`: this project's sessions with and without the mod, this one included as it stands.
 export async function benchCommand($: EngineInterface): Promise<string> {
   if (!cfg.learning || !rec) return lt().learningOff
-  const [stored, now] = await Promise.all([loadProject($), $.clock.now()])
+  const [stored, now] = await Promise.all([loadProject($, await valueOf<Learned>($, storeKey(cwd))), $.clock.now()])
   return benchReport(upsertRow(stored.bench, rec), now)
 }
 

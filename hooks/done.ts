@@ -26,7 +26,7 @@ export type Turn = { prompt: string; startedAt: number; tools: number; delegated
 
 // The request, this turn's subagents and the observed checks are kept whole; the trail gives way.
 async function material($: EngineInterface, turn: Turn): Promise<string> {
-const t = cfg.t
+  const t = cfg.t
   const [list, checked, touched, planned] = await Promise.all([read($, agents), read($, checks), read($, files), read($, tasks)])
   const agentLines = list
     .filter(a => isLive(a) || a.startedAt >= turn.startedAt)

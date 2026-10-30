@@ -1,13 +1,13 @@
 import type { EngineInterface } from 'claude-code'
 
+import { pad } from './format'
+
 // Metadata only: a prompt, a file's text or a command line never goes in, so the file can be shared.
 // shortcut: the host has no append, so each flush rewrites the file; upgrade to append when it does.
 const KEEP_LINES = 3000
 const KEEP_DAYS = 7
 const FLUSH_MS = 10_000
 const VALUE_MAX = 200
-
-const pad = (n: number, width = 2) => String(n).padStart(width, '0')
 
 // The day folder and the line times are the person's local clock, the one they read the log by.
 export function dayOf(at: number): string {
@@ -63,8 +63,12 @@ export async function debug($: EngineInterface, event: string, fields: Record<st
   try {
     lines = [...lines, debugLine(await $.clock.now(), event, fields)].slice(-KEEP_LINES)
     if (isFlushQueued) return
+    // Set only once the timer is scheduled, so a failed schedule does not block the next one.
+    $.clock.after(FLUSH_MS, () => {
+      isFlushQueued = false
+      return saveDebugLog($)
+    })
     isFlushQueued = true
-    $.clock.after(FLUSH_MS, () => saveDebugLog($))
   } catch {
     // Dropped line: the next event still writes.
   }
@@ -77,7 +81,6 @@ export function saveDebugLog($: EngineInterface): Promise<void> {
 }
 
 async function flush($: EngineInterface) {
-  isFlushQueued = false
   if (file === undefined) return
   await $.fs.write(file, `${lines.join('\n')}\n`).catch(() => undefined)
 }

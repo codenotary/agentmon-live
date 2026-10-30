@@ -94,9 +94,12 @@ export function fit(s: string, cols: number): string {
   return out + ' '.repeat(cols - width(out))
 }
 
+// Zero-padded to `width` digits, for clock times and log stamps.
+export const pad = (n: number, width = 2) => String(n).padStart(width, '0')
+
 export function clockTime(ms: number): string {
   const d = new Date(ms)
-  return [d.getHours(), d.getMinutes()].map(v => String(v).padStart(2, '0')).join(':')
+  return [d.getHours(), d.getMinutes()].map(v => pad(v)).join(':')
 }
 
 // An elapsed time a person reads at a glance: 45 s, 12 min, 2 h 5 min.

@@ -19,24 +19,25 @@ export function newClock(now: number, inTurn: boolean): TurnClock {
   return { inTurn, startedAt: now, since: now, stepping: false, steps: 0, calls: new Map(), buckets: {} }
 }
 
-function clockMode(c: TurnClock): string {
+// The buckets the time since the clock last moved goes to, with each share: the approval wait takes all, running calls split it.
+function shares(c: TurnClock): [string, number][] {
   const running = [...c.calls.values()]
-  if (running.some(x => x.isAsking)) return 'you'
-  if (running.length > 0) return running[0]!.cat
-  return c.stepping ? 'model' : 'idle'
+  if (running.some(x => x.isAsking)) return [['you', 1]]
+  if (running.length > 0) return running.map(x => [x.cat, 1 / running.length])
+  return [[c.stepping ? 'model' : 'idle', 1]]
 }
 
-// Books the time since the clock last moved to the bucket it was in.
+function clockMode(c: TurnClock): string {
+  return shares(c)[0]![0]
+}
+
+// Books the time since the clock last moved to the buckets it was in.
 export function book(c: TurnClock, now: number) {
   if (!c.inTurn) return
   const ms = Math.max(0, now - c.since)
   c.since = Math.max(c.since, now)
   if (ms === 0) return
-  const running = [...c.calls.values()]
-  const add = (k: string, v: number) => (c.buckets[k] = (c.buckets[k] ?? 0) + v)
-  if (running.some(x => x.isAsking)) add('you', ms)
-  else if (running.length > 0) for (const x of running) add(x.cat, ms / running.length)
-  else add(c.stepping ? 'model' : 'idle', ms)
+  for (const [k, share] of shares(c)) c.buckets[k] = (c.buckets[k] ?? 0) + ms * share
 }
 
 export function snapshot(c: TurnClock): TurnTime {
