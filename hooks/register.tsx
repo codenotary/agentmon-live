@@ -2,16 +2,19 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
-import { addNote, consult } from './advisor'
-import { doneGaps, isDoc } from './gate'
-import { PROMPT_CHURN_EDITS } from './bench'
-import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, notePrompt, queueMemoryCheck, saveTurn, startLearning } from './learning'
-import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, isNewer, mask, outcomeOf, testsOf } from './format'
+import { addNote } from './advisor'
+import { isDoc } from './gate'
+import { book, newClock, snapshot } from './clock'
+import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, openGaps } from './done'
+import type { Turn } from './done'
+import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
+import { build, checkRelease, refreshBase, watchBase } from './release'
+import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
+import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
-import { readBase } from './git'
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
@@ -42,56 +45,7 @@ const BIG_MIN_TOKENS = 2000
 // Areas of the project remembered as worked in, to tell a turn in new ones.
 const KEEP_AREAS = 50
 
-// The main loop's turn clock: every moment of a turn goes to one bucket. A call waiting on an
-// approval puts the time on `you`; running calls share it by category; a request streaming with
-// no call running puts it on `model`; the rest is `idle`.
-type TurnClock = {
-  inTurn: boolean
-  startedAt: number
-  since: number
-  stepping: boolean
-  steps: number
-  calls: Map<string, { cat: string; isAsking: boolean }>
-  buckets: Record<string, number>
-  ctxStart?: number
-  ctxEnd?: number
-}
-
-function newClock(now: number, inTurn: boolean): TurnClock {
-  return { inTurn, startedAt: now, since: now, stepping: false, steps: 0, calls: new Map(), buckets: {} }
-}
-
-function clockMode(c: TurnClock): string {
-  const running = [...c.calls.values()]
-  if (running.some(x => x.isAsking)) return 'you'
-  if (running.length > 0) return running[0]!.cat
-  return c.stepping ? 'model' : 'idle'
-}
-
-// Books the time since the clock last moved to the bucket it was in.
-function book(c: TurnClock, now: number) {
-  if (!c.inTurn) return
-  const ms = Math.max(0, now - c.since)
-  c.since = Math.max(c.since, now)
-  if (ms === 0) return
-  const running = [...c.calls.values()]
-  const add = (k: string, v: number) => (c.buckets[k] = (c.buckets[k] ?? 0) + v)
-  if (running.some(x => x.isAsking)) add('you', ms)
-  else if (running.length > 0) for (const x of running) add(x.cat, ms / running.length)
-  else add(c.stepping ? 'model' : 'idle', ms)
-}
-
-function snapshot(c: TurnClock): TurnTime {
-  return { startedAt: c.startedAt, wallMs: c.since - c.startedAt, buckets: { ...c.buckets }, steps: c.steps, ctxStart: c.ctxStart, ctxEnd: c.ctxEnd, mode: clockMode(c), since: c.since }
-}
-
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
-// A finished turn with fewer main-loop tool calls, no edit and no subagent is too small to be worth a Fable call.
-const MIN_TOOLS_FOR_DONE_CHECK = 3
-// How much material Fable gets; the request and the evidence stay whole, the oldest trail lines go first.
-const MATERIAL_ROOM = 12000
-const REQUEST_ROOM = 2000
-
 let statusQueued = false
 let isTicking = false
 let reconciledAt = 0
@@ -165,66 +119,6 @@ function queueStatus($: EngineInterface) {
   })
 }
 
-// Which build is loaded: the manifest's version and, in a git checkout, the commit (`0.6.0 · 3366336`).
-async function build($: EngineInterface): Promise<string> {
-  const root = $.plugin.root
-  const read = (path: string) => $.fs.read(`${root}/${path}`).catch(() => '')
-  const manifest = await read('.claude-plugin/plugin.json')
-  const version = String((manifest ? (JSON.parse(manifest) as { version?: unknown }) : {}).version ?? '')
-  cfg.version = version
-  const head = (await read('.git/HEAD')).trim()
-  const ref = head.match(/^ref: (\S+)$/)?.[1]
-  // A ref with `..` would read outside .git.
-  const sha =
-    ref === undefined
-      ? head
-      : ref.includes('..')
-        ? ''
-        : (await read(`.git/${ref}`)).trim() ||
-          ((await read('.git/packed-refs')).split('\n').find(line => line.endsWith(` ${ref}`))?.split(' ')[0] ?? '')
-  // A worktree's `.git` is a file (`gitdir: …`), so what reads here need not be a commit.
-  return [version, /^[0-9a-f]{40}$/.test(sha) ? sha.slice(0, 7) : ''].filter(Boolean).join(' · ')
-}
-
-// Where the branch stands against its base, read again every `minutes`; a fetch first only when asked for and the network is allowed.
-// shortcut: polls on a timer, no push; watch .git/refs if a poll proves too slow.
-async function watchBase($: EngineInterface, cwd: string, minutes: number, fetch: boolean) {
-  await refreshBase($, cwd, fetch && !(await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')))
-  $.clock.after(minutes * 60_000, () => watchBase($, cwd, minutes, fetch))
-}
-
-async function refreshBase($: EngineInterface, cwd: string, fetch: boolean) {
-  cfg.base = await readBase($, cwd, fetch).catch(() => undefined)
-  $.ui.invalidate('ui.render')
-}
-
-const RELEASES = 'https://api.github.com/repos/codenotary/agentmon-live/releases/latest'
-// GitHub allows 60 unauthenticated calls an hour. A newer release found is kept a day, anything else an hour;
-// an install or update since the last look (`installed` differs) asks again at once.
-const RELEASE_TTL_MS = 24 * 3_600_000
-const CURRENT_TTL_MS = 3_600_000
-
-// The latest GitHub release, so Focus can offer the update; cached in the store, silent on any failure.
-async function checkRelease($: EngineInterface) {
-  cfg.release = undefined
-  if (await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')) return
-  const now = await $.clock.now()
-  const kept = (await $.store.get('release')) as { at?: unknown; version?: unknown; notes?: unknown; installed?: unknown } | undefined
-  const isFresh =
-    typeof kept?.at === 'number' && typeof kept.version === 'string' && kept.installed === cfg.version && now - kept.at < (isNewer(kept.version, cfg.version) ? RELEASE_TTL_MS : CURRENT_TTL_MS)
-  let release = isFresh ? { version: String(kept!.version), notes: String(kept!.notes ?? '') } : undefined
-  if (!release) {
-    const r = await $.http.fetch(RELEASES, { headers: { accept: 'application/vnd.github+json' } })
-    if (!r.ok) return
-    const body = JSON.parse(r.text) as { tag_name?: unknown; body?: unknown }
-    if (typeof body.tag_name !== 'string') return
-    release = { version: body.tag_name.replace(/^v/, ''), notes: mask(String(body.body ?? '')).slice(0, 1500) }
-    await $.store.set('release', { at: now, ...release, installed: cfg.version })
-  }
-  cfg.release = release
-  $.ui.invalidate('ui.render')
-}
-
 // The session's task list as its own calls change it; `deleted` removes a task.
 async function trackTasks($: EngineInterface, call: { tool: string }, result: unknown) {
   const e = call as { tool: string; todos?: { content: string; status: Task['status']; activeForm: string }[]; subject?: string; activeForm?: string; taskId?: string; status?: Task['status'] | 'deleted' }
@@ -257,6 +151,7 @@ liveTurn.read = () => (clk.inTurn ? snapshot(clk) : undefined)
 // A hook that fails lets the event go ahead: radar only watches, so it never holds up the session.
 function logFailure($: EngineInterface, event: string, error: { kind: string; message?: string }) {
   $.ui.log(`agentmon-live: the ${event} hook failed, so the event went ahead (${error.kind}: ${error.message ?? 'unknown'})`, { to: 'debug' })
+  void debug($, 'hook.fail', { event, kind: error.kind, message: mask(error.message ?? '') })
 }
 function failOpen<T>($: EngineInterface, event: string, error: { kind: string; message?: string }, proceed: () => T): T {
   logFailure($, event, error)
@@ -311,63 +206,6 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
 }
 
 // What the main loop did this turn, so Fable judges the work and not only the answer.
-// `before` holds the checks as they stood at the prompt; `codeEditAt` and `lastCodeEditAt` are the turn's first and last edit of a file that is not a doc.
-// `docs` are the doc files the main loop read this turn; `edits` counts the edits per code file.
-type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number }
-
-// The request, this turn's subagents and the observed checks are kept whole; the trail gives way.
-async function material($: EngineInterface, turn: Turn): Promise<string> {
-const t = cfg.t
-  const [list, checked, touched, planned] = await Promise.all([read($, agents), read($, checks), read($, files), read($, tasks)])
-  const agentLines = list
-    .filter(a => isLive(a) || a.startedAt >= turn.startedAt)
-    .map(a => `- ${a.type}: ${a.status}${a.tests ? ` · ${a.tests} (${t.reported})` : ''} · ${a.task}`)
-  const checkLines = checked.map(
-    c => `- ${c.kind}: ${c.result}${c.result !== 'running' && touched.editedAt > c.at ? ` (${t.stale})` : ''} · ${c.command}`,
-  )
-  const request = turn.prompt.slice(0, REQUEST_ROOM)
-  const changed = [...turn.edited].slice(-50).join('\n')
-  const openLines = planned.filter(k => k.status !== 'completed').map(k => `- ${k.status}: ${k.subject}`)
-  const evidence = t.evidence(agentLines.join('\n'), checkLines.join('\n'), openLines.join('\n'))
-  const room = MATERIAL_ROOM - t.material(request, '', changed).length - evidence.length
-  let lines = turn.trail
-  while (lines.length > 0 && lines.join('\n').length > room) lines = lines.slice(1)
-  return t.material(request, lines.join('\n'), changed) + evidence
-}
-
-// What the turn left open: recorded facts first; only when they show nothing does Fable judge whether the answer covers the request.
-async function openGaps($: EngineInterface, turn: Turn, answer: string): Promise<{ lines: string[]; fix?: string }> {
-  const t = cfg.t
-  const [checked, planned, list] = await Promise.all([read($, checks), read($, tasks), read($, agents)])
-  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer })
-  if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines }
-  const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-4000))}` : ''}`)
-  // Fable read untrusted tool output; what it says goes to Claude as a claim, never as a fact.
-  return v && !v.ok ? { lines: [t.fableSays(mask(v.text))], fix: v.fix && mask(v.fix) } : { lines: [] }
-}
-
-// This prompt's part of the self benchmark, recomputed at each main turn end and stop.
-// `blockAt` is the prompt's tool count when the gate sent it back; `isPassed` when a stop found nothing open.
-async function benchPrompt($: EngineInterface, turn: Turn, blockAt: number | undefined, isPassed: boolean) {
-  const [checked, now] = await Promise.all([read($, checks), $.clock.now()])
-  const after = checked.filter(c => c.at >= (turn.lastCodeEditAt ?? Infinity) && c.result !== 'running')
-  notePrompt({
-    edit: turn.lastCodeEditAt !== undefined,
-    verified: after.length > 0 && after.every(c => c.result === 'ok'),
-    churn: [...turn.edits.values()].some(n => n >= PROMPT_CHURN_EDITS),
-    ms: turn.tools > 0 ? now - turn.startedAt : 0,
-    block: blockAt !== undefined,
-    acted: blockAt !== undefined && turn.tools > blockAt,
-    passed: isPassed,
-  })
-}
-
-// "check now": the gate's own look, shown in the pane and never sent.
-async function checkNow($: EngineInterface, turn: Turn, answer: string, ref: string) {
-  const found = await openGaps($, turn, answer)
-  await addNote($, { kind: 'check', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref, at: await $.clock.now() })
-}
-
 export const register: Register = (on, options) => {
   const t = (cfg.t = LANGUAGES[String(options.language)] ?? LANGUAGES.en!)
   cfg.lang = String(options.language) in LANGUAGES ? String(options.language) : 'en'
@@ -378,6 +216,7 @@ export const register: Register = (on, options) => {
   cfg.advisorBudget = Number.isFinite(budget) && budget >= 0 ? budget : 30
   configureSize(options.sizeLimit, options.sizeExclude)
   cfg.learning = String(options.learning ?? 'on') !== 'off'
+  cfg.debugLog = String(options.debugLog ?? 'on') !== 'off'
   cfg.hidden = String(options.hiddenSections ?? '').split(',').map(s => s.trim()).filter(Boolean)
   const basePoll = Number(options.gitPollMinutes ?? 5)
   const baseMinutes = Number.isFinite(basePoll) && basePoll > 0 ? basePoll : 0
@@ -414,11 +253,12 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'agentmon',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|learn|memory]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|learn|memory|debug]`,
     })
     cwd = e.cwd
     // After a reload mid-turn, older todos and agent results must not count as this turn's.
     turn.startedAt = await $.clock.now()
+    if (cfg.debugLog) await openDebugLog($, turn.startedAt).catch(() => undefined)
     // The project's own size exceptions, each with a reason.
     void $.fs.read(`${cwd}/.agentmon-size`).then(
       text => configureSize(options.sizeLimit, options.sizeExclude, parseExceptions(text)),
@@ -426,6 +266,7 @@ export const register: Register = (on, options) => {
     )
     const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
     await update($, main, m => ({ ...m, model }))
+    void debug($, 'session.start', { model, language: cfg.lang, advisorMode: cfg.advisorMode, advisorBudget: cfg.advisorBudget, learning: cfg.learning, gitPollMinutes: baseMinutes, gitFetch: isFetching })
     // A turn under way when the module reloaded lost its clock; older state lacks fields.
     await update($, insights, v => ({ ...shapeInsights(v), turn: undefined }))
     // State from an older version or another language holds keys this one does not draw; drop them.
@@ -501,6 +342,7 @@ export const register: Register = (on, options) => {
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
     if (arg === 'memory') return { text: await memoryCommand($) }
     if (arg === 'bench') return { text: await benchCommand($) }
+    if (arg === 'debug') return { text: t.debugLog(debugPath()) }
     // Details from the prompt, so a script reaches it without focusing the pane.
     if (arg === 'details') {
       const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
@@ -572,6 +414,7 @@ export const register: Register = (on, options) => {
       effortByCall.clear()
       askedCalls.clear()
       const turnAt = turn.startedAt
+      void debug($, 'turn.start', { prompt_chars: e.text.length, isFix })
       clk = newClock(turnAt, true)
       await Promise.all([
         update($, stats, s => ({ ...s, streak: 0 })),
@@ -754,6 +597,7 @@ export const register: Register = (on, options) => {
       if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)
       // Insights: how long it took, what it cost the context, where the main loop works.
       const ms = Math.max(0, at - startedAt)
+      void debug($, 'tool.call', { tool: e.tool, cat, ms, agent: e.agentId !== undefined, denied: r.deny !== undefined, isError: r.isError })
       const wasAsked = askedCalls.delete(callId)
       const callKey = `${e.tool} ${brief(e)}`.trim().slice(0, 80)
       const resultTokens = e.agentId === undefined && !failed ? estTokens(String(r.text ?? '')) : 0
@@ -840,6 +684,7 @@ export const register: Register = (on, options) => {
     const before = e.trigger !== 'precompute' && e.agentId === undefined ? await $.session.usage().catch(() => undefined) : undefined
     const r = await next(e)
     if (r.skip === undefined) noteCompact(before?.context.tokens)
+    void debug($, 'compact', { trigger: e.trigger, agent: e.agentId !== undefined, tokensBefore: before?.context.tokens, skipped: r.skip !== undefined })
     if (r.skip === undefined && e.trigger !== 'precompute' && e.agentId === undefined) {
       await update($, stats, s => ({ ...s, compactions: s.compactions + 1 }))
       await addLog($, { who: t.mainSession, what: t.compacted(e.trigger), result: '' })
@@ -929,6 +774,7 @@ export const register: Register = (on, options) => {
       await benchPrompt($, turn, blockAt, isPassed)
       await finishTurn($, e.durationMs, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined)
       isTurnLive = false
+      void debug($, 'turn.complete', { ms: e.durationMs, tools: turn.tools, edited: turn.edited.size })
       lastAnswer = e.answer
       if (baseMinutes > 0) $.clock.after(0, () => refreshBase($, cwd, false))
       // Memory files change outside Edit and Write too: Bash, an editor, a git checkout.
@@ -952,6 +798,9 @@ export const register: Register = (on, options) => {
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
     const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
     await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
+    void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, stopHook: e.stop_hook_active })
+    // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
+    void saveDebugLog($)
     if (found.lines.length === 0) isPassed = true
     if (isSent) blockAt = turn.tools
     await benchPrompt($, turn, blockAt, isPassed)

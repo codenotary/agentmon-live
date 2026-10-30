@@ -1,4 +1,9 @@
-import { de, es, fenced, fr, ja, zh } from './locales'
+import { de } from './lang/de'
+import { es } from './lang/es'
+import { fenced } from './lang/fenced'
+import { fr } from './lang/fr'
+import { ja } from './lang/ja'
+import { zh } from './lang/zh'
 
 export const CATEGORIES = ['git', 'read', 'search', 'web', 'shell', 'edit', 'agents', 'skills', 'browser', 'computer', 'mcp'] as const
 export type Category = (typeof CATEGORIES)[number] | 'other'
@@ -37,6 +42,7 @@ const en = {
   advisorToggled: (on: boolean) => `Fable advisor ${on ? 'on' : 'off'}.`,
   cleared: 'AgentMon Live cleared.',
   opened: 'AgentMon Live pane opened.',
+  debugLog: (path?: string) => (path === undefined ? 'AgentMon Live debug log is off (option debugLog).' : `AgentMon Live debug log: ${path}`),
   failed: 'failed',
   askDone: 'Does the final answer address every part of the task? Judge only that, not code quality or style.',
   mainSession: 'main session',

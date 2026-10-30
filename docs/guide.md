@@ -32,6 +32,7 @@ Languages: English (default), German, French, Spanish, Chinese and Japanese.
 | `/agentmon learn [dir]` | Learns from this project's past transcripts (or the `.jsonl` files in `dir`) |
 | `/agentmon memory` | Checks the memory and instruction files now and lists what it found |
 | `/agentmon bench` | Compares this project's sessions with and without the mod, and the last 7 days |
+| `/agentmon debug` | Prints the path of this session's debug log (see Debug log) |
 | `/agentmon clear` | Resets counters, finished cards, log and the done gate's results; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
 The pane opens by itself at session start when the terminal is wide enough.
@@ -50,8 +51,13 @@ Set in `/config`, under the plugin, or ask Claude in chat ("hide the usage box",
 | `sizeExclude` | comma-separated globs the size guide skips, on top of the built-in ones | empty |
 | `hiddenSections` | comma-separated dashboard sections to hide: `tasks`, `insights`, `skills`, `advisor`, `changes`, `usage` | empty |
 | `learning` | `on` keeps what each session of a project shows (below); `off` keeps nothing | `on` |
+| `debugLog` | `on` writes each session's events to a debug log (below); `off` writes none | `on` |
 | `gitPollMinutes` | minutes between checks of the base branch (below); `0` turns the check off | `5` |
 | `gitFetch` | `true` runs `git fetch` for the base branch before each check; `false` compares against your last fetch | `false` |
+
+### Debug log
+
+With `debugLog` on, each session writes one file: `<Claude config folder>/agentmon-live/debug/<day>/<session>.log`, the config folder being `CLAUDE_CONFIG_DIR` or `~/.claude`. Every line is a time, an event and its metadata: session start with the options, each turn, each tool call (name, time taken, denied or failed), each done-gate decision, compactions, and hook failures. Prompts, file text and command lines are never written. `/agentmon debug` prints the path of this session's file. Each file keeps the last 3000 lines. At session start the mod deletes log files not written for seven days, through `find` under that debug folder only, and then the empty day folders.
 
 ### Base branch
 

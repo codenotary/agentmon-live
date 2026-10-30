@@ -84,11 +84,11 @@ Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn t
 | `h` | Fold the history |
 | `c` | Run the done-gate check now |
 
-Commands: `/agentmon`, `advisor`, `check`, `learn`, `memory`, `bench`, `clear`.
+Commands: `/agentmon`, `advisor`, `check`, `learn`, `memory`, `bench`, `debug`, `clear`.
 
 ## More
 
-- [Guide](docs/guide.md): every section of the pane, all commands and options, the done gate, the file-size guide, learning and the self benchmark.
+- [Guide](docs/guide.md): every section of the pane, all commands and options, the done gate, the file-size guide, learning, the debug log and the self benchmark.
 - [Develop](docs/develop.md): build, test, and see the real pane from a script.
 
 Developed by [vchaindz](https://github.com/vchaindz). [Apache License 2.0](LICENSE).

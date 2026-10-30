@@ -8,6 +8,7 @@ import { LANGUAGES } from '../hooks/i18n'
 import { KEEP_SESSIONS, learnedItems, newRecord, parseTranscript, shapeLearned, tally, totals, upsert } from '../hooks/learn'
 import { memRules, refsOf } from '../hooks/memcheck'
 import type { Learned, SessionRecord } from '../types'
+import { storeCalls, viewOf } from './fixtures/store'
 
 type On = Parameters<TestBody>[1]
 
@@ -203,7 +204,7 @@ test('an instruction file over 200 lines or full of shouted rules is flagged; me
 
 // What the engine answers; the store is a map the test reads back.
 // `memory` names the files in the project's memory folder.
-function engine(on: On, store: Map<string, unknown>, toasts: string[], transcripts: string[] = [], memory: string[] = []) {
+function engine(on: On, store: Map<string, unknown>, toasts: string[], transcripts: string[] = [], memory: string[] = [], cap = Infinity) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -228,9 +229,12 @@ function engine(on: On, store: Map<string, unknown>, toasts: string[], transcrip
   on('fs.list', (_, e) => ({ value: (e.path.endsWith('/memory') ? memory.map(entry) : transcripts.map(n => entry(`${n}.jsonl`))) as never }))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
   on('store.set', (_, e) => {
+    const next = new Map(store).set(e.key, e.value)
+    if ([...next].reduce((n, [k, v]) => n + k.length + JSON.stringify(v).length, 0) > cap) throw new Error('store full')
     store.set(e.key, e.value)
     return { value: undefined }
   })
+  storeCalls(on, store)
 }
 
 test('a turn writes this session to the store; a known-flaky tool warns once', async ($, on) => {
@@ -252,7 +256,7 @@ test('a turn writes this session to the store; a known-flaky tool warns once', a
   expect(toasts.filter(x => x.includes('mcp__gh__issue')).length).toBe(1)
   await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
   await clock.settle()
-  const saved = shapeLearned(store.get('proj:/p'))
+  const saved = viewOf(store)
   const live = saved.sessions.find(s => s.id === 'live')
   expect(saved.sessions.length).toBe(4)
   expect(live?.tools['mcp__gh__issue']).toEqual({ calls: 2, errors: 2, big: 0, lastErr: 'timeout' })
@@ -275,7 +279,7 @@ test('a stop the done gate sends back is kept in the session record', async ($, 
   expect((await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'All done.' })).block).toContain('test failed: npm test')
   await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
   await clock.settle()
-  expect(shapeLearned(store.get('proj:/p')).sessions.find(s => s.id === 'live')?.gaps).toEqual({ failed: 1 })
+  expect(viewOf(store).sessions.find(s => s.id === 'live')?.gaps).toEqual({ failed: 1 })
 })
 
 test('/agentmon learn keeps a session recorded live and adds the new ones', async ($, on) => {
@@ -294,7 +298,7 @@ test('/agentmon learn keeps a session recorded live and adds the new ones', asyn
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
   await clock.settle()
   await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'learn' } as never)
-  const saved = shapeLearned(store.get('proj:/p'))
+  const saved = viewOf(store)
   expect(saved.sessions.find(s => s.id === 'old')?.mcp).toEqual({ mcp__jira: 3000 })
   expect(saved.sessions.find(s => s.id === 'old')?.gaps).toEqual({})
   // The older record keeps what it knew and gains the gate's catches.
@@ -318,12 +322,25 @@ test('a memory file shrunk outside Edit and Write is checked again at the turn e
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
   await clock.advance(1000)
   await clock.settle()
-  expect(shapeLearned(store.get('proj:/p')).mem.map(f => f.kind)).toEqual(['tooBig'])
+  expect(viewOf(store).mem.map(f => f.kind)).toEqual(['tooBig'])
   await $.turn.start({ text: 'trim the notes', turnId: 'm1' })
   text = 'short'
   await $.tool.call({ tool: 'Bash', command: "python3 trim.py notes.md" } as never)
   await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
   await clock.advance(1000)
   await clock.settle()
-  expect(shapeLearned(store.get('proj:/p')).mem).toEqual([])
+  expect(viewOf(store).mem).toEqual([])
+})
+
+test('a full store makes room by giving up the oldest session of another project, and this project still saves', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>([['sess:/other:000000000000001:old', { id: 'old', at: 1, pad: 'x'.repeat(1700) }]])
+  engine(on, store, [], [], [], 1900)
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await $.turn.start({ text: 'go', turnId: 'm1' })
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
+  await clock.settle()
+  expect(store.has('sess:/other:000000000000001:old')).toBe(false)
+  expect(viewOf(store).sessions.map(s => s.id)).toEqual(['live'])
 })

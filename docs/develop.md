@@ -16,13 +16,22 @@ npx -p typescript tsc --noEmit -p .
 
 | Path | Holds |
 | --- | --- |
-| `hooks/register.tsx` | Hooks, state and the pane |
+| `hooks/register.tsx` | Hooks, per-session state and the commands |
+| `hooks/done.ts` | The done gate's material, checks and per-turn state |
+| `hooks/clock.ts` | The turn clock: where a turn's time went |
+| `hooks/release.ts` | Build label, release check and base-branch watch |
+| `hooks/render.tsx` | The pane |
 | `hooks/insights.ts` | The Focus rules and their thresholds, time and context helpers |
 | `hooks/learn.ts`, `hooks/learning.ts`, `hooks/bench.ts` | What is learned across sessions: the pure rules, the store and commands, and the self benchmark |
 | `hooks/memcheck.ts` | The memory-file rules |
-| `hooks/i18n.ts`, `hooks/locales.ts`, `hooks/learn-strings.ts` | All text, one block per language: English in `i18n.ts`, the others in `locales.ts`, the learning and benchmark text in `learn-strings.ts` |
+| `hooks/debuglog.ts` | The per-session debug log: line format, the buffer and the flush |
+| `hooks/i18n.ts`, `hooks/lang/*.ts`, `hooks/learn-strings.ts` | All text, one file per language: English in `i18n.ts`, the others in `lang/<code>.ts`, the learning and benchmark text in `learn-strings.ts` |
 | `types/index.d.ts` | State contract |
 | `tests/*.test.ts(x)` | Tests, one file per part (`bench.test.ts` for the self benchmark) |
+
+### Check the log cleanup
+
+`scripts/prune-check.sh` runs the debug log's delete step on a temp folder and checks what is left. The test kit has no real file system, so this is not part of `claude plugin test`.
 
 ### See the pane from a script
 
@@ -49,4 +58,4 @@ Captures land in `tests/pane-snaps/<scenario>/`: `<name>.txt` (whole screen), `<
 
 Each run costs a few calls on the cheap model. Needs `tmux` and `python3`.
 
-To add a language, add a block to `LANGUAGES` in `hooks/i18n.ts` (the `Strings` type lists every key) and its code to the `language` options in `.claude-plugin/plugin.json`.
+To add a language, add `hooks/lang/<code>.ts` exporting a `Strings` block, and register it in `LANGUAGES` in `hooks/i18n.ts` (the `Strings` type lists every key) and its code to the `language` options in `.claude-plugin/plugin.json`.
