@@ -927,6 +927,8 @@ export const register: Register = (on, options) => {
       isTurnLive = false
       lastAnswer = e.answer
       if (baseMinutes > 0) $.clock.after(0, () => refreshBase($, cwd, false))
+      // Memory files change outside Edit and Write too: Bash, an editor, a git checkout.
+      queueMemoryCheck($)
     }
     if (e.agentId === undefined && isCheckQueued) {
       isCheckQueued = false

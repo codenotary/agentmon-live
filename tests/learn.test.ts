@@ -202,7 +202,8 @@ test('an instruction file over 200 lines or full of shouted rules is flagged; me
 })
 
 // What the engine answers; the store is a map the test reads back.
-function engine(on: On, store: Map<string, unknown>, toasts: string[], transcripts: string[] = []) {
+// `memory` names the files in the project's memory folder.
+function engine(on: On, store: Map<string, unknown>, toasts: string[], transcripts: string[] = [], memory: string[] = []) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -223,7 +224,8 @@ function engine(on: On, store: Map<string, unknown>, toasts: string[], transcrip
     return { value: undefined }
   })
   on('env.get', () => ({ value: '/h' }))
-  on('fs.list', () => ({ value: transcripts.map(n => ({ name: `${n}.jsonl`, kind: 'file', size: 10, mtimeMs: 1 })) as never }))
+  const entry = (name: string) => ({ name, kind: 'file', size: 10, mtimeMs: 1 })
+  on('fs.list', (_, e) => ({ value: (e.path.endsWith('/memory') ? memory.map(entry) : transcripts.map(n => entry(`${n}.jsonl`))) as never }))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
   on('store.set', (_, e) => {
     store.set(e.key, e.value)
@@ -300,4 +302,28 @@ test('/agentmon learn keeps a session recorded live and adds the new ones', asyn
   expect(saved.sessions.find(s => s.id === 'older')?.tools).toEqual({})
   // The repeated entry counts once.
   expect(saved.sessions.find(s => s.id === 'new')?.tools.Bash?.calls).toBe(1)
+})
+
+test('a memory file shrunk outside Edit and Write is checked again at the turn end', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>()
+  const note = '/h/projects/-p/memory/notes.md'
+  let text = 'x'.repeat(50_000)
+  engine(on, store, [], [], ['notes.md'])
+  on('fs.read', (_, e) => {
+    if (e.path === note) return { value: text }
+    throw new Error('ENOENT')
+  })
+  on('tool.call', () => ({ result: {}, text: 'ok' }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.advance(1000)
+  await clock.settle()
+  expect(shapeLearned(store.get('proj:/p')).mem.map(f => f.kind)).toEqual(['tooBig'])
+  await $.turn.start({ text: 'trim the notes', turnId: 'm1' })
+  text = 'short'
+  await $.tool.call({ tool: 'Bash', command: "python3 trim.py notes.md" } as never)
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
+  await clock.advance(1000)
+  await clock.settle()
+  expect(shapeLearned(store.get('proj:/p')).mem).toEqual([])
 })
