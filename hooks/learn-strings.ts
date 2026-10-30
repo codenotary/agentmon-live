@@ -1,4 +1,4 @@
-// Strings for what AgentMon Live learns across sessions, kept apart from locales.ts so that file does not grow.
+// Strings for what AgentMon Live learns across sessions, kept apart from the language files so those stay small.
 const en = {
   tag: { plan: 'plan', flaky: 'flaky', unused: 'unused', habit: 'habit', memory: 'memory', gate: 'gate' },
   kind: 'memory',

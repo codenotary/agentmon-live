@@ -14,12 +14,13 @@ npx -p typescript tsc --noEmit -p .
 
 ## Layout
 
-- `hooks/register.tsx`: every hook, the per-turn state (`Turn`), commands (`/agentmon <arg>`), the done gate (`classic.Stop`).
+- `hooks/register.tsx`: every hook, the per-session state, commands (`/agentmon <arg>`).
+- `hooks/clock.ts`: the turn clock (where a turn's time went). `hooks/release.ts`: build, release check, base-branch watch. `hooks/done.ts`: the per-turn state (`Turn`), the done gate's material and checks (`classic.Stop` calls it).
 - `hooks/render.tsx`: the pane.
 - `hooks/insights.ts`: Focus rules and thresholds.
 - `hooks/learn.ts` (pure rules, `parseTranscript`), `hooks/learning.ts` (store, `/agentmon learn|memory|bench`), `hooks/bench.ts` (self benchmark: per-prompt numbers, transcript parse, report).
 - `hooks/gate.ts`, `hooks/advisor.ts`: done-gate facts and the Fable call.
-- `hooks/i18n.ts` (English), `hooks/locales.ts` (de, fr, es, zh, ja), `hooks/learn-strings.ts` (learning and bench text, all six).
+- `hooks/i18n.ts` (English), `hooks/lang/<code>.ts` (de, fr, es, zh, ja), `hooks/learn-strings.ts` (learning and bench text, all six).
 - `skills/agentmon-config/SKILL.md`: tells Claude how to change the options from chat; keep its table in step with `userConfig`.
 - `types/index.d.ts`: state contract. `SessionRecord`, `Bench`, `BenchRow`, `Learned` live here.
 - `tests/*.test.ts(x)`: one file per part; transcript fixtures in `tests/fixtures/`.

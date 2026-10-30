@@ -3,6 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import { addPrompt, benchOf, benchReport, emptyBench, KEEP_BENCH, MIN_BENCH, upsertRow } from '../hooks/bench'
 import { newRecord, parseTranscript, shapeLearned, upsert } from '../hooks/learn'
 import type { BenchRow } from '../types'
+import { storeCalls, viewOf } from './fixtures/store'
 
 const line = (o: object) => JSON.stringify(o)
 const user = (uuid: string, at: string, content: unknown) => line({ type: 'user', uuid, timestamp: `2026-10-01T10:${at}.000Z`, message: { role: 'user', content } })
@@ -121,6 +122,7 @@ test('a live session records its bench row and /agentmon bench reports it', asyn
   on('env.get', () => ({ value: '/h' }))
   on('fs.list', () => ({ value: [] }))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  storeCalls(on, store)
   on('store.set', (_, e) => {
     store.set(e.key, e.value)
     return { value: undefined }
@@ -134,7 +136,7 @@ test('a live session records its bench row and /agentmon bench reports it', asyn
   await clock.settle()
   await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
   await clock.settle()
-  const live = shapeLearned(store.get('proj:/p')).bench.find(r => r.id === 'live')
+  const live = viewOf(store).bench.find(r => r.id === 'live')
   expect(live?.mod).toBe(true)
   expect(live?.live).toBe(true)
   expect(live?.turnMs.length).toBe(1)

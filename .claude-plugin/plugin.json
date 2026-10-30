@@ -1,6 +1,6 @@
 {
   "name": "agentmon-live",
-  "version": "0.18.2",
+  "version": "0.19.0",
   "description": "AgentMon Live: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -64,6 +64,16 @@
       "type": "string",
       "title": "Learning",
       "description": "on: remember tool failures, compactions and MCP use per project across sessions, and check memory files; off: nothing is kept",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "debugLog": {
+      "type": "string",
+      "title": "Debug log",
+      "description": "on: write each session's events (metadata only, no prompt or file text) to a file under the Claude config folder, agentmon-live/debug/<day>/; off: no file",
       "default": "on",
       "options": [
         "on",

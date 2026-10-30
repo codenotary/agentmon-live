@@ -1,11 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { ContextMcpTool, EngineInterface } from 'claude-code'
 
-import type { Bench, Learned, PromptBench, SessionRecord } from '../types'
+import type { Bench, BenchRow, Learned, PromptBench, SessionRecord } from '../types'
 import { addPrompt, benchReport, emptyBench, gapKinds, KEEP_BENCH, upsertRow } from './bench'
-import { addGaps, lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare } from './learn'
+import { debug } from './debuglog'
+import { addGaps, KEEP_SESSIONS, lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare } from './learn'
 import { memRules, refsOf } from './memcheck'
 import type { MemFile } from './memcheck'
+import { keysOf, oldestOfOthers, rowKey, sameId, sessKey, toDrop } from './records'
 import { cfg, INIT } from './state'
 
 const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.learned)
@@ -32,30 +34,97 @@ export function isMemoryPath(path: string): boolean {
   return /(^|\/)(CLAUDE(\.local)?\.md|MEMORY\.md)$|\/memory\/[^/]+\.md$/.test(path)
 }
 
-// Saves run one after another, so a memory check and a turn end that overlap do not drop one another's write.
+// Writes run one after another inside this session, so a memory check and a turn end that overlap do not interleave.
 let saving = Promise.resolve()
-function save($: EngineInterface, change: (l: Learned) => Learned): Promise<void> {
-  // A failed save must not stop the ones after it.
-  saving = saving.catch(() => undefined).then(() => saveNow($, change))
+function queue(job: () => Promise<void>): Promise<void> {
+  saving = saving.then(job).catch(() => undefined)
   return saving
 }
 
-// Reads the store again before writing, so a second session in the same project keeps its own record.
-async function saveNow($: EngineInterface, change: (l: Learned) => Learned) {
-  const key = storeKey(cwd)
-  const next = change(shapeLearned(await $.store.get(key).catch(() => undefined)))
-  const { current: _, ...kept } = next
-  // shortcut: a store over its 4 MiB cap rejects the write and this session's learning is lost; trim old projects if that shows up.
-  await $.store.set(key, kept).catch(() => undefined)
-  const id = rec?.id ?? ''
-  await update($, learned, () => ({ ...next, current: id }))
+const EVICT_ROUNDS = 5
+const EVICT_BATCH = 20
+
+function keysNow($: EngineInterface): Promise<string[]> {
+  return $.store.keys().catch(() => [])
+}
+function valueOf<T>($: EngineInterface, key: string): Promise<T | undefined> {
+  return $.store.get(key).then(v => v as T | undefined, () => undefined)
+}
+
+// shortcut: any failed write, not only a full store, gives up other projects' oldest keys; match the host's cap error once known.
+async function putRoom($: EngineInterface, key: string, value: unknown): Promise<boolean> {
+  for (let round = 0; round < EVICT_ROUNDS; round++) {
+    if (await $.store.set(key, value).then(() => true, () => false)) return true
+    const victims = oldestOfOthers(await keysNow($), cwd, EVICT_BATCH)
+    if (victims.length === 0) return false
+    for (const k of victims) await $.store.delete(k).catch(() => undefined)
+    void debug($, 'store.evict', { keys: victims.length })
+  }
+  return false
+}
+
+// A live row is not replaced by a transcript's copy of the same session.
+async function putRow($: EngineInterface, row: BenchRow) {
+  const keys = await keysNow($)
+  const key = rowKey(cwd, row)
+  const same = sameId(keys, 'row', cwd, row.id, key)
+  const current = await Promise.all(same.map(k => valueOf<BenchRow>($, k)))
+  if (!row.live && current.some(c => c?.live)) return
+  if (!(await putRoom($, key, row))) return
+  for (const k of same) await $.store.delete(k).catch(() => undefined)
+}
+
+// Keeps the last KEEP_SESSIONS sessions and KEEP_BENCH bench rows of this project.
+async function prune($: EngineInterface) {
+  const keys = await keysNow($)
+  for (const k of [...toDrop(keys, 'sess', cwd, KEEP_SESSIONS), ...toDrop(keys, 'row', cwd, KEEP_BENCH)]) await $.store.delete(k).catch(() => undefined)
+}
+
+async function putSession($: EngineInterface, r: SessionRecord) {
+  const keys = await keysNow($)
+  const key = sessKey(cwd, r)
+  if (!(await putRoom($, key, r))) return
+  for (const k of sameId(keys, 'sess', cwd, r.id, key)) await $.store.delete(k).catch(() => undefined)
+  const [row] = upsertRow([], r)
+  if (row) await putRow($, row)
+  await prune($)
+}
+
+// This project as the store holds it: its sessions and bench rows, and the memory findings.
+async function loadProject($: EngineInterface): Promise<Learned> {
+  const keys = await keysNow($)
+  const [sessions, rows, entry] = await Promise.all([
+    Promise.all(keysOf(keys, 'sess', cwd).slice(-KEEP_SESSIONS).map(k => valueOf<SessionRecord>($, k))),
+    Promise.all(keysOf(keys, 'row', cwd).slice(-KEEP_BENCH).map(k => valueOf<BenchRow>($, k))),
+    valueOf<Learned>($, storeKey(cwd)),
+  ])
+  // The old single entry may still hold sessions and rows an unfinished migration left behind; the keys win.
+  const old = shapeLearned(entry)
+  const bySession = new Map([...old.sessions, ...sessions.filter((s): s is SessionRecord => s !== undefined)].map(s => [s.id, s] as const))
+  const byRow = new Map([...old.bench, ...rows.filter((r): r is BenchRow => r !== undefined)].map(r => [r.id, r] as const))
+  return {
+    current: '',
+    mem: old.mem,
+    sessions: [...bySession.values()].sort((a, b) => a.at - b.at).slice(-KEEP_SESSIONS),
+    bench: [...byRow.values()].sort((a, b) => a.at - b.at).slice(-KEEP_BENCH),
+  }
+}
+
+// Moves sessions and bench rows out of the old single entry into their own keys; the entry keeps the memory findings.
+async function migrate($: EngineInterface) {
+  const old = shapeLearned(await valueOf<Learned>($, storeKey(cwd)))
+  if (old.sessions.length === 0 && old.bench.length === 0) return
+  for (const r of old.sessions) await putSession($, r)
+  for (const row of old.bench) await putRow($, row)
+  await putRoom($, storeKey(cwd), { mem: old.mem, sessions: [], bench: [] })
 }
 
 export async function startLearning($: EngineInterface, dir: string) {
   cwd = dir
   if (!cfg.learning) return
   const [id, now] = await Promise.all([$.session.id(), $.clock.now()])
-  const stored = shapeLearned(await $.store.get(storeKey(cwd)).catch(() => undefined))
+  await queue(() => migrate($))
+  const stored = await loadProject($)
   rec = stored.sessions.find(s => s.id === id) ?? newRecord(id, now)
   await update($, learned, () => ({ ...stored, current: id }))
   queueMemoryCheck($)
@@ -108,7 +177,9 @@ export async function saveTurn($: EngineInterface, u: { tokens?: number; window:
     if (server && m.isLoaded) mcp[server] = (mcp[server] ?? 0) + m.tokens
   }
   r.mcp = mcp
-  await save($, l => upsert(l, structuredClone(r)))
+  const copy = structuredClone(r)
+  await queue(() => putSession($, copy))
+  await update($, learned, l => ({ ...upsert(l, copy), current: copy.id }))
 }
 
 // `/agentmon learn [dir]`: past transcripts of this project, or of `dir`, into the store.
@@ -125,7 +196,7 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
   if (entries.length === 0) return t.learnNone(dir)
   // A session recorded live knows more (MCP schemas, window, effort) than its transcript: keep it.
   // One from a version that did not count the done gate's catches gets only those from its transcript.
-  const have = new Map(shapeLearned(await $.store.get(storeKey(cwd)).catch(() => undefined)).sessions.map(s => [s.id, s]))
+  const have = new Map((await loadProject($)).sessions.map(s => [s.id, s]))
   const recs: SessionRecord[] = []
   const filled: SessionRecord[] = []
   let skipped = 0
@@ -148,7 +219,10 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
       recs.push(r)
     }
   }
-  await save($, l => [...filled, ...recs].reduce(upsert, l))
+  await queue(async () => {
+    for (const r of [...filled, ...recs]) await putSession($, r)
+  })
+  await update($, learned, l => [...filled, ...recs].reduce(upsert, l))
   const calls = recs.reduce((n, r) => n + Object.values(r.tools).reduce((m, x) => m + x.calls, 0), 0)
   const compactions = recs.reduce((n, r) => n + r.compactAt.length, 0)
   return t.learned(recs.length, calls, compactions, skipped)
@@ -157,8 +231,8 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
 // `/agentmon bench`: this project's sessions with and without the mod, this one included as it stands.
 export async function benchCommand($: EngineInterface): Promise<string> {
   if (!cfg.learning || !rec) return lt().learningOff
-  const [stored, now] = await Promise.all([$.store.get(storeKey(cwd)).catch(() => undefined), $.clock.now()])
-  return benchReport(upsertRow(shapeLearned(stored).bench, rec), now)
+  const [stored, now] = await Promise.all([loadProject($), $.clock.now()])
+  return benchReport(upsertRow(stored.bench, rec), now)
 }
 
 export function queueMemoryCheck($: EngineInterface) {
@@ -189,7 +263,11 @@ async function checkMemory($: EngineInterface) {
     if (!(await $.fs.exists(ref).catch(() => true))) missing.set(ref, file)
   }
   const mem = memRules(files, dir, missing)
-  await save($, l => ({ ...l, mem }))
+  await queue(async () => {
+    const { current: _, ...kept } = { ...shapeLearned(await valueOf<Learned>($, storeKey(cwd))), mem }
+    await putRoom($, storeKey(cwd), kept)
+  })
+  await update($, learned, l => ({ ...l, mem }))
 }
 
 // `/agentmon memory`: the findings as text, checked again first.
