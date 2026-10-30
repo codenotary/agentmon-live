@@ -1,5 +1,5 @@
 import type { Active, Card, Insights, TurnTime } from '../types'
-import { clockTime, decimal, isHigh, kilo, limitName, modelName, shortPath } from './format'
+import { clockTime, decimal, isHigh, kilo, limitName, modelName, pad, shortPath } from './format'
 import type { BaseDrift } from './git'
 import { overlap } from './git'
 import { isOversized, sizeCfg } from './sizeguard'
@@ -54,8 +54,8 @@ export function dur(ms: number): string {
   if (s < 10) return `${s.toFixed(1)}s`
   if (s < 60) return `${Math.round(s)}s`
   const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m${String(Math.floor(s % 60)).padStart(2, '0')}s`
-  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m`
+  if (m < 60) return `${m}m${pad(Math.floor(s % 60))}s`
+  return `${Math.floor(m / 60)}h${pad(m % 60)}m`
 }
 
 // What a tool result costs the context, roughly: four characters a token.

@@ -102,15 +102,16 @@ function mergeById<T extends { id: string; at: number }>(list: T[], keep: number
   return [...new Map(list.map(x => [x.id, x] as const)).values()].sort((a, b) => a.at - b.at).slice(-keep)
 }
 
-// This project as the store holds it: its sessions and bench rows, and the memory findings. `entry` is the old single entry, read by the caller.
-async function loadProject($: EngineInterface, entry: Learned | undefined): Promise<Learned> {
+// This project as the store holds it: its sessions and bench rows, and the memory findings. `entry` is the old single entry when the caller has read it already.
+async function loadProject($: EngineInterface, entry?: Learned): Promise<Learned> {
   const keys = await keysNow($)
-  const [sessions, rows] = await Promise.all([
+  const [sessions, rows, legacy] = await Promise.all([
     Promise.all(keysOf(keys, 'sess', cwd).slice(-KEEP_SESSIONS).map(k => valueOf<SessionRecord>($, k))),
     Promise.all(keysOf(keys, 'row', cwd).slice(-KEEP_BENCH).map(k => valueOf<BenchRow>($, k))),
+    entry === undefined ? valueOf<Learned>($, storeKey(cwd)) : Promise.resolve(entry),
   ])
   // The old single entry may still hold sessions and rows an unfinished migration left behind; the keys win.
-  const old = shapeLearned(entry)
+  const old = shapeLearned(legacy)
   return {
     current: '',
     mem: old.mem,
@@ -210,7 +211,7 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
   if (entries.length === 0) return t.learnNone(dir)
   // A session recorded live knows more (MCP schemas, window, effort) than its transcript: keep it.
   // One from a version that did not count the done gate's catches gets only those from its transcript.
-  const have = new Map((await loadProject($, await valueOf<Learned>($, storeKey(cwd)))).sessions.map(s => [s.id, s]))
+  const have = new Map((await loadProject($)).sessions.map(s => [s.id, s]))
   const recs: SessionRecord[] = []
   const filled: SessionRecord[] = []
   let skipped = 0
@@ -245,7 +246,7 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
 // `/agentmon bench`: this project's sessions with and without the mod, this one included as it stands.
 export async function benchCommand($: EngineInterface): Promise<string> {
   if (!cfg.learning || !rec) return lt().learningOff
-  const [stored, now] = await Promise.all([loadProject($, await valueOf<Learned>($, storeKey(cwd))), $.clock.now()])
+  const [stored, now] = await Promise.all([loadProject($), $.clock.now()])
   return benchReport(upsertRow(stored.bench, rec), now)
 }
 
