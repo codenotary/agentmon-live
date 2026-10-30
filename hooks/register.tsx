@@ -6,7 +6,7 @@ import { addNote, consult } from './advisor'
 import { doneGaps, isDoc } from './gate'
 import { PROMPT_CHURN_EDITS } from './bench'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, notePrompt, queueMemoryCheck, saveTurn, startLearning } from './learning'
-import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
+import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, isNewer, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
@@ -199,23 +199,27 @@ async function refreshBase($: EngineInterface, cwd: string, fetch: boolean) {
 }
 
 const RELEASES = 'https://api.github.com/repos/codenotary/agentmon-live/releases/latest'
-// GitHub allows 60 unauthenticated calls an hour; one a day per machine is plenty.
+// GitHub allows 60 unauthenticated calls an hour. A newer release found is kept a day, anything else an hour;
+// an install or update since the last look (`installed` differs) asks again at once.
 const RELEASE_TTL_MS = 24 * 3_600_000
+const CURRENT_TTL_MS = 3_600_000
 
-// The latest GitHub release, so Focus can offer the update; cached a day in the store, silent on any failure.
+// The latest GitHub release, so Focus can offer the update; cached in the store, silent on any failure.
 async function checkRelease($: EngineInterface) {
   cfg.release = undefined
   if (await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')) return
   const now = await $.clock.now()
-  const kept = (await $.store.get('release')) as { at?: unknown; version?: unknown; notes?: unknown } | undefined
-  let release = typeof kept?.at === 'number' && now - kept.at < RELEASE_TTL_MS && typeof kept.version === 'string' ? { version: kept.version, notes: String(kept.notes ?? '') } : undefined
+  const kept = (await $.store.get('release')) as { at?: unknown; version?: unknown; notes?: unknown; installed?: unknown } | undefined
+  const isFresh =
+    typeof kept?.at === 'number' && typeof kept.version === 'string' && kept.installed === cfg.version && now - kept.at < (isNewer(kept.version, cfg.version) ? RELEASE_TTL_MS : CURRENT_TTL_MS)
+  let release = isFresh ? { version: String(kept!.version), notes: String(kept!.notes ?? '') } : undefined
   if (!release) {
     const r = await $.http.fetch(RELEASES, { headers: { accept: 'application/vnd.github+json' } })
     if (!r.ok) return
     const body = JSON.parse(r.text) as { tag_name?: unknown; body?: unknown }
     if (typeof body.tag_name !== 'string') return
     release = { version: body.tag_name.replace(/^v/, ''), notes: mask(String(body.body ?? '')).slice(0, 1500) }
-    await $.store.set('release', { at: now, ...release })
+    await $.store.set('release', { at: now, ...release, installed: cfg.version })
   }
   cfg.release = release
   $.ui.invalidate('ui.render')

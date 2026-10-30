@@ -113,6 +113,37 @@ test('a newer GitHub release puts update and changelog by the version, and is fe
   expect(fetches).toBe(1)
 })
 
+test('an install since the last look asks again once; a checkout ahead of the latest release is not asked each session', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('fs.read', (_, e) => {
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) return { value: '{ "name": "agentmon-live", "version": "0.17.0" }' }
+    throw new Error('ENOENT')
+  })
+  on('env.get', () => ({ value: undefined }))
+  // Seen just now, by a version saved before `installed` was kept.
+  const store = new Map<string, unknown>([['release', { at: 0, version: '0.16.0', notes: '' }]])
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  let fetches = 0
+  on('http.fetch', () => {
+    fetches++
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ tag_name: 'v0.16.0', body: '' }) } }
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(fetches).toBe(1)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(fetches).toBe(1)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Button', text: /^update$/ })).toBe(undefined)
+  await ui.unmount()
+})
+
 test('a failed release check shows nothing', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
