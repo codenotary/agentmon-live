@@ -34,6 +34,14 @@ test('mask hides secret values', () => {
   expect(mask('fix the token refresh bug')).toBe('fix the token refresh bug')
   expect(mask('the monkey patch breaks the keyboard handler')).toBe('the monkey patch breaks the keyboard handler')
   expect(mask('bearer abc123')).toBe('bearer ***')
+  // camelCase and prefixed names.
+  expect(mask('PGPASSWORD=hunter2 psql')).toBe('PGPASSWORD=*** psql')
+  expect(mask('{"accessToken": "abc123def"}')).toBe('{"accessToken": "***"}')
+  expect(mask('clientSecret: s3cr3tvalue')).toBe('clientSecret: ***')
+  expect(mask('refreshToken=abc123')).toBe('refreshToken=***')
+  expect(mask('maxTokens: 4000')).toBe('maxTokens: 4000')
+  expect(mask('PGPASSWORD="my pass" psql')).toBe('PGPASSWORD="***" psql')
+  expect(mask('{"clientSecret": "two words here"}')).toBe('{"clientSecret": "***"}')
 })
 
 test('mask hides flag secrets, cookies, quoted values with spaces and common key shapes', () => {

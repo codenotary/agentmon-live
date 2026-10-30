@@ -40,6 +40,9 @@ export function brief(call: object): string {
 // A quoted value is masked to its closing quote (spaces and all), an unquoted one to the next space.
 // After a bare space only a secret-looking value counts (a digit, 16+ characters or a quote), so `token refresh bug` stays.
 const SECRET_NAME = /((?<![a-z])(?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40})(\s*[=:]\s*|\s+(?=["']|(?:bearer|basic)\s|[^\s"']*\d|[^\s"']{16}))(?:(["'])((?:bearer|basic)\s+)?[^"'\n]{1,200}\3|((?:bearer|basic)\s+)?[^\s"']+)/gi
+// camelCase and prefixed names (`accessToken`, `PGPASSWORD`), only with `=` or `:`, and only when the name ends there: `maxTokens: 4000` stays.
+// The prefix is bounded, so a long word cannot make it quadratic.
+const PREFIXED_SECRET = /\b([a-z_]{1,40}(?:password|passwd|secret|token|api_?key))(?![a-z])(["']?\s*[=:]\s*)(?:(["'])[^"'\n]{1,200}\3|[^\s"',;]+)/gi
 // Only `[^\s:@/]` and `[^\s@/]` follow `://`, so each scan stops at the next slash or space: linear.
 const URL_CREDENTIALS = /:\/\/([^\s:@/]+):[^\s@/]+@/g
 const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|[sr]k_(?:live|test)_\w{16,}|ghp_\w{20,}|github_pat_\w{20,}|glpat-[\w-]{20,}|xox[bp]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|npm_\w{36}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]+)/g
@@ -52,6 +55,7 @@ export function mask(s: string): string {
     .replace(URL_CREDENTIALS, '://$1:***@')
     .replace(FLAG_SECRET, (_, user, mysql, cookie) => `${user ?? mysql ?? cookie}***`)
     .replace(SECRET_NAME, (_, name, sep, quote, quotedScheme, scheme) => (quote ? `${name}${sep}${quote}${quotedScheme ?? ''}***${quote}` : `${name}${sep}${scheme ?? ''}***`))
+    .replace(PREFIXED_SECRET, (_, name, sep, quote = '') => `${name}${sep}${quote}***${quote}`)
     .replace(SECRET_SHAPE, '***')
 }
 

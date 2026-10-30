@@ -35,7 +35,8 @@ export function isMemoryPath(path: string): boolean {
 // Saves run one after another, so a memory check and a turn end that overlap do not drop one another's write.
 let saving = Promise.resolve()
 function save($: EngineInterface, change: (l: Learned) => Learned): Promise<void> {
-  saving = saving.then(() => saveNow($, change))
+  // A failed save must not stop the ones after it.
+  saving = saving.catch(() => undefined).then(() => saveNow($, change))
   return saving
 }
 

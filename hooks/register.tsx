@@ -519,8 +519,8 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => ({ text: `agentmon-live: the command failed (${next.error.message ?? next.error.kind})` }))
 
   on('turn.start', async ($, e, next) => {
-    // A turn the done gate sent back goes on as the same turn: its checks and edits still count.
-    if (e.agentId === undefined && e.text === '' && isGateUsed) {
+    // A turn a Stop hook sent back (the done gate or another one) goes on as the same turn: its checks and edits still count.
+    if (e.agentId === undefined && e.text === '') {
       isTurnLive = true
       // The first turn.complete stopped the clock; the work after the send-back is still this turn's.
       if (!clk.inTurn) clk = newClock(await $.clock.now(), true)
@@ -707,7 +707,13 @@ export const register: Register = (on, options) => {
       const sameTurn = turn.startedAt === turnAt
       const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
       // A check that fails before the turn's first code edit was broken already; it counts as failing at the prompt.
-      if (sameTurn && turn.codeEditAt === undefined) for (const f of found) if (resultOf(f.kind) === 'failed') turn.before.push({ kind: f.kind, command: f.part, who, at, result: 'failed' })
+      // Once it passes, it is no longer: a later failure is this turn's.
+      if (sameTurn)
+        for (const f of found) {
+          const result = resultOf(f.kind)
+          if (result === 'ok') turn.before = turn.before.filter(b => b.kind !== f.kind)
+          else if (result === 'failed' && turn.codeEditAt === undefined) turn.before.push({ kind: f.kind, command: f.part, who, at, result: 'failed' })
+        }
       const touched = path && !failed && (cat === 'edit' || cat === 'read') ? path : undefined
       if (touched && cat === 'edit' && sameTurn) {
         turn.edited.add(touched)
