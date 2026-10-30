@@ -33,7 +33,7 @@ h: history   d: details
 
 - **No more "all tests pass" when they don't.** Before Claude stops, the done gate checks what really happened: failed or stale tests, open todos, failing subagents. Anything unfinished goes back to Claude once. Fable, a second model that never writes code, checks that every part of your request got an answer.
 - **One glance, not a scroll.** Running tool calls, subagents, edited files and the last test, lint and build results sit in one pane.
-- **It tells you when to step in.** Focus raises what needs you: a waiting approval, a failure loop, context near compaction, a stuck subagent, a cold prompt cache. Press `i` and it drafts the follow-up question for you.
+- **It tells you when to step in.** Focus raises what needs you: a waiting approval, a failure loop, context near compaction, a stuck subagent, a cold prompt cache, a base branch that changed the files you are editing. Press `i` and it drafts the follow-up question for you.
 - **Spend less.** See where time and tokens go, which MCP servers you load but never use, and when `/clear` or `/compact` would save you money.
 - **It learns your project.** It remembers flaky tools, compaction points, heavy habits and what the done gate keeps catching across sessions, and checks your CLAUDE.md and memory files for drift.
 - **Proof, not vibes.** `/agentmon bench` compares your sessions with and without the mod.

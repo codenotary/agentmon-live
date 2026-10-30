@@ -11,6 +11,7 @@ import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
+import { readBase } from './git'
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
@@ -94,6 +95,8 @@ const REQUEST_ROOM = 2000
 let statusQueued = false
 let isTicking = false
 let reconciledAt = 0
+// One base poll per process, however often the session starts.
+let isBaseWatched = false
 // How often the redraw loop asks the engine which agents still run.
 const RECONCILE_MS = 5000
 
@@ -181,6 +184,18 @@ async function build($: EngineInterface): Promise<string> {
           ((await read('.git/packed-refs')).split('\n').find(line => line.endsWith(` ${ref}`))?.split(' ')[0] ?? '')
   // A worktree's `.git` is a file (`gitdir: …`), so what reads here need not be a commit.
   return [version, /^[0-9a-f]{40}$/.test(sha) ? sha.slice(0, 7) : ''].filter(Boolean).join(' · ')
+}
+
+// Where the branch stands against its base, read again every `minutes`; a fetch first only when asked for and the network is allowed.
+// shortcut: polls on a timer, no push; watch .git/refs if a poll proves too slow.
+async function watchBase($: EngineInterface, cwd: string, minutes: number, fetch: boolean) {
+  await refreshBase($, cwd, fetch && !(await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')))
+  $.clock.after(minutes * 60_000, () => watchBase($, cwd, minutes, fetch))
+}
+
+async function refreshBase($: EngineInterface, cwd: string, fetch: boolean) {
+  cfg.base = await readBase($, cwd, fetch).catch(() => undefined)
+  $.ui.invalidate('ui.render')
 }
 
 const RELEASES = 'https://api.github.com/repos/codenotary/agentmon-live/releases/latest'
@@ -360,6 +375,9 @@ export const register: Register = (on, options) => {
   configureSize(options.sizeLimit, options.sizeExclude)
   cfg.learning = String(options.learning ?? 'on') !== 'off'
   cfg.hidden = String(options.hiddenSections ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const basePoll = Number(options.gitPollMinutes ?? 5)
+  const baseMinutes = Number.isFinite(basePoll) && basePoll > 0 ? basePoll : 0
+  const isFetching = String(options.gitFetch ?? false) === 'true'
   // Module variables reset on reload; the atoms above keep the shown state.
   const effortByCall = new Map<string, string>()
   const filesByAgent = new Map<string, Set<string>>()
@@ -427,6 +445,10 @@ export const register: Register = (on, options) => {
       await refreshStatus($)
       // The network need not hold up learning.
       void checkRelease($).catch(() => undefined)
+      if (baseMinutes > 0 && !isBaseWatched) {
+        isBaseWatched = true
+        void watchBase($, cwd, baseMinutes, isFetching).catch(() => undefined)
+      }
       // Learning is extra: an engine without a store or session id leaves the rest working.
       await startLearning($, cwd).catch(() => undefined)
       const kept = (await $.session.id().then(id => $.store.get(`active:${id}`)).catch(() => undefined)) as { at?: unknown; tokens?: unknown } | undefined
@@ -904,6 +926,7 @@ export const register: Register = (on, options) => {
       await finishTurn($, e.durationMs, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined)
       isTurnLive = false
       lastAnswer = e.answer
+      if (baseMinutes > 0) $.clock.after(0, () => refreshBase($, cwd, false))
     }
     if (e.agentId === undefined && isCheckQueued) {
       isCheckQueued = false

@@ -1,6 +1,6 @@
 {
   "name": "agentmon-live",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "AgentMon Live: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -69,6 +69,18 @@
         "on",
         "off"
       ]
+    },
+    "gitPollMinutes": {
+      "type": "number",
+      "title": "Base branch check",
+      "description": "Minutes between checks of how far the base branch (origin's default) moved and whether it changed files edited in the session; 0 turns the check off",
+      "default": 5
+    },
+    "gitFetch": {
+      "type": "boolean",
+      "title": "Fetch the base branch",
+      "description": "Run git fetch for the base branch before each check; off: compare against the last fetch",
+      "default": false
     }
   },
   "license": "Apache-2.0",

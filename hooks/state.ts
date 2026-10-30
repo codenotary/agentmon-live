@@ -1,6 +1,7 @@
 import type { AgentStatus } from 'claude-code'
 
 import type { Card, Insights, Learned, TurnTime, View } from '../types'
+import type { BaseDrift } from './git'
 import { LANGUAGES } from './i18n'
 
 export const EMPTY_INSIGHTS: Insights = {
@@ -37,7 +38,7 @@ export const VIEWS: View[] = ['git', 'shell', 'mcp']
 const MAX_FINISHED = 12
 
 // Set from the options on each load.
-export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true, hidden: [] as string[], version: '', release: undefined as { version: string; notes: string } | undefined }
+export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true, hidden: [] as string[], version: '', release: undefined as { version: string; notes: string } | undefined, base: undefined as BaseDrift | undefined }
 
 // Each module declares the atoms it reads or writes itself, as the engine's scan needs; they share these first values.
 export const INIT = {

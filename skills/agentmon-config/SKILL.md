@@ -1,6 +1,6 @@
 ---
 name: agentmon-config
-description: Change AgentMon Live's settings when the user asks, such as hidden pane sections, language, advisor mode or budget, file-size guide, or learning. Use for requests like "hide the usage box", "switch AgentMon to German", "turn off the done gate".
+description: Change AgentMon Live's settings when the user asks, such as hidden pane sections, language, advisor mode or budget, file-size guide, base-branch check, or learning. Use for requests like "hide the usage box", "switch AgentMon to German", "turn off the done gate".
 ---
 
 # Changing AgentMon Live's settings
@@ -27,6 +27,8 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 | `sizeLimit` | bytes before Focus suggests splitting a file, `0` for off | `20000` |
 | `sizeExclude` | comma-separated globs the size guide skips | `""` |
 | `learning` | `on` or `off` | `on` |
+| `gitPollMinutes` | minutes between base-branch checks, `0` for off | `5` |
+| `gitFetch` | `true` runs `git fetch` for the base before each check | `false` |
 
 The Focus box, Running now and the history always show. They cannot be hidden.
 

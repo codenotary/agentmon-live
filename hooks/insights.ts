@@ -1,5 +1,7 @@
 import type { Active, Card, Insights, TurnTime } from '../types'
 import { clockTime, decimal, isHigh, kilo, limitName, modelName, shortPath } from './format'
+import type { BaseDrift } from './git'
+import { overlap } from './git'
 import { isOversized, sizeCfg } from './sizeguard'
 import { cfg } from './state'
 
@@ -181,10 +183,13 @@ export type FocusInput = {
   now: number
   // What past sessions say (learn.ts); a context plan from it replaces the plain context warning.
   learned?: readonly Insight[]
+  // The branch against its base, and the files this session edited (absolute paths).
+  base?: BaseDrift
+  edited?: readonly string[]
 }
 
 // Everything worth a look, most important first. Pure: the pane draws it, the tests read it.
-export function focusList({ ins, doing, agents, percent, window, tokens, now, learned = [] }: FocusInput): Insight[] {
+export function focusList({ ins, doing, agents, percent, window, tokens, now, learned = [], base, edited = [] }: FocusInput): Insight[] {
   const t = cfg.t.ins
   const out: Insight[] = [...learned]
   const top = <V>(r: Record<string, V>, by: (v: V) => number) => Object.entries(r).sort((a, b) => by(b[1]) - by(a[1]))[0]
@@ -271,6 +276,16 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
 
   if (last?.isNewTask) {
     out.push({ key: `fresh:${last.startedAt}`, score: 34, tag: t.tag.fresh, color: 'blue', text: t.fresh(kilo(last.ctxStart ?? 0)) })
+  }
+
+  // The base branch moved; where it changed files edited here, a rebase will meet them.
+  if (base && base.behind > 0) {
+    const both = overlap(base.files, edited)
+    out.push(
+      both.length > 0
+        ? { key: `base:${base.behind}:${both.length}`, score: 70, tag: t.tag.base, color: 'red', text: t.baseOverlap(base.base, base.behind, both.map(shortPath).join(', ')), prompt: t.promptBase(base.base, base.behind, both.join(', ')) }
+        : { key: `base:${base.behind}`, score: 30, tag: t.tag.base, color: 'blue', text: t.baseBehind(base.base, base.behind) },
+    )
   }
 
   const redo = ins.corrections ?? 0
