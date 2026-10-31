@@ -107,6 +107,24 @@ test('pane counts tool calls and shows a spawned subagent', async ($, on) => {
   await ui.unmount()
 })
 
+test('a /model switch shows in the title before the next prompt', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('classic.PostModelSwitch', () => ({}))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  // The pane is already open when the person switches.
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /OPUS 5\.5/ })).toBeTruthy()
+
+  await $.classic.PostModelSwitch({ from_model: 'claude-opus-5-5', to_model: 'claude-sonnet-5-5', requested_model: 'sonnet', source: 'command', context_tokens: 0, prompt_cache_warm: false, cache_ttl: '5m', estimated_cache_write_usd: 0, pricing: 'catalog' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /SONNET 5\.5/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /OPUS 5\.5/ })).toBeFalsy()
+  await ui.unmount()
+})
+
 test('pane counts failed calls and compactions', async ($, on) => {
   const clock = mock.clock(on)
   on('command.register', () => ({ value: { command: 'agentmon' } }))

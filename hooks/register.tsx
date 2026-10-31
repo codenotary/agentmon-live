@@ -811,6 +811,15 @@ export const register: Register = (on, options) => {
     return { ...r, block }
   }).catch(($, e, next) => failOpen($, 'classic.Stop', next.error, () => next(e)))
 
+  // /model fires no turn.step until the next prompt: the title follows the switch now.
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    if (e.to_model) {
+      const model = e.to_model
+      await update($, main, v => ({ ...v, model }))
+    }
+    return next(e)
+  }).catch(($, e, next) => failOpen($, 'classic.PostModelSwitch', next.error, () => next(e)))
+
   // The pane's "check now" button; taken here, where this turn's material is at hand.
   on('ui.press', { plugin: 'agentmon-live', element: 'advisor:check' }, async ($, e) => {
     if (isTurnLive) {
