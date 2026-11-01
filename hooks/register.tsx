@@ -802,10 +802,10 @@ export const register: Register = (on, options) => {
     if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
     // A light turn has nothing to gate; while subagents still run, the work is not over yet.
     if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0) || (await read($, agents)).some(a => a.status === 'running')) return r
+    // Fable looks at the continuation too, so the pane says whether the send-back was answered.
+    const found = await openGaps($, turn, e.last_assistant_message ?? '')
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
-    const canSend = !isGateUsed && !e.stop_hook_active
-    const found = await openGaps($, turn, e.last_assistant_message ?? '', canSend)
-    const isSent = found.lines.length > 0 && canSend
+    const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
     if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
     void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
     // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.

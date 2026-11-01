@@ -475,21 +475,25 @@ test('material is wrapped and cannot close its wrapper early', async ($, on) => 
   expect(p.trimEnd().endsWith('</session_material>')).toBe(true)
 })
 
-test('Fable is not asked on a stop that cannot send its verdict back', async ($, on) => {
+test('on the stop after a send-back Fable looks again; its verdict reaches the pane, never Claude', async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []
   engine(on)
-  fable(on, prompts, ['Not OK: the parser is untested'])
+  fable(on, prompts, ['Not OK: the parser is untested', 'Not OK: still no test'])
   await start($)
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
   await clock.settle()
-  // The continuation after a send-back: the verdict could only reach the pane.
+  const first = await $.classic.Stop({ ...STOP })
+  expect(first.block).toContain('the parser is untested')
+  await $.turn.start({ text: '', turnId: 'm1' })
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'b', new_string: 'c' })
+  await clock.settle()
   const after = await $.classic.Stop({ ...STOP, stop_hook_active: true })
   expect(after.block).toBeUndefined()
-  expect(prompts.length).toBe(0)
-  const first = await $.classic.Stop({ ...STOP })
-  expect(prompts.length).toBe(1)
-  expect(first.block).toContain('the parser is untested')
+  expect(prompts.length).toBe(2)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /still no test/ })).toBeTruthy()
+  await ui.unmount()
 })
 
 test('after a failed answer Fable is left alone for five minutes', async ($, on) => {
