@@ -446,3 +446,50 @@ test('/agentmon learn gives a session key only to the newest records and a row t
   // The two oldest never got a session key, so none was written only to be pruned.
   expect(sets.filter(k => k.startsWith('sess:') && /:t[01]$/.test(k))).toEqual([])
 })
+
+test('a turn without a usage breakdown is still saved and keeps the MCP figures', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>()
+  let isUsageDown = false
+  on('command.register', () => ({ value: { command: 'agentmon' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.id', () => ({ value: 'live' }))
+  on('session.usage', () => {
+    if (isUsageDown) throw new Error('no usage')
+    return {
+      value: {
+        startedAt: 0,
+        context: { window: 200_000, tokens: 50_000, percent: 25, breakdown: { categories: [], mcpTools: [{ name: 'mcp__docs__read', serverName: 'docs', tokens: 3000, isLoaded: true }], memoryFiles: [] } as never },
+        rateLimits: [],
+      },
+    }
+  })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('ui.status', () => ({ value: undefined }))
+  on('env.get', () => ({ value: '/h' }))
+  on('fs.list', () => ({ value: [] }))
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  storeCalls(on, store)
+  on('tool.call', () => ({ result: {}, text: 'ok' }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const turn = async (id: string) => {
+    await $.turn.start({ text: 'go', turnId: id })
+    await $.tool.call({ tool: 'Read' } as never)
+    await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: id, reason: 'answer' })
+    await clock.settle()
+  }
+  await turn('m1')
+  isUsageDown = true
+  await turn('m2')
+  const live = viewOf(store).sessions.find(s => s.id === 'live')
+  expect(live?.turns).toBe(2)
+  expect(live?.mcp).toEqual({ mcp__docs: 3000 })
+})

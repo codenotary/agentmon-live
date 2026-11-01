@@ -176,7 +176,7 @@ export function noteCompact(tokens: number | undefined) {
 }
 
 // The end of each main turn: the session's record so far replaces its earlier one in the store.
-export async function saveTurn($: EngineInterface, u: { tokens?: number; window?: number; mcpTools: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number }) {
+export async function saveTurn($: EngineInterface, u: { tokens?: number; window?: number; mcpTools?: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number }) {
   if (!rec) return
   const r = rec
   // Session totals; the larger one survives a reload or `/agentmon clear`, which start them again from 0.
@@ -187,12 +187,15 @@ export async function saveTurn($: EngineInterface, u: { tokens?: number; window?
   r.window = u.window ?? r.window
   r.model = u.model || r.model
   r.effort = u.effort || r.effort
-  const mcp: Record<string, number> = {}
-  for (const m of u.mcpTools) {
-    const server = serverOf(m.name)
-    if (server && m.isLoaded) mcp[server] = (mcp[server] ?? 0) + m.tokens
+  // No breakdown this turn: the MCP figures from the last one that had it stay.
+  if (u.mcpTools) {
+    const mcp: Record<string, number> = {}
+    for (const m of u.mcpTools) {
+      const server = serverOf(m.name)
+      if (server && m.isLoaded) mcp[server] = (mcp[server] ?? 0) + m.tokens
+    }
+    r.mcp = mcp
   }
-  r.mcp = mcp
   const copy = structuredClone(r)
   await queue(async () => {
     await putSession($, copy)

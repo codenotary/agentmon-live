@@ -205,7 +205,7 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
     // The turn is learned from even when the engine gives no usage: the tallies and gaps are the session's own.
     const m = await read($, main)
     const fable = (await read($, advisor)).calls
-    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools ?? [], model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined })
+    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined })
   })
 }
 
