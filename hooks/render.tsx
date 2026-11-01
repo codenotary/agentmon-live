@@ -148,7 +148,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const dismissed = new Set(lay.dismissed ?? [])
   const urgent = items.filter(x => !x.key || !dismissed.has(x.key))
   // Below what needs the person: what is worth a look, most important first.
-  const learnedFocus = learnedItems(learnt, { percent: usage.context.percent, window: usage.context.window, model: m.model, effort: m.effort })
+  const learnedFocus = learnedItems(learnt, { percent: usage.context.percent, window: usage.context.window, model: m.model, effort: m.effort, calls: ins.turnCalls })
   const isCurrent = (n: Note) => n.at !== undefined && n.at >= (m.turnAt ?? 0)
   const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, tokens: usage.context.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited }).filter(x => !dismissed.has(x.key))
   const insightItems: Item[] = found.slice(0, lay.isDetailed ? found.length : FOCUS_SHOWN).map(x => ({

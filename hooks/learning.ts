@@ -173,12 +173,12 @@ export function noteCompact(tokens: number | undefined) {
 }
 
 // The end of each main turn: the session's record so far replaces its earlier one in the store.
-export async function saveTurn($: EngineInterface, u: { tokens?: number; window: number; mcpTools: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number }) {
+export async function saveTurn($: EngineInterface, u: { tokens?: number; window: number; mcpTools: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number }) {
   if (!rec) return
   const r = rec
   // Session totals; the larger one survives a reload or `/agentmon clear`, which start them again from 0.
   const b = r.bench ?? emptyBench(true, true)
-  r.bench = { ...b, mod: true, live: true, outTokens: Math.max(b.outTokens, u.outTokens), fable: Math.max(b.fable, u.fable) }
+  r.bench = { ...b, mod: true, live: true, outTokens: Math.max(b.outTokens, u.outTokens), fable: Math.max(b.fable, u.fable), usd: Math.max(b.usd ?? 0, u.usd ?? 0) || undefined }
   r.turns += 1
   r.peak = Math.max(r.peak, u.tokens ?? 0)
   r.window = u.window
@@ -218,7 +218,7 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
   for (const e of entries) {
     const id = e.name.slice(0, -'.jsonl'.length)
     const old = have.get(id)
-    if (id === rec.id || (old && old.gaps)) continue
+    if (id === rec.id || (old && old.gaps && old.errs)) continue
     const path = `${dir}/${e.name}`
     // shortcut: a transcript over the 4 MiB read cap is learned from its last 4 MiB only; read it in parts if early turns matter.
     const text = await $.fs.read(path).catch(async () => {
@@ -226,7 +226,10 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
       return r?.exitCode === 0 ? r.stdout : undefined
     })
     if (text === undefined) skipped++
-    else if (old) filled.push({ ...old, gaps: parseTranscript(id, text).gaps })
+    else if (old) {
+      const p = parseTranscript(id, text)
+      filled.push({ ...old, gaps: old.gaps ?? p.gaps, errs: old.errs ?? p.errs ?? {} })
+    }
     else {
       const r = parseTranscript(id, text)
       // A session that ran with the mod left an `active:` key, gate block or not.

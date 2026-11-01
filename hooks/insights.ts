@@ -63,6 +63,12 @@ export function estTokens(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
+export function p90(list: readonly number[]): number | undefined {
+  if (list.length === 0) return undefined
+  const s = [...list].sort((a, b) => a - b)
+  return s[Math.ceil(s.length * 0.9) - 1]
+}
+
 export function median(list: readonly number[]): number | undefined {
   if (list.length === 0) return undefined
   const s = [...list].sort((a, b) => a - b)
@@ -224,6 +230,11 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
   const loop = top(ins.fails, v => v)
   if (loop && loop[1] >= LOOP_FAILS) {
     out.push({ key: `loop:${loop[0]}:${loop[1]}`, score: 80, tag: t.tag.loop, color: 'red', text: t.loop(loop[1], loop[0]), prompt: t.promptLoop(loop[1], loop[0]) })
+  }
+  // One error behind different calls: a cause to fix once. The loop above already names it when it is one call.
+  const same = top(ins.errs, v => v)
+  if (same && same[1] >= LOOP_FAILS && !(loop && loop[1] >= LOOP_FAILS)) {
+    out.push({ key: `sameErr:${same[0]}:${same[1]}`, score: 78, tag: t.tag.loop, color: 'red', text: t.sameErr(same[1], same[0]), prompt: t.promptSameErr(same[1], same[0]) })
   }
 
   const biggest = [...ins.big].sort((a, b) => b.tokens - a.tokens)[0]

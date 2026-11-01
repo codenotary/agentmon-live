@@ -3,9 +3,9 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { EMPTY_INSIGHTS } from '../hooks/state'
 import { focusList } from '../hooks/insights'
-import { gapKinds } from '../hooks/bench'
+import { emptyBench, gapKinds } from '../hooks/bench'
 import { LANGUAGES } from '../hooks/i18n'
-import { KEEP_SESSIONS, learnedItems, newRecord, parseTranscript, shapeLearned, tally, totals, upsert } from '../hooks/learn'
+import { errSig, KEEP_SESSIONS, learnedItems, newRecord, parseTranscript, shapeLearned, tally, totals, upsert } from '../hooks/learn'
 import { memRules, refsOf } from '../hooks/memcheck'
 import type { Learned, SessionRecord } from '../types'
 import { storeCalls, viewOf } from './fixtures/store'
@@ -114,6 +114,14 @@ function history(n: number, each: (r: SessionRecord, i: number) => void): Learne
 }
 
 const LIVE = { window: 200_000, model: 'claude-opus-5-5', effort: 'high' }
+
+test('a declined call counts as a call, never as an error', () => {
+  const r = newRecord('s', 0)
+  tally(r, 'Bash', true, "The user doesn't want to proceed with this tool use.", 0)
+  tally(r, 'Bash', true, 'boom 42', 0)
+  expect(r.tools.Bash).toMatchObject({ calls: 2, errors: 1 })
+  expect(r.errs).toEqual({ 'boom #': 1 })
+})
 
 test('a tool shows as flaky only with enough evidence', async () => {
   const fails = (r: SessionRecord) => {
@@ -294,15 +302,17 @@ test('/agentmon learn keeps a session recorded live and adds the new ones', asyn
   const line = JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2026-01-01T00:00:00Z', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] } })
   const en = LANGUAGES.en!
   const gate = JSON.stringify({ type: 'user', uuid: 'g1', isMeta: true, message: { content: `Stop hook feedback:\n${en.gateReason(`- ${en.gapFailed('test', 'npm test')}`)}` } })
-  on('fs.read', () => ({ value: `${line}\n${line}\n${gate}` }))
+  const err = JSON.stringify({ type: 'user', uuid: 'e1', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'boom 42' }] } })
+  on('fs.read', () => ({ value: `${line}\n${line}\n${err}\n${gate}` }))
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
   await clock.settle()
   await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'learn' } as never)
   const saved = viewOf(store)
   expect(saved.sessions.find(s => s.id === 'old')?.mcp).toEqual({ mcp__jira: 3000 })
-  expect(saved.sessions.find(s => s.id === 'old')?.gaps).toEqual({})
+  // A record with gaps but no errs (0.19) keeps its gaps and gains the errors.
+  expect(saved.sessions.find(s => s.id === 'old')).toMatchObject({ gaps: {}, errs: { 'boom #': 1 } })
   // The older record keeps what it knew and gains the gate's catches.
-  expect(saved.sessions.find(s => s.id === 'older')).toMatchObject({ mcp: { mcp__jira: 3000 }, gaps: { failed: 1 } })
+  expect(saved.sessions.find(s => s.id === 'older')).toMatchObject({ mcp: { mcp__jira: 3000 }, gaps: { failed: 1 }, errs: { 'boom #': 1 } })
   expect(saved.sessions.find(s => s.id === 'older')?.tools).toEqual({})
   // The repeated entry counts once.
   expect(saved.sessions.find(s => s.id === 'new')?.tools.Bash?.calls).toBe(1)
@@ -343,4 +353,43 @@ test('a full store makes room by giving up the oldest session of another project
   await clock.settle()
   expect(store.has('sess:/other:000000000000001:old')).toBe(false)
   expect(viewOf(store).sessions.map(s => s.id)).toEqual(['live'])
+})
+
+test('the same error behind other numbers and paths has one signature', async () => {
+  const a = errSig("ModuleNotFoundError: No module named 'foo' (/a/b.py:12)\n  more")
+  expect(a).toBe(errSig("ModuleNotFoundError: No module named 'foo' (/c/d.py:99)"))
+  expect(a).toBe("ModuleNotFoundError: No module named 'foo' (<path>:#)")
+  expect(errSig('Error: port 3000 in use')).toBe(errSig('Error: port 3001 in use'))
+  expect(errSig('commit 1a2b3c4d5e failed')).toBe('commit # failed')
+  // A rejection is the person's call, not an error of the work.
+  expect(errSig("The user doesn't want to proceed with this tool use.")).toBe(undefined)
+  expect(errSig(' \n ')).toBe(undefined)
+})
+
+test('an error met in 3 sessions suggests a CLAUDE.md note', async () => {
+  const hit = (r: SessionRecord) => tally(r, 'Bash', true, 'ModuleNotFoundError: No module named foo', 0)
+  expect(learnedItems(history(2, hit), LIVE).some(x => x.key.startsWith('recur:'))).toBe(false)
+  const item = learnedItems(history(3, hit), LIVE).find(x => x.key.startsWith('recur:'))
+  expect(item?.text).toContain('3 sessions')
+  expect(item?.text).toContain('ModuleNotFoundError')
+  expect(item?.prompt).toContain('CLAUDE.md')
+  // A transcript's error results fill the same record; the rejection in it does not count.
+  expect(parseTranscript('s1', TRANSCRIPT).errs).toEqual({ 'timeout after #s': 1 })
+})
+
+test('a turn far past the project\'s usual tool calls is flagged', async () => {
+  const l = history(3, r => {
+    r.bench = { ...emptyBench(true, true), turnCalls: [4, 6, 8] }
+  })
+  // p90 of the past turns is 8; 1.25× that is 10.
+  expect(learnedItems(l, { ...LIVE, calls: 9 }).some(x => x.key.startsWith('long:'))).toBe(false)
+  const item = learnedItems(l, { ...LIVE, calls: 12 }).find(x => x.key.startsWith('long:'))
+  expect(item?.text).toContain('12')
+  expect(item?.text).toContain('8')
+  expect(item?.prompt).toContain('12')
+  // Fewer than 5 past turns say nothing, however long this one runs.
+  const few = history(1, r => {
+    r.bench = { ...emptyBench(true, true), turnCalls: [2, 2, 2, 2] }
+  })
+  expect(learnedItems(few, { ...LIVE, calls: 50 }).some(x => x.key.startsWith('long:'))).toBe(false)
 })

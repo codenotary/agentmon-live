@@ -137,6 +137,7 @@ export const es: Strings = {
     slow: (tool, what, d, usual) => `${tool} ${what} lleva ${d}${usual ? ` · normalmente ${usual}` : ''}`,
     silent: (type, d, tools) => `${type} callado desde hace ${d} · ${tools} herramientas hasta ahora`,
     loop: (n, what) => `falló ${n}× seguidas: ${what}`,
+    sameErr: (n, what) => `el mismo error ${n}× en este turno, en llamadas distintas: ${what}`,
     contextHigh: (pct, top) => `contexto ${pct} % · la compactación está cerca${top ? ` · lo más grande: ${top}` : ''}`,
     contextJump: k => `el contexto creció ${k} en el último turno`,
     big: (tool, what, k) => `${tool} ${what} metió ≈${k} tokens en el contexto`,
@@ -152,6 +153,7 @@ export const es: Strings = {
     promptSlowDone: (tool, what, d) =>
       `La llamada ${tool} ${what} tardó ${d}. ¿Por qué fue tan lenta y cómo puede ser más rápida la próxima vez (un comando más acotado, una caché, ejecutarla en segundo plano)? Primero mira; no cambies nada aún.`,
     promptLoop: (n, what) => `La misma llamada falló ${n} veces seguidas:\n${fenced(what)}\n\nDeja de repetirla. Busca primero la causa y luego cambia el enfoque.`,
+    promptSameErr: (n, what) => `Llamadas distintas dieron el mismo error ${n} veces en este turno:\n${fenced(what)}\n\nArregla su causa una vez en lugar de esquivarlo llamada a llamada.`,
     promptContext: pct => `El contexto está al ${pct} %. Antes de que se compacte, resume en pocas líneas qué está hecho, qué falta y qué archivos importan.`,
     promptReread: (file, n) => `Has leído ${file} ${n} veces. Trabaja con lo que ya leíste, o lee solo las líneas que necesitas.`,
     size: (file, kb, limitKb, tokensK) => `${file} ${kb} KB · supera la guía de ${limitKb} KB (≈${tokensK}k tokens)`,

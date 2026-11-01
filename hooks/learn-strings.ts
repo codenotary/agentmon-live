@@ -1,6 +1,6 @@
 // Strings for what AgentMon Live learns across sessions, kept apart from the language files so those stay small.
 const en = {
-  tag: { plan: 'plan', flaky: 'flaky', unused: 'unused', habit: 'habit', memory: 'memory', gate: 'gate' },
+  tag: { plan: 'plan', flaky: 'flaky', unused: 'unused', habit: 'habit', memory: 'memory', gate: 'gate', recur: 'recurring', long: 'long turn' },
   kind: 'memory',
   ctxPlan: (pct: number, tips: string, n: number, typical?: number) =>
     `context ${pct}%${typical === undefined ? '' : ` · ${n} past sessions compacted near ${typical}%`} · ${tips}`,
@@ -16,6 +16,10 @@ const en = {
   gateHabit: (what: string, n: number, total: number) => `done gate caught ${what} in ${n} of ${total} sessions`,
   gateRule: { check: 'Run the tests after your last edit and report the result before you say done.', todos: 'Close or remove todo items before you say done.', agent: 'Read each subagent\'s test report before you say done.', fable: 'Answer every part of the request, and say plainly what you skipped.' },
   promptGateRule: (what: string, rule: string) => `The done gate keeps catching ${what} in this project. Propose adding this rule to the project CLAUDE.md, or a better one; change nothing yet: "${rule}"`,
+  recur: (sig: string, sessions: number, n: number) => `the same error in ${sessions} sessions (${n}×): ${sig}`,
+  promptRecur: (sig: string) => `The same error keeps coming up in this project's sessions: "${sig}". Propose a note for the project CLAUDE.md, or a check at session start, that saves rediscovering it; change nothing yet.`,
+  longTurn: (calls: number, usual: number) => `this turn is at ${calls} tool calls · past turns here finished within ${usual}`,
+  promptLongTurn: (calls: number, usual: number) => `This turn is at ${calls} tool calls; past turns in this project finished within ${usual}. Say what is done, what is left, and whether the approach needs to change.`,
   mem: {
     dupName: (d: string) => `memory name used twice: ${d}`,
     missingIndex: (d: string) => `MEMORY.md points to a missing file: ${d}`,
@@ -41,6 +45,7 @@ const en = {
     compactions: 'compactions per session',
     turnTime: 'median prompt that used tools',
     outTokens: 'output tokens per turn',
+    usd: 'cost per session (priced from tokens)',
     blocks: 'done gate sent back',
     acted: '  then more tool calls',
     passed: 'done gate found nothing open',
@@ -55,7 +60,7 @@ const en = {
 export type LearnStrings = typeof en
 
 const de: LearnStrings = {
-  tag: { plan: 'Plan', flaky: 'wackelig', unused: 'ungenutzt', habit: 'Muster', memory: 'Gedächtnis', gate: 'Prüfung' },
+  tag: { plan: 'Plan', flaky: 'wackelig', unused: 'ungenutzt', habit: 'Muster', memory: 'Gedächtnis', gate: 'Prüfung', recur: 'wiederkehrend', long: 'lange Runde' },
   kind: 'Gedächtnis',
   ctxPlan: (pct, tips, n, typical) => `Kontext ${pct}%${typical === undefined ? '' : ` · ${n} frühere Sitzungen verdichteten bei etwa ${typical}%`} · ${tips}`,
   tipCompact: '/compact <Fokus>',
@@ -69,6 +74,10 @@ const de: LearnStrings = {
   gateHabit: (what, n, total) => `Fertig-Prüfung fand ${what} in ${n} von ${total} Sitzungen`,
   gateRule: { check: 'Führe die Tests nach deiner letzten Änderung aus und nenne das Ergebnis, bevor du fertig meldest.', todos: 'Schließe oder entferne offene Aufgaben, bevor du fertig meldest.', agent: 'Lies den Testbericht jedes Subagenten, bevor du fertig meldest.', fable: 'Beantworte jeden Teil der Anfrage und sag offen, was du ausgelassen hast.' },
   promptGateRule: (what, rule) => `Die Fertig-Prüfung findet in diesem Projekt immer wieder ${what}. Schlag vor, diese Regel in die CLAUDE.md des Projekts aufzunehmen, oder eine bessere; ändere noch nichts: „${rule}“`,
+  recur: (sig, sessions, n) => `derselbe Fehler in ${sessions} Sitzungen (${n}×): ${sig}`,
+  promptRecur: sig => `Dieser Fehler taucht in diesem Projekt Sitzung für Sitzung auf: „${sig}“. Schlag eine Notiz für die CLAUDE.md des Projekts oder eine Prüfung beim Sitzungsstart vor, die das erneute Entdecken erspart; ändere noch nichts.`,
+  longTurn: (calls, usual) => `diese Runde steht bei ${calls} Tool-Aufrufen · frühere Runden hier endeten innerhalb von ${usual}`,
+  promptLongTurn: (calls, usual) => `Diese Runde steht bei ${calls} Tool-Aufrufen; frühere Runden in diesem Projekt endeten innerhalb von ${usual}. Sag, was erledigt ist, was fehlt und ob der Ansatz geändert werden muss.`,
   mem: {
     dupName: d => `Gedächtnisname doppelt: ${d}`,
     missingIndex: d => `MEMORY.md verweist auf eine fehlende Datei: ${d}`,
@@ -94,6 +103,7 @@ const de: LearnStrings = {
     compactions: 'Verdichtungen pro Sitzung',
     turnTime: 'Median-Prompt mit Werkzeugen',
     outTokens: 'Ausgabe-Tokens pro Runde',
+    usd: 'Kosten pro Sitzung (aus Tokens berechnet)',
     blocks: 'Done-Gate schickte zurück',
     acted: '  danach weitere Aufrufe',
     passed: 'Done-Gate fand nichts offen',
@@ -106,7 +116,7 @@ const de: LearnStrings = {
 }
 
 const fr: LearnStrings = {
-  tag: { plan: 'plan', flaky: 'instable', unused: 'inutilisé', habit: 'habitude', memory: 'mémoire', gate: 'contrôle' },
+  tag: { plan: 'plan', flaky: 'instable', unused: 'inutilisé', habit: 'habitude', memory: 'mémoire', gate: 'contrôle', recur: 'récurrent', long: 'tour long' },
   kind: 'mémoire',
   ctxPlan: (pct, tips, n, typical) => `contexte ${pct} %${typical === undefined ? '' : ` · ${n} sessions passées compactées vers ${typical} %`} · ${tips}`,
   tipCompact: '/compact <focus>',
@@ -120,6 +130,10 @@ const fr: LearnStrings = {
   gateHabit: (what, n, total) => `le contrôle de fin a trouvé ${what} dans ${n} sessions sur ${total}`,
   gateRule: { check: 'Lance les tests après ta dernière modification et donne le résultat avant de dire que c’est fini.', todos: 'Termine ou retire les tâches ouvertes avant de dire que c’est fini.', agent: 'Lis le rapport de tests de chaque sous-agent avant de dire que c’est fini.', fable: 'Réponds à chaque partie de la demande et dis clairement ce que tu as laissé de côté.' },
   promptGateRule: (what, rule) => `Le contrôle de fin trouve souvent ${what} dans ce projet. Propose d’ajouter cette règle au CLAUDE.md du projet, ou une meilleure ; ne change rien pour l’instant : « ${rule} »`,
+  recur: (sig, sessions, n) => `la même erreur dans ${sessions} sessions (${n}×) : ${sig}`,
+  promptRecur: sig => `Cette erreur revient session après session dans ce projet : « ${sig} ». Propose une note pour le CLAUDE.md du projet, ou une vérification au démarrage de session, qui évite de la redécouvrir ; ne change rien pour l’instant.`,
+  longTurn: (calls, usual) => `ce tour en est à ${calls} appels d’outils · les tours passés ici finissaient en ${usual} au plus`,
+  promptLongTurn: (calls, usual) => `Ce tour en est à ${calls} appels d’outils ; les tours passés de ce projet finissaient en ${usual} au plus. Dis ce qui est fait, ce qui reste, et si l’approche doit changer.`,
   mem: {
     dupName: d => `nom de mémoire en double : ${d}`,
     missingIndex: d => `MEMORY.md pointe vers un fichier absent : ${d}`,
@@ -145,6 +159,7 @@ const fr: LearnStrings = {
     compactions: 'compactages par session',
     turnTime: 'prompt médian avec outils',
     outTokens: 'tokens de sortie par tour',
+    usd: 'coût par session (calculé sur les tokens)',
     blocks: 'renvoyé par le contrôle de fin',
     acted: "  puis d'autres appels",
     passed: 'contrôle de fin : rien en suspens',
@@ -157,7 +172,7 @@ const fr: LearnStrings = {
 }
 
 const es: LearnStrings = {
-  tag: { plan: 'plan', flaky: 'inestable', unused: 'sin uso', habit: 'hábito', memory: 'memoria', gate: 'control' },
+  tag: { plan: 'plan', flaky: 'inestable', unused: 'sin uso', habit: 'hábito', memory: 'memoria', gate: 'control', recur: 'recurrente', long: 'turno largo' },
   kind: 'memoria',
   ctxPlan: (pct, tips, n, typical) => `contexto ${pct} %${typical === undefined ? '' : ` · ${n} sesiones pasadas compactaron cerca del ${typical} %`} · ${tips}`,
   tipCompact: '/compact <foco>',
@@ -171,6 +186,10 @@ const es: LearnStrings = {
   gateHabit: (what, n, total) => `el control de fin encontró ${what} en ${n} de ${total} sesiones`,
   gateRule: { check: 'Ejecuta los tests después de tu último cambio e informa del resultado antes de decir que has terminado.', todos: 'Cierra o quita las tareas abiertas antes de decir que has terminado.', agent: 'Lee el informe de tests de cada subagente antes de decir que has terminado.', fable: 'Responde a cada parte de la petición y di claramente qué omitiste.' },
   promptGateRule: (what, rule) => `El control de fin encuentra a menudo ${what} en este proyecto. Propón añadir esta regla al CLAUDE.md del proyecto, u otra mejor; no cambies nada aún: «${rule}»`,
+  recur: (sig, sessions, n) => `el mismo error en ${sessions} sesiones (${n}×): ${sig}`,
+  promptRecur: sig => `Este error aparece sesión tras sesión en este proyecto: «${sig}». Propón una nota para el CLAUDE.md del proyecto, o una comprobación al inicio de sesión, que evite redescubrirlo; no cambies nada aún.`,
+  longTurn: (calls, usual) => `este turno va por ${calls} llamadas a herramientas · los turnos pasados aquí terminaron en ${usual} como mucho`,
+  promptLongTurn: (calls, usual) => `Este turno va por ${calls} llamadas a herramientas; los turnos pasados de este proyecto terminaron en ${usual} como mucho. Di qué está hecho, qué falta y si hay que cambiar el enfoque.`,
   mem: {
     dupName: d => `nombre de memoria repetido: ${d}`,
     missingIndex: d => `MEMORY.md apunta a un archivo que falta: ${d}`,
@@ -196,6 +215,7 @@ const es: LearnStrings = {
     compactions: 'compactaciones por sesión',
     turnTime: 'prompt mediano con herramientas',
     outTokens: 'tokens de salida por turno',
+    usd: 'coste por sesión (calculado por tokens)',
     blocks: 'devuelto por el control final',
     acted: '  luego más llamadas',
     passed: 'control final: nada pendiente',
@@ -208,7 +228,7 @@ const es: LearnStrings = {
 }
 
 const zh: LearnStrings = {
-  tag: { plan: '计划', flaky: '不稳', unused: '未用', habit: '习惯', memory: '记忆', gate: '完成检查' },
+  tag: { plan: '计划', flaky: '不稳', unused: '未用', habit: '习惯', memory: '记忆', gate: '完成检查', recur: '反复出现', long: '长回合' },
   kind: '记忆',
   ctxPlan: (pct, tips, n, typical) => `上下文 ${pct}%${typical === undefined ? '' : ` · 过去 ${n} 个会话约在 ${typical}% 时压缩`} · ${tips}`,
   tipCompact: '/compact <重点>',
@@ -222,6 +242,10 @@ const zh: LearnStrings = {
   gateHabit: (what, n, total) => `完成检查在 ${total} 个会话中的 ${n} 个发现了${what}`,
   gateRule: { check: '最后一次修改后运行测试，并在说完成之前报告结果。', todos: '说完成之前，关闭或删除未完成的待办。', agent: '说完成之前，阅读每个子代理的测试报告。', fable: '回答请求的每个部分，并明确说明跳过了什么。' },
   promptGateRule: (what, rule) => `在这个项目中，完成检查反复发现${what}。请建议把这条规则加入项目的 CLAUDE.md，或提出更好的规则；暂时不要修改：“${rule}”`,
+  recur: (sig, sessions, n) => `同一错误出现在 ${sessions} 个会话中（${n} 次）：${sig}`,
+  promptRecur: sig => `这个错误在本项目的会话中反复出现：“${sig}”。请提议在项目 CLAUDE.md 中加一条说明，或在会话开始时加一项检查，以免再次踩坑；暂时不要修改。`,
+  longTurn: (calls, usual) => `本回合已有 ${calls} 次工具调用 · 过去的回合最多 ${usual} 次就结束`,
+  promptLongTurn: (calls, usual) => `本回合已有 ${calls} 次工具调用；本项目过去的回合最多 ${usual} 次就结束。说明已完成什么、还剩什么，以及是否需要改变做法。`,
   mem: {
     dupName: d => `记忆名称重复：${d}`,
     missingIndex: d => `MEMORY.md 指向不存在的文件：${d}`,
@@ -246,6 +270,7 @@ const zh: LearnStrings = {
     compactions: '每个会话的压缩次数',
     turnTime: '使用工具的提示，中位时长',
     outTokens: '每轮输出 tokens',
+    usd: '每会话成本（按令牌计算）',
     blocks: '完成检查退回',
     acted: '  之后继续调用工具',
     passed: '完成检查未发现遗留',
@@ -258,7 +283,7 @@ const zh: LearnStrings = {
 }
 
 const ja: LearnStrings = {
-  tag: { plan: '計画', flaky: '不安定', unused: '未使用', habit: '傾向', memory: 'メモリ', gate: '完了チェック' },
+  tag: { plan: '計画', flaky: '不安定', unused: '未使用', habit: '傾向', memory: 'メモリ', gate: '完了チェック', recur: '繰り返し', long: '長いターン' },
   kind: 'メモリ',
   ctxPlan: (pct, tips, n, typical) => `コンテキスト ${pct}%${typical === undefined ? '' : ` · 過去 ${n} セッションは約 ${typical}% で圧縮`} · ${tips}`,
   tipCompact: '/compact <焦点>',
@@ -272,6 +297,10 @@ const ja: LearnStrings = {
   gateHabit: (what, n, total) => `完了チェックが ${total} セッション中 ${n} 回、${what}を検出`,
   gateRule: { check: '最後の変更の後にテストを実行し、完了と言う前に結果を報告すること。', todos: '完了と言う前に、未完了のタスクを閉じるか削除すること。', agent: '完了と言う前に、各サブエージェントのテスト報告を読むこと。', fable: '依頼のすべての部分に答え、省いたことは明確に伝えること。' },
   promptGateRule: (what, rule) => `このプロジェクトでは完了チェックが${what}を繰り返し検出しています。このルール、またはより良いルールをプロジェクトの CLAUDE.md に追加する案を出してください。まだ何も変更しないこと：「${rule}」`,
+  recur: (sig, sessions, n) => `同じエラーが ${sessions} セッションで発生（${n} 回）：${sig}`,
+  promptRecur: sig => `このエラーはこのプロジェクトのセッションで繰り返し起きています：「${sig}」。再発見を防ぐために、プロジェクトの CLAUDE.md へのメモ、またはセッション開始時のチェックを提案してください。まだ何も変更しないこと。`,
+  longTurn: (calls, usual) => `このターンはツール呼び出し ${calls} 回 · 過去のターンは ${usual} 回以内で終了`,
+  promptLongTurn: (calls, usual) => `このターンはツール呼び出し ${calls} 回に達しています。このプロジェクトの過去のターンは ${usual} 回以内で終了しました。何が終わり、何が残り、やり方を変える必要があるか伝えてください。`,
   mem: {
     dupName: d => `メモリ名が重複：${d}`,
     missingIndex: d => `MEMORY.md が存在しないファイルを指す：${d}`,
@@ -296,6 +325,7 @@ const ja: LearnStrings = {
     compactions: 'セッションあたりの圧縮',
     turnTime: 'ツールを使ったプロンプトの中央値',
     outTokens: 'ターンあたりの出力トークン',
+    usd: 'セッションあたりのコスト（トークンから算出）',
     blocks: '完了チェックが差し戻し',
     acted: '  その後さらにツール呼び出し',
     passed: '完了チェックで未完了なし',

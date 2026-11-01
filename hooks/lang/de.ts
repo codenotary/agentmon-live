@@ -137,6 +137,7 @@ export const de: Strings = {
     slow: (tool, what, d, usual) => `${tool} ${what} läuft seit ${d}${usual ? ` · sonst ${usual}` : ''}`,
     silent: (type, d, tools) => `${type} seit ${d} still · bisher ${tools} Werkzeuge`,
     loop: (n, what) => `${n}× in Folge fehlgeschlagen: ${what}`,
+    sameErr: (n, what) => `derselbe Fehler ${n}× in dieser Runde, aus verschiedenen Aufrufen: ${what}`,
     contextHigh: (pct, top) => `Kontext ${pct}% · Verdichtung steht bevor${top ? ` · größter Brocken: ${top}` : ''}`,
     contextJump: k => `Kontext im letzten Zug um ${k} gewachsen`,
     big: (tool, what, k) => `${tool} ${what} brachte ≈${k} Tokens in den Kontext`,
@@ -152,6 +153,7 @@ export const de: Strings = {
     promptSlowDone: (tool, what, d) =>
       `Der Aufruf ${tool} ${what} dauerte ${d}. Warum war er so langsam, und wie wird der nächste Lauf schneller (ein engerer Befehl, ein Cache, im Hintergrund laufen lassen)? Erst nachsehen, noch nichts ändern.`,
     promptLoop: (n, what) => `Derselbe Aufruf ist ${n}× in Folge fehlgeschlagen:\n${fenced(what)}\n\nHör auf, ihn zu wiederholen. Finde zuerst die Ursache, dann ändere den Ansatz.`,
+    promptSameErr: (n, what) => `Verschiedene Aufrufe sind in dieser Runde ${n}× am selben Fehler gescheitert:\n${fenced(what)}\n\nBehebe die Ursache einmal, statt ihn Aufruf für Aufruf zu umgehen.`,
     promptContext: pct => `Der Kontext ist zu ${pct}% voll. Bevor er verdichtet wird: Liste in wenigen Zeilen auf, was erledigt ist, was fehlt und welche Dateien zählen.`,
     promptReread: (file, n) => `Du hast ${file} ${n}× gelesen. Arbeite mit dem, was du schon gelesen hast, oder lies nur die Zeilen, die du brauchst.`,
     size: (file, kb, limitKb, tokensK) => `${file} ${kb} KB · über der ${limitKb}-KB-Richtgröße (≈${tokensK}k Tokens)`,

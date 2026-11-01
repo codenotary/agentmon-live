@@ -66,6 +66,8 @@ export type SessionRecord = {
   bench?: Bench
   // What the done gate sent back, per kind of gap; missing in records from older versions, which `/agentmon learn` fills in from the transcript.
   gaps?: Partial<Record<GapKind, number>>
+  // Errors by signature (`errSig`), so one cause met in session after session shows; missing in older records.
+  errs?: Record<string, number>
 }
 
 export type GapKind = 'failed' | 'stale' | 'claim' | 'todos' | 'agent' | 'fable'
@@ -84,10 +86,13 @@ export type Bench = {
   acted: number
   passed: number
   fable: number
+  // Tool calls per prompt that used tools (missing in older rows), and the main loop's cost, each request priced from its usage (missing when no model had a price).
+  turnCalls?: number[]
+  usd?: number
 }
 
 // One prompt's part of a Bench.
-export type PromptBench = { edit: boolean; verified: boolean; churn: boolean; ms: number; block: boolean; acted: boolean; passed: boolean }
+export type PromptBench = { edit: boolean; verified: boolean; churn: boolean; ms: number; block: boolean; acted: boolean; passed: boolean; calls: number }
 
 // A session's Bench with its totals, kept longer than the session records so the trend reaches back.
 export type BenchRow = Bench & { id: string; at: number; turns: number; calls: number; errors: number; compactions: number }
@@ -115,6 +120,10 @@ export type Insights = {
   edits: Record<string, number>
   // Failures in a row per call (tool and its argument); a success clears it.
   fails: Record<string, number>
+  // Failures this turn by error signature, across calls: one cause behind different calls.
+  errs: Record<string, number>
+  // The main loop's tool calls this turn.
+  turnCalls: number
   // Approval prompts per call.
   asked: Record<string, number>
   // The main loop's context per model request, oldest first; a drop is a compaction.
@@ -122,6 +131,8 @@ export type Insights = {
   cacheRead: number
   cacheTotal: number
   tokens: { mainIn: number; mainOut: number; mainCached: number; agentsIn: number; agentsOut: number }
+  // The main loop's cost so far, each request priced from its usage (`priceUsd`).
+  usd: number
   // Where the main loop works (a directory under the project) and how often it moved.
   area?: string
   switches: number
@@ -189,8 +200,9 @@ export type Advisor = {
   epoch?: number
   // `budget` once the session's calls are used up; `unavailable` after the model failed to answer.
   state?: 'idle' | 'checking' | 'unavailable' | 'budget'
-  // Why the last call got no answer: the API error and status, `aborted` or `empty-reply`.
+  // Why the last call got no answer: the API error and status, `aborted` or `empty-reply`; and when, for the backoff.
   why?: string
+  unavailableAt?: number
   // Fable's own tokens, apart from the session's.
   tokensIn?: number
   tokensOut?: number

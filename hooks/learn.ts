@@ -1,7 +1,7 @@
 import type { GapKind, Learned, MemFinding, SessionRecord, ToolTally } from '../types'
 import { benchOf, gapKinds, textOf, upsertRow } from './bench'
 import { kilo, mask } from './format'
-import { BIG_RESULT_TOKENS, estTokens, median } from './insights'
+import { BIG_RESULT_TOKENS, bump, estTokens, median, p90 } from './insights'
 import type { Insight } from './insights'
 import { LEARN } from './learn-strings'
 import { cfg } from './state'
@@ -10,6 +10,7 @@ import { cfg } from './state'
 export const KEEP_SESSIONS = 30
 // Tools kept per session record, the most called first, so the store stays small.
 const KEEP_TOOLS = 60
+const KEEP_ERRS = 40
 // Evidence a learned item needs before it shows.
 export const MIN_CALLS = 10
 export const MIN_SESSIONS = 3
@@ -17,6 +18,10 @@ export const FLAKY_SHARE = 0.25
 export const UNUSED_SESSIONS = 5
 export const UNUSED_TOKENS = 1000
 export const HABIT_BIG = 4
+// A turn this far past the 90th percentile of past turns' tool calls runs long; needs this many past turns, and never under this many calls.
+export const ENVELOPE_MARGIN = 1.25
+export const ENVELOPE_MIN_SAMPLES = 5
+export const ENVELOPE_MIN_CALLS = 10
 const GAP_KINDS: readonly GapKind[] = ['failed', 'stale', 'claim', 'todos', 'agent', 'fable']
 // Suggest a plan this far below where past sessions compacted; with no history, at this share of the window.
 export const CTX_MARGIN = 0.9
@@ -42,15 +47,24 @@ export function newRecord(id: string, at: number): SessionRecord {
   return { id, at, model: '', effort: '', peak: 0, window: 0, compactAt: [], turns: 0, tools: {}, mcp: {}, gaps: {} }
 }
 
+// A rejected call says nothing about the tool.
+const REJECTED = /^The user doesn't want to proceed|tool use was rejected/i
+
 // Adds one call to a session record, in place: the record is the session's own working copy.
 export function tally(rec: SessionRecord, tool: string, isError: boolean, error: string, resultTokens: number) {
   const t: ToolTally = (rec.tools[tool] ??= { calls: 0, errors: 0, big: 0 })
   t.calls += 1
-  if (isError) {
+  if (isError && !REJECTED.test(error.trim())) {
     t.errors += 1
     t.lastErr = mask(error.replace(/\s+/g, ' ').trim()).slice(0, 120) || undefined
+    addErr(rec, error)
   }
   if (resultTokens >= BIG_RESULT_TOKENS) t.big += 1
+}
+
+function addErr(rec: SessionRecord, error: string) {
+  const sig = errSig(error)
+  if (sig) rec.errs = bump(rec.errs ?? {}, sig)
 }
 
 export function addGaps(rec: SessionRecord, kinds: readonly GapKind[]) {
@@ -59,8 +73,9 @@ export function addGaps(rec: SessionRecord, kinds: readonly GapKind[]) {
 
 function trimTools(rec: SessionRecord): SessionRecord {
   const entries = Object.entries(rec.tools)
-  if (entries.length <= KEEP_TOOLS) return rec
-  return { ...rec, tools: Object.fromEntries(entries.sort((a, b) => b[1].calls - a[1].calls).slice(0, KEEP_TOOLS)) }
+  const errs = Object.entries(rec.errs ?? {})
+  const out = entries.length <= KEEP_TOOLS ? rec : { ...rec, tools: Object.fromEntries(entries.sort((a, b) => b[1].calls - a[1].calls).slice(0, KEEP_TOOLS)) }
+  return errs.length <= KEEP_ERRS ? out : { ...out, errs: Object.fromEntries(errs.sort((a, b) => b[1] - a[1]).slice(0, KEEP_ERRS)) }
 }
 
 // Puts a session's record in place of its earlier one, oldest first, the last KEEP_SESSIONS kept.
@@ -69,8 +84,12 @@ export function upsert(learned: Learned, rec: SessionRecord): Learned {
   return { ...learned, sessions, bench: upsertRow(learned.bench, rec) }
 }
 
-// A rejected call says nothing about the tool.
-const REJECTED = /^The user doesn't want to proceed|tool use was rejected/i
+// The first error line with paths, hex and numbers taken out, so one cause behind different calls reads as one key.
+export function errSig(text: string): string | undefined {
+  const line = mask(text).split('\n').map(l => l.trim()).find(l => l) ?? ''
+  if (!line || REJECTED.test(line)) return undefined
+  return line.replace(/\/[^\s'"`():]+/g, '<path>').replace(/\b[0-9a-f]{6,}\b/gi, '#').replace(/\d+/g, '#').replace(/\s+/g, ' ').slice(0, 100)
+}
 
 // One transcript file (`<id>.jsonl`) as a session record, for the backfill. Lines that do not parse are skipped.
 export function parseTranscript(id: string, text: string): SessionRecord {
@@ -113,6 +132,7 @@ export function parseTranscript(id: string, text: string): SessionRecord {
         if (b.is_error && !REJECTED.test(body)) {
           t.errors += 1
           t.lastErr = mask(body.replace(/\s+/g, ' ').trim()).slice(0, 120) || undefined
+          addErr(rec, body)
         }
         if (estTokens(body) >= BIG_RESULT_TOKENS) t.big += 1
       }
@@ -137,12 +157,13 @@ export function serverOf(tool: string): string | undefined {
 export type Totals = {
   tools: Record<string, ToolTally & { sessions: number }>
   servers: Record<string, { loaded: number; used: number; tokens: number }>
+  errs: Record<string, { n: number; sessions: number }>
   compactAt: number[]
 }
 
 // Sums the records; `compactAt` from the past sessions only, so this session's own compactions do not set its threshold.
 export function totals(learned: Learned): Totals {
-  const out: Totals = { tools: {}, servers: {}, compactAt: [] }
+  const out: Totals = { tools: {}, servers: {}, errs: {}, compactAt: [] }
   for (const s of learned.sessions) {
     if (s.id !== learned.current) out.compactAt.push(...s.compactAt)
     const used = new Set<string>()
@@ -162,6 +183,11 @@ export function totals(learned: Learned): Totals {
       sum.tokens = tokens
       if (used.has(server)) sum.used += 1
     }
+    for (const [sig, n] of Object.entries(s.errs ?? {})) {
+      const sum = (out.errs[sig] ??= { n: 0, sessions: 0 })
+      sum.n += n
+      sum.sessions += 1
+    }
   }
   return out
 }
@@ -180,7 +206,7 @@ export function typicalCompact(sum: Totals, window: number): number | undefined 
   return m === undefined || window <= 0 ? undefined : Math.min(100, Math.round((m / window) * 100))
 }
 
-export type Live = { percent?: number; window: number; model: string; effort: string }
+export type Live = { percent?: number; window: number; model: string; effort: string; calls?: number }
 
 // What past sessions say about this one, as Focus items. Suggestions only: nothing here changes the session.
 export function learnedItems(learned: Learned, live: Live): Insight[] {
@@ -238,6 +264,19 @@ export function learnedItems(learned: Learned, live: Live): Insight[] {
     const rule = t.gateRule[kind === 'failed' || kind === 'stale' || kind === 'claim' ? 'check' : kind]
     const total = Math.max(n, learned.sessions.filter(s => s.bench?.mod).length)
     out.push({ key: `gate:${kind}`, score: 30, tag: t.tag.gate, color: 'yellow', text: t.gateHabit(what, n, total), prompt: t.promptGateRule(what, rule) })
+  }
+
+  // The error met in the most sessions; a CLAUDE.md note may save finding it again.
+  const recur = Object.entries(sum.errs)
+    .filter(([, v]) => v.sessions >= MIN_SESSIONS)
+    .sort((a, b) => b[1].sessions - a[1].sessions || b[1].n - a[1].n)[0]
+  if (recur) out.push({ key: `recur:${recur[0]}`, score: 32, tag: t.tag.recur, color: 'yellow', text: t.recur(recur[0], recur[1].sessions, recur[1].n), prompt: t.promptRecur(recur[0]) })
+
+  // shortcut: p90 over every past prompt that used tools; TokenEconomizer keeps only turns that ended well, do that if long good turns drown the signal.
+  const pastCalls = learned.sessions.filter(s => s.id !== learned.current).flatMap(s => s.bench?.turnCalls ?? [])
+  const usual = p90(pastCalls)
+  if (live.calls !== undefined && usual !== undefined && pastCalls.length >= ENVELOPE_MIN_SAMPLES && live.calls >= ENVELOPE_MIN_CALLS && live.calls >= ENVELOPE_MARGIN * usual) {
+    out.push({ key: `long:${Math.floor(live.calls / 10)}`, score: 35, tag: t.tag.long, color: 'yellow', text: t.longTurn(live.calls, usual), prompt: t.promptLongTurn(live.calls, usual) })
   }
 
   for (const f of learned.mem) out.push(memItem(f))

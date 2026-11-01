@@ -50,7 +50,7 @@ export function gapKinds(feedback: string): GapKind[] {
 const lb = () => (LEARN[cfg.lang] ?? LEARN.en!).bench
 
 export function emptyBench(mod: boolean, live: boolean): Bench {
-  return { mod, live, editTurns: 0, verified: 0, churn: 0, outTokens: 0, turnMs: [], blocks: 0, acted: 0, passed: 0, fable: 0 }
+  return { mod, live, editTurns: 0, verified: 0, churn: 0, outTokens: 0, turnMs: [], blocks: 0, acted: 0, passed: 0, fable: 0, turnCalls: [] }
 }
 
 export function addPrompt(b: Bench, p: PromptBench): Bench {
@@ -60,6 +60,7 @@ export function addPrompt(b: Bench, p: PromptBench): Bench {
     verified: b.verified + Number(p.edit && p.verified),
     churn: b.churn + Number(p.churn),
     turnMs: p.ms > 0 ? [...b.turnMs, p.ms].slice(-KEEP_MS) : b.turnMs,
+    turnCalls: p.calls > 0 ? [...(b.turnCalls ?? []), p.calls].slice(-KEEP_MS) : (b.turnCalls ?? []),
     blocks: b.blocks + Number(p.block),
     acted: b.acted + Number(p.acted),
     passed: b.passed + Number(p.passed),
@@ -90,6 +91,29 @@ export function textOf(content: unknown): string {
   return typeof content === 'string' ? content : Array.isArray(content) ? content.map((c: { text?: string }) => c?.text ?? '').join('\n') : ''
 }
 
+// Dollars per million tokens: input, cache read, output; a cache write costs 1.25 × input on every model. The first match wins.
+// shortcut: list prices of 2026-10 by model family, update when a price changes or a family arrives.
+const PRICES: [RegExp, number, number, number][] = [
+  [/fable-5-1|mythos-5-1/, 10, 0.25, 50],
+  [/fable|mythos/, 10, 1, 50],
+  [/opus-5-5/, 4, 0.2, 20],
+  [/opus/, 5, 0.5, 25],
+  [/sonnet-5/, 2, 0.2, 10],
+  [/sonnet/, 3, 0.3, 15],
+  [/haiku-5/, 0.1, 0.01, 0.5],
+  [/haiku/, 1, 0.1, 5],
+]
+
+export type Usage = { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; output_tokens?: number }
+
+// What one request cost; undefined for a model the table does not know.
+export function priceUsd(model: string | undefined, u: Usage): number | undefined {
+  const p = PRICES.find(([re]) => re.test(model ?? ''))
+  if (!p) return undefined
+  const [, input, read, out] = p
+  return ((u.input_tokens ?? 0) * input + (u.cache_read_input_tokens ?? 0) * read + (u.cache_creation_input_tokens ?? 0) * input * 1.25 + (u.output_tokens ?? 0) * out) / 1e6
+}
+
 // The same numbers from a transcript, main loop only. A resumed session repeats its entries, so each uuid and message counts once.
 export function benchOf(text: string): Bench {
   let b = emptyBench(false, false)
@@ -109,6 +133,7 @@ export function benchOf(text: string): Bench {
       block: p.blockAt !== undefined,
       acted: p.blockAt !== undefined && p.tools > p.blockAt,
       passed: false,
+      calls: p.tools,
     })
   }
   for (const line of text.split('\n')) {
@@ -131,6 +156,8 @@ export function benchOf(text: string): Bench {
       if (typeof id !== 'string' || !seen.has(`m:${id}`)) {
         if (typeof id === 'string') seen.add(`m:${id}`)
         b.outTokens += Number(o.message.usage?.output_tokens) || 0
+        const usd = priceUsd(o.message.model, o.message.usage ?? {})
+        if (usd !== undefined) b.usd = (b.usd ?? 0) + usd
       }
       if (!p) continue
       if (at) p.t1 = at
@@ -189,6 +216,10 @@ export function benchReport(rows: readonly BenchRow[], now: number): string {
     [t.outTokens, rs => {
       const n = sum(rs, r => r.turns)
       return n > 0 ? kilo(Math.round(sum(rs, r => r.outTokens) / n)) : '–'
+    }],
+    [t.usd, rs => {
+      const known = rs.filter(r => r.usd !== undefined)
+      return known.length > 0 ? `$${(sum(known, r => r.usd ?? 0) / known.length).toFixed(2)}` : '–'
     }],
     // The gate exists only with the mod.
     [t.blocks, rs => String(sum(rs, r => r.blocks)), true],

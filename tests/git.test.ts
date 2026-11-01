@@ -92,5 +92,5 @@ test('gitFetch fetches the base branch first', { options: { gitFetch: true } }, 
   engine(on, runs)
   await $.session.start({ cwd: '/r', surface: 'terminal', isInteractive: true })
   await clock.settle()
-  expect(runs).toContain('git fetch --quiet --no-tags origin main')
+  expect(runs).toContain('git fetch --quiet --no-tags origin refs/heads/main')
 })

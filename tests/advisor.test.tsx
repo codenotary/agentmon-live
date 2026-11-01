@@ -474,3 +474,46 @@ test('material is wrapped and cannot close its wrapper early', async ($, on) => 
   expect(p.split('</session_material>').length).toBe(2)
   expect(p.trimEnd().endsWith('</session_material>')).toBe(true)
 })
+
+test('Fable is not asked on a stop that cannot send its verdict back', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts, ['Not OK: the parser is untested'])
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.settle()
+  // The continuation after a send-back: the verdict could only reach the pane.
+  const after = await $.classic.Stop({ ...STOP, stop_hook_active: true })
+  expect(after.block).toBeUndefined()
+  expect(prompts.length).toBe(0)
+  const first = await $.classic.Stop({ ...STOP })
+  expect(prompts.length).toBe(1)
+  expect(first.block).toContain('the parser is untested')
+})
+
+test('after a failed answer Fable is left alone for five minutes', async ($, on) => {
+  const clock = mock.clock(on)
+  let calls = 0
+  engine(on)
+  on('model.complete', () => {
+    calls += 1
+    return { value: { isAnswered: false, reason: 'api-error', error: 'overloaded', status: 529, usage: USAGE } }
+  })
+  const turn = async (id: string) => {
+    await $.turn.start({ text: 'Fix the parser', turnId: id })
+    await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+    await clock.settle()
+    await $.classic.Stop({ ...STOP })
+    await $.turn.complete({ ...DONE, turnId: id })
+    await clock.settle()
+  }
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await turn('m1')
+  await clock.advance(60_000)
+  await turn('m2')
+  expect(calls).toBe(1)
+  await clock.advance(5 * 60_000)
+  await turn('m3')
+  expect(calls).toBe(2)
+})

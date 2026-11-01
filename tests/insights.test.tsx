@@ -358,3 +358,30 @@ test('a prompt that corrects an edit turn counts; two in a row bring the redo hi
   expect(await again.find({ type: 'Text', text: /corrections in a row/ })).toBeFalsy()
   await again.unmount()
 })
+
+test('the same error behind different calls is a loop too', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', async () => ({ result: {}, text: "ModuleNotFoundError: No module named 'foo' (/src/x.py:1)", isError: true }))
+
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'fix', turnId: 'm1' })
+  for (const command of ['python a', 'python b', 'pytest']) await $.tool.call({ tool: 'Bash', command })
+  // The bookkeeping after a call waits for the clock.
+  await clock.advance(1)
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /the same error 3× this turn, from different calls: ModuleNotFoundError/ })).toBeTruthy()
+  // Three different calls: not the same call failing.
+  expect(await ui.find({ type: 'Text', text: /failed 3× in a row/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('one error behind different calls shows once, and not beside the loop item', () => {
+  const base = { doing: [], agents: [], window: 1_000_000, now: 0 }
+  const same = focusList({ ...base, ins: { ...EMPTY_INSIGHTS, errs: { 'ENOENT <path>': 3 } } }).filter(x => x.key.startsWith('sameErr:'))
+  expect(same.length).toBe(1)
+  expect(same[0]?.text).toContain('ENOENT <path>')
+  expect(focusList({ ...base, ins: { ...EMPTY_INSIGHTS, errs: { 'ENOENT <path>': 2 } } }).some(x => x.key.startsWith('sameErr:'))).toBe(false)
+  expect(focusList({ ...base, ins: { ...EMPTY_INSIGHTS, errs: { 'ENOENT <path>': 3 }, fails: { 'Bash cat x': 3 } } }).some(x => x.key.startsWith('sameErr:'))).toBe(false)
+})

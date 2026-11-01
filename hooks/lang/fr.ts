@@ -137,6 +137,7 @@ export const fr: Strings = {
     slow: (tool, what, d, usual) => `${tool} ${what} tourne depuis ${d}${usual ? ` · d'habitude ${usual}` : ''}`,
     silent: (type, d, tools) => `${type} muet depuis ${d} · ${tools} outils jusqu'ici`,
     loop: (n, what) => `échec ${n}× de suite : ${what}`,
+    sameErr: (n, what) => `la même erreur ${n}× ce tour, dans des appels différents : ${what}`,
     contextHigh: (pct, top) => `contexte ${pct} % · compactage imminent${top ? ` · le plus gros : ${top}` : ''}`,
     contextJump: k => `le contexte a grossi de ${k} au dernier tour`,
     big: (tool, what, k) => `${tool} ${what} a ajouté ≈${k} jetons au contexte`,
@@ -152,6 +153,7 @@ export const fr: Strings = {
     promptSlowDone: (tool, what, d) =>
       `L'appel ${tool} ${what} a pris ${d}. Pourquoi a-t-il été si lent, et comment rendre le prochain plus rapide (une commande plus ciblée, un cache, le lancer en arrière-plan) ? Regarde d'abord ; ne change rien pour l'instant.`,
     promptLoop: (n, what) => `Le même appel a échoué ${n} fois de suite :\n${fenced(what)}\n\nArrête de le relancer. Trouve d'abord la cause, puis change d'approche.`,
+    promptSameErr: (n, what) => `Des appels différents ont rencontré la même erreur ${n} fois ce tour :\n${fenced(what)}\n\nCorrige sa cause une fois au lieu de la contourner appel par appel.`,
     promptContext: pct => `Le contexte est plein à ${pct} %. Avant le compactage, résume en quelques lignes ce qui est fait, ce qui reste et quels fichiers comptent.`,
     promptReread: (file, n) => `Tu as lu ${file} ${n} fois. Travaille avec ce que tu as déjà lu, ou ne lis que les lignes nécessaires.`,
     size: (file, kb, limitKb, tokensK) => `${file} ${kb} Ko · au-delà du repère de ${limitKb} Ko (≈${tokensK}k tokens)`,

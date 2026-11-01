@@ -5,10 +5,12 @@ import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
 import { addNote } from './advisor'
 import { isDoc } from './gate'
 import { book, newClock, snapshot } from './clock'
+import { priceUsd } from './bench'
 import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, openGaps } from './done'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { build, checkRelease, refreshBase, watchBase } from './release'
+import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
 import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
 import { LANGUAGES } from './i18n'
@@ -201,7 +203,7 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
     await update($, insights, v => ({ ...v, breakdown, mcpTokens, memoryTokens }))
     const m = await read($, main)
     const fable = (await read($, advisor)).calls
-    await saveTurn($, { tokens: u.context.tokens, window: u.context.window, mcpTools: b.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable })
+    await saveTurn($, { tokens: u.context.tokens, window: u.context.window, mcpTools: b.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined })
   })
 }
 
@@ -420,7 +422,7 @@ export const register: Register = (on, options) => {
         update($, stats, s => ({ ...s, streak: 0 })),
         update($, main, v => ({ ...v, turnAt })),
         // Loops and switches are this turn's; approvals and re-reads add up over the session.
-        update($, insights, v => ({ ...v, fails: {}, turnSwitches: 0, turnAreas: {}, corrections: isFix ? (v.corrections ?? 0) + 1 : 0 })),
+        update($, insights, v => ({ ...v, fails: {}, errs: {}, turnCalls: 0, turnSwitches: 0, turnAreas: {}, corrections: isFix ? (v.corrections ?? 0) + 1 : 0 })),
       ])
     } else {
       // A finished agent that gets a new message runs again.
@@ -485,6 +487,7 @@ export const register: Register = (on, options) => {
             cacheRead: u.cache_read_input_tokens,
             cacheTotal: total,
             tokens: { ...v.tokens, mainIn: v.tokens.mainIn + total, mainOut: v.tokens.mainOut + u.output_tokens, mainCached: v.tokens.mainCached + u.cache_read_input_tokens },
+            usd: v.usd + (priceUsd(e.model, u) ?? 0),
           }
         : {}),
       ...(!isMain ? { tokens: { ...v.tokens, agentsIn: v.tokens.agentsIn + total, agentsOut: v.tokens.agentsOut + u.output_tokens } } : {}),
@@ -600,6 +603,7 @@ export const register: Register = (on, options) => {
       void debug($, 'tool.call', { tool: e.tool, cat, ms, agent: e.agentId !== undefined, denied: r.deny !== undefined, isError: r.isError })
       const wasAsked = askedCalls.delete(callId)
       const callKey = `${e.tool} ${brief(e)}`.trim().slice(0, 80)
+      const sig = r.isError && r.deny === undefined ? errSig(String(r.text ?? '')) : undefined
       const resultTokens = e.agentId === undefined && !failed ? estTokens(String(r.text ?? '')) : 0
       if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), String(r.text ?? ''), r.isError ? 0 : estTokens(String(r.text ?? '')))
       if (touched && cat === 'edit' && isMemoryPath(touched)) queueMemoryCheck($)
@@ -646,6 +650,8 @@ export const register: Register = (on, options) => {
             reads: touched && cat === 'read' && e.agentId === undefined ? bump(v.reads, touched) : v.reads,
             edits: touched && cat === 'edit' ? bump(v.edits, touched) : v.edits,
             fails,
+            errs: sig ? bump(v.errs, sig) : v.errs,
+            turnCalls: isMain ? v.turnCalls + 1 : v.turnCalls,
             area: area ?? v.area,
             switches: v.switches + (moved ? 1 : 0),
             turnSwitches: v.turnSwitches + (moved ? 1 : 0),
@@ -794,14 +800,15 @@ export const register: Register = (on, options) => {
     if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
     // A light turn has nothing to gate; while subagents still run, the work is not over yet.
     if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0) || (await read($, agents)).some(a => a.status === 'running')) return r
-    const found = await openGaps($, turn, e.last_assistant_message ?? '')
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
-    const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
-    await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
-    void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, stopHook: e.stop_hook_active })
+    const canSend = !isGateUsed && !e.stop_hook_active
+    const found = await openGaps($, turn, e.last_assistant_message ?? '', canSend)
+    const isSent = found.lines.length > 0 && canSend
+    if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
+    void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
     // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
     void saveDebugLog($)
-    if (found.lines.length === 0) isPassed = true
+    if (found.lines.length === 0 && found.judged) isPassed = true
     if (isSent) blockAt = turn.tools
     await benchPrompt($, turn, blockAt, isPassed)
     if (!isSent) return r

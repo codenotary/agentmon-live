@@ -8,6 +8,8 @@ const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.
 
 // A call that never returns would leave the advisor `checking`, and so silent, for the rest of the session.
 const TIMEOUT_MS = 30_000
+// After a failed answer the model is left alone this long: a hanging API must not stall every stop for TIMEOUT_MS.
+const BACKOFF_MS = 5 * 60_000
 
 export type Verdict = { ok: boolean; text: string; fix?: string }
 
@@ -15,6 +17,7 @@ export type Verdict = { ok: boolean; text: string; fix?: string }
 export async function consult($: EngineInterface, question: string, body: string): Promise<Verdict | undefined> {
   const adv = await read($, advisor)
   if (!listening(adv.isOn) || adv.state === 'checking') return undefined
+  if (adv.state === 'unavailable' && (await $.clock.now()) - (adv.unavailableAt ?? 0) < BACKOFF_MS) return undefined
   if (cfg.advisorBudget > 0 && adv.calls >= cfg.advisorBudget) {
     await update($, advisor, a => ({ ...a, state: 'budget' as const }))
     return undefined
@@ -41,7 +44,8 @@ export async function consult($: EngineInterface, question: string, body: string
   if ((cur.epoch ?? 0) !== epoch) return undefined
   if (!r?.isAnswered) {
     const why = !r ? 'error' : r.reason === 'api-error' ? `${r.error}${r.status ? ` ${r.status}` : ''}` : r.reason
-    await update($, advisor, a => ({ ...a, state: 'unavailable' as const, why }))
+    const unavailableAt = await $.clock.now()
+    await update($, advisor, a => ({ ...a, state: 'unavailable' as const, why, unavailableAt }))
     return undefined
   }
   await update($, advisor, a => ({ ...a, state: 'idle' as const, why: undefined }))

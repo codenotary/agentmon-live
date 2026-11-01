@@ -36,7 +36,7 @@ export async function readBase($: EngineInterface, cwd: string, fetch: boolean):
   if (prefix === undefined) return undefined
   const root = repoRoot(cwd, prefix) ?? (await git($, ['rev-parse', '--show-toplevel']))
   const base = (await git($, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])) || 'origin/main'
-  if (fetch) await git($, ['fetch', '--quiet', '--no-tags', 'origin', base.replace(/^origin\//, '')]).catch(() => undefined)
+  if (fetch) await git($, ['fetch', '--quiet', '--no-tags', 'origin', `refs/heads/${base.replace(/^origin\//, '')}`]).catch(() => undefined)
   const counts = parseCounts((await git($, ['rev-list', '--left-right', '--count', `HEAD...${base}`])) ?? '')
   if (!counts) return undefined
   // Unquoted, so names with non-ASCII characters read as they are.

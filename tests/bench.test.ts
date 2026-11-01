@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { addPrompt, benchOf, benchReport, emptyBench, KEEP_BENCH, MIN_BENCH, upsertRow } from '../hooks/bench'
+import { addPrompt, benchOf, benchReport, emptyBench, KEEP_BENCH, MIN_BENCH, priceUsd, upsertRow } from '../hooks/bench'
 import { newRecord, parseTranscript, shapeLearned, upsert } from '../hooks/learn'
 import type { BenchRow } from '../types'
 import { storeCalls, viewOf } from './fixtures/store'
@@ -48,7 +48,7 @@ test('a transcript gives the bench numbers', async () => {
 
 test('a prompt the gate sent back counts once', async () => {
   const base = emptyBench(true, true)
-  const p = { edit: true, verified: false, churn: false, ms: 1000, block: true, acted: false, passed: false }
+  const p = { edit: true, verified: false, churn: false, ms: 1000, block: true, acted: false, passed: false, calls: 3 }
   // Recomputed from the same base at each turn end, as notePrompt does.
   addPrompt(base, p)
   const b = addPrompt(base, { ...p, verified: true, acted: true, passed: true, ms: 3000 })
@@ -142,4 +142,38 @@ test('a live session records its bench row and /agentmon bench reports it', asyn
   expect(live?.turnMs.length).toBe(1)
   const r = await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'bench' } as never)
   expect(String((r as { text?: string }).text)).toContain('with mod (1)')
+})
+
+test('a transcript counts the tool calls per prompt', async () => {
+  // Prompt 1: four edits and two test runs, the repeated entry once; prompt 2: two edits.
+  expect(benchOf(TRANSCRIPT).turnCalls).toEqual([6, 2])
+  const b = addPrompt(emptyBench(true, true), { edit: false, verified: false, churn: false, ms: 0, block: false, acted: false, passed: false, calls: 0 })
+  expect(b.turnCalls).toEqual([])
+})
+
+test('the report shows the cost per session, from the rows that have one', async () => {
+  const now = Date.parse('2026-10-28T12:00:00Z')
+  const day = 24 * 3600_000
+  const rows = [
+    ...Array.from({ length: MIN_BENCH }, (_, i) => row(`b${i}`, now - 30 * day, false)),
+    ...Array.from({ length: MIN_BENCH }, (_, i) => row(`m${i}`, now - 20 * day, true, { usd: i === 0 ? 4 : 2 })),
+    // Every request on a model without a price: no cost known.
+    row('t', now - 20 * day, true),
+  ]
+  const cost = benchReport(rows, now).split('\n').find(l => l.startsWith('cost per session'))
+  expect(cost?.split(/\s{2,}/).slice(1)).toEqual(['–', '$2.40', '–'])
+})
+
+test('benchOf prices each message once, from its model and usage', () => {
+  const msg = (uuid: string, id: string, model: string, usage: object) => line({ type: 'assistant', uuid, message: { id, model, usage, content: [] } })
+  const text = [
+    msg('a', 'msg-a', 'claude-opus-5-5', { input_tokens: 1_000_000, cache_read_input_tokens: 1_000_000, cache_creation_input_tokens: 1_000_000, output_tokens: 100_000 }),
+    // A resumed session repeats the message under a new uuid: it counts once.
+    msg('a2', 'msg-a', 'claude-opus-5-5', { input_tokens: 1_000_000 }),
+    msg('b', 'msg-b', '<synthetic>', { output_tokens: 5000 }),
+  ].join('\n')
+  // 4 + 0.2 + 5 + 2
+  expect(Math.round((benchOf(text).usd ?? 0) * 100) / 100).toBe(11.2)
+  expect(benchOf(msg('c', 'msg-c', 'gpt-5', { output_tokens: 1 })).usd).toBeUndefined()
+  expect(priceUsd('claude-fable-5-1', { output_tokens: 1_000_000 })).toBe(50)
 })

@@ -19,12 +19,15 @@ export const EMPTY_INSIGHTS: Insights = {
   cacheRead: 0,
   cacheTotal: 0,
   tokens: { mainIn: 0, mainOut: 0, mainCached: 0, agentsIn: 0, agentsOut: 0 },
+  usd: 0,
   switches: 0,
   turnSwitches: 0,
   turnAreas: {},
   modelSwitches: 0,
   sizes: {},
   limits: {},
+  errs: {},
+  turnCalls: 0,
 }
 
 // State an older version stored lacks fields this one reads; fill them in.

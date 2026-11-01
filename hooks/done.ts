@@ -45,14 +45,17 @@ async function material($: EngineInterface, turn: Turn): Promise<string> {
 }
 
 // What the turn left open: recorded facts first; only when they show nothing does Fable judge whether the answer covers the request.
-export async function openGaps($: EngineInterface, turn: Turn, answer: string): Promise<{ lines: string[]; fix?: string }> {
+// `canAsk` is false on a stop whose verdict could only reach the pane: Fable's call is saved for one that can go back.
+// `judged` is false when no gap was found and Fable did not look (not asked, failed, budget used): no verdict, not a pass.
+export async function openGaps($: EngineInterface, turn: Turn, answer: string, canAsk: boolean): Promise<{ lines: string[]; fix?: string; judged: boolean }> {
   const t = cfg.t
   const [checked, planned, list] = await Promise.all([read($, checks), read($, tasks), read($, agents)])
   const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer })
-  if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines }
+  if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines, judged: true }
+  if (!canAsk) return { lines, judged: false }
   const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-4000))}` : ''}`)
   // Fable read untrusted tool output; what it says goes to Claude as a claim, never as a fact.
-  return v && !v.ok ? { lines: [t.fableSays(mask(v.text))], fix: v.fix && mask(v.fix) } : { lines: [] }
+  return v && !v.ok ? { lines: [t.fableSays(mask(v.text))], fix: v.fix && mask(v.fix), judged: true } : { lines: [], judged: v !== undefined }
 }
 
 // This prompt's part of the self benchmark, recomputed at each main turn end and stop.
@@ -68,11 +71,12 @@ export async function benchPrompt($: EngineInterface, turn: Turn, blockAt: numbe
     block: blockAt !== undefined,
     acted: blockAt !== undefined && turn.tools > blockAt,
     passed: isPassed,
+    calls: turn.tools,
   })
 }
 
 // "check now": the gate's own look, shown in the pane and never sent.
 export async function checkNow($: EngineInterface, turn: Turn, answer: string, ref: string) {
-  const found = await openGaps($, turn, answer)
-  await addNote($, { kind: 'check', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref, at: await $.clock.now() })
+  const found = await openGaps($, turn, answer, true)
+  if (found.judged) await addNote($, { kind: 'check', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref, at: await $.clock.now() })
 }

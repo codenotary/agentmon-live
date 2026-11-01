@@ -145,6 +145,7 @@ const en = {
     slow: (tool: string, what: string, d: string, usual?: string) => `${tool} ${what} running ${d}${usual ? ` · usually ${usual}` : ''}`,
     silent: (type: string, d: string, tools: number) => `${type} quiet for ${d} · ${tools} tools so far`,
     loop: (n: number, what: string) => `failed ${n}× in a row: ${what}`,
+    sameErr: (n: number, what: string) => `the same error ${n}× this turn, from different calls: ${what}`,
     contextHigh: (pct: number, top?: string) => `context ${pct}% · compaction is near${top ? ` · largest: ${top}` : ''}`,
     contextJump: (k: string) => `context grew ${k} in the last turn`,
     big: (tool: string, what: string, k: string) => `${tool} ${what} put ≈${k} tokens into context`,
@@ -160,6 +161,7 @@ const en = {
     promptSlowDone: (tool: string, what: string, d: string) =>
       `The call ${tool} ${what} took ${d}. Why was it that slow, and how can the next run be faster (a narrower command, a cache, running it in the background)? Look first; change nothing yet.`,
     promptLoop: (n: number, what: string) => `The same call failed ${n} times in a row:\n${fenced(what)}\n\nStop retrying it. Find the cause first, then change the approach.`,
+    promptSameErr: (n: number, what: string) => `Different calls hit the same error ${n} times this turn:\n${fenced(what)}\n\nFix its cause once instead of working around it call by call.`,
     promptContext: (pct: number) => `Context is ${pct}% full. Before it compacts, list in a few lines what is done, what is left and which files matter.`,
     promptReread: (file: string, n: number) => `You have read ${file} ${n} times. Work from what you already read, or read only the lines you need.`,
     size: (file: string, kb: string, limitKb: string, tokensK: number) => `${file} ${kb} KB · over the ${limitKb} KB guide (≈${tokensK}k tokens)`,
