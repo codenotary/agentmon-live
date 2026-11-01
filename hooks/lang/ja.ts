@@ -51,7 +51,6 @@ export const ja: Strings = {
   calls: '呼出',
   off: 'オフ',
   context: 'コンテキスト',
-  output: '出力',
   toolsHeader: 'ツール · 呼出',
   total: '合計',
   errors: n => `${n} 失敗`,
@@ -126,8 +125,7 @@ export const ja: Strings = {
     slowest: '遅い呼び出し',
     context: 'コンテキスト',
     ctxLine: (now, delta, cache, compactions) =>
-      `現在 ${now}${delta ? ` · 前のターン ${delta}` : ''}${cache === undefined ? '' : ` · 直近リクエストのキャッシュ ${cache}%`}${compactions ? ` · 圧縮 ${compactions}×` : ''}`,
-    biggest: '大きな結果',
+      `現在 ${now}${delta ? ` · 前のターン ${delta}` : ''}${cache === undefined ? '' : ` · このターンのキャッシュ ${cache}%`}${compactions ? ` · 圧縮 ${compactions}×` : ''}`,
     tokens: (i, cached, o, agents) => `入力 ${i}（このセッションのキャッシュ ${cached}%）· 出力 ${o}${agents ? ` · サブエージェントが入力の ${agents}%` : ''}`,
     areas: (n, list) => `このターンの切り替え ${n} 回 · ${list}`,
     reread: '再読込',

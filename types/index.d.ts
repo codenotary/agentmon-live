@@ -1,5 +1,6 @@
 // `turnAt` is when the main session's current turn started.
-export type Main = { model: string; effort: string; turnAt?: number }
+// `turnLive` while a main turn runs, so a module reload mid-turn restarts the clock and the gate for it.
+export type Main = { model: string; effort: string; turnAt?: number; turnLive?: boolean }
 
 export type Card = {
   id: string
@@ -135,7 +136,6 @@ export type Insights = {
   usd: number
   // Where the main loop works (a directory under the project) and how often it moved.
   area?: string
-  switches: number
   turnSwitches: number
   turnAreas: Record<string, number>
   // Areas the main loop worked in before this turn.

@@ -24,6 +24,19 @@ const REQUEST_ROOM = 2000
 // `docs` are the doc files the main loop read this turn; `edits` counts the edits per code file.
 export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number }
 
+// A new prompt, or `/agentmon clear` mid-turn: everything the turn gathered goes, the prompt and its start stay.
+export function resetTurn(turn: Turn, before: Check[]) {
+  turn.tools = 0
+  turn.delegated = 0
+  turn.trail = []
+  turn.edited = new Set()
+  turn.edits = new Map()
+  turn.docs = new Set()
+  turn.before = before
+  turn.codeEditAt = undefined
+  turn.lastCodeEditAt = undefined
+}
+
 // The request, this turn's subagents and the observed checks are kept whole; the trail gives way.
 async function material($: EngineInterface, turn: Turn): Promise<string> {
   const t = cfg.t

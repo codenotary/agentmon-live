@@ -51,7 +51,6 @@ export const fr: Strings = {
   calls: 'appels',
   off: 'off',
   context: 'contexte',
-  output: 'sortie',
   toolsHeader: 'OUTILS · appels',
   total: 'total',
   errors: n => `${n} échec`,
@@ -126,8 +125,7 @@ export const fr: Strings = {
     slowest: 'les plus lents',
     context: 'contexte',
     ctxLine: (now, delta, cache, compactions) =>
-      `maintenant ${now}${delta ? ` · ${delta} au dernier tour` : ''}${cache === undefined ? '' : ` · cache ${cache} % dernière requête`}${compactions ? ` · compacté ${compactions}×` : ''}`,
-    biggest: 'plus gros résultats',
+      `maintenant ${now}${delta ? ` · ${delta} au dernier tour` : ''}${cache === undefined ? '' : ` · cache ${cache} % ce tour`}${compactions ? ` · compacté ${compactions}×` : ''}`,
     tokens: (i, cached, o, agents) => `jetons entrée ${i} (${cached} % en cache sur la session) · sortie ${o}${agents ? ` · sous-agents ${agents} % de l'entrée` : ''}`,
     areas: (n, list) => `${n} changements ce tour · ${list}`,
     reread: 'relu',

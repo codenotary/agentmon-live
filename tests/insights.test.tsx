@@ -127,7 +127,7 @@ test('a turn is split into model, tool and approval time', async ($, on) => {
   // The approval wait does not count as Bash being slow; the read does make the slowest list.
   expect(await ui.find({ type: 'Text', text: /^\s+6\.0s Read/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^\s+40s Bash/ })).toBe(undefined)
-  expect(await ui.find({ type: 'Text', text: /now 40\.0k · cache 98% last request/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /now 40\.0k · cache 98% this turn/ })).toBeTruthy()
 
   // Investigate drafts a question about allow rules.
   await ui.press({ key: 'investigate:0' })
@@ -384,4 +384,24 @@ test('one error behind different calls shows once, and not beside the loop item'
   expect(same[0]?.text).toContain('ENOENT <path>')
   expect(focusList({ ...base, ins: { ...EMPTY_INSIGHTS, errs: { 'ENOENT <path>': 2 } } }).some(x => x.key.startsWith('sameErr:'))).toBe(false)
   expect(focusList({ ...base, ins: { ...EMPTY_INSIGHTS, errs: { 'ENOENT <path>': 3 }, fails: { 'Bash cat x': 3 } } }).some(x => x.key.startsWith('sameErr:'))).toBe(false)
+})
+
+test('each turn-shaped Focus rule fires at its threshold and not below', () => {
+  const base = { doing: [], agents: [], window: 1_000_000, now: 0 }
+  const last = { startedAt: 1, wallMs: 100_000, buckets: { shell: 70_000, model: 30_000 }, steps: 2 }
+  const keys = (ins: Partial<typeof EMPTY_INSIGHTS>) => focusList({ ...base, ins: { ...EMPTY_INSIGHTS, ...ins } }).map(x => x.key.split(':')[0])
+  expect(keys({ last: { ...last, ctxStart: 10_000, ctxEnd: 70_000 } })).toContain('jump')
+  expect(keys({ last: { ...last, ctxStart: 10_000, ctxEnd: 59_000 } })).not.toContain('jump')
+  expect(keys({ edits: { '/r/a.ts': 6 } })).toContain('churn')
+  expect(keys({ edits: { '/r/a.ts': 5 } })).not.toContain('churn')
+  expect(keys({ last })).toContain('sink')
+  expect(keys({ last: { ...last, buckets: { shell: 50_000, model: 50_000 } } })).not.toContain('sink')
+  expect(keys({ last, cacheTotal: 100_000, cacheRead: 10_000 })).toContain('cache')
+  // The first request of a turn rewrites the cache by design: one request says nothing.
+  expect(keys({ last: { ...last, steps: 1 }, cacheTotal: 100_000, cacheRead: 10_000 })).not.toContain('cache')
+  expect(keys({ last, cacheTotal: 100_000, cacheRead: 50_000 })).not.toContain('cache')
+  expect(keys({ turnSwitches: 8, turnAreas: { a: 4, b: 4 } })).toContain('switches')
+  expect(keys({ turnSwitches: 7, turnAreas: { a: 4, b: 3 } })).not.toContain('switches')
+  expect(keys({ mcpTokens: 100_000 })).toContain('mcp')
+  expect(keys({ mcpTokens: 99_000 })).not.toContain('mcp')
 })

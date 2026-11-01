@@ -58,7 +58,6 @@ const en = {
   calls: 'calls',
   off: 'off',
   context: 'context',
-  output: 'output',
   toolsHeader: 'TOOLS · calls',
   total: 'total',
   errors: (n: number) => `${n} failed`,
@@ -133,8 +132,7 @@ const en = {
     slowest: 'slowest',
     context: 'context',
     ctxLine: (now: string, delta: string, cache: string | undefined, compactions: number) =>
-      `now ${now}${delta ? ` · ${delta} last turn` : ''}${cache === undefined ? '' : ` · cache ${cache}% last request`}${compactions ? ` · ${compactions}× compacted` : ''}`,
-    biggest: 'biggest results',
+      `now ${now}${delta ? ` · ${delta} last turn` : ''}${cache === undefined ? '' : ` · cache ${cache}% this turn`}${compactions ? ` · ${compactions}× compacted` : ''}`,
     tokens: (i: string, cached: string, o: string, agents: number) =>
       `tokens in ${i} (${cached}% cached this session) · out ${o}${agents ? ` · subagents ${agents}% of input` : ''}`,
     areas: (n: number, list: string) => `${n} switches this turn · ${list}`,

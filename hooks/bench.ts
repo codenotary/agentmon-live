@@ -110,12 +110,31 @@ export type Usage = { input_tokens?: number; cache_read_input_tokens?: number; c
 export function priceUsd(model: string | undefined, u: Usage): number | undefined {
   const p = PRICES.find(([re]) => re.test(model ?? ''))
   if (!p) return undefined
-  const [, input, read, out] = p
+  const [, input0, read0, out0] = p
+  // Haiku 5.5 charges five times its rates once the prompt passes 100k tokens.
+  const tier = /haiku-5/.test(model ?? '') && (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) > 100_000 ? 5 : 1
+  const [input, read, out] = [input0 * tier, read0 * tier, out0 * tier]
   return ((u.input_tokens ?? 0) * input + (u.cache_read_input_tokens ?? 0) * read + (u.cache_creation_input_tokens ?? 0) * input * 1.25 + (u.output_tokens ?? 0) * out) / 1e6
 }
 
+export type Entry = Record<string, any>
+
+// The transcript's JSON lines; the rest is skipped.
+export function parseLines(text: string): Entry[] {
+  const out: Entry[] = []
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('{')) continue
+    try {
+      out.push(JSON.parse(line))
+    } catch {
+      // not JSON
+    }
+  }
+  return out
+}
+
 // The same numbers from a transcript, main loop only. A resumed session repeats its entries, so each uuid and message counts once.
-export function benchOf(text: string): Bench {
+export function benchOf(text: string | Entry[]): Bench {
   let b = emptyBench(false, false)
   const seen = new Set<string>()
   const failed = new Set<string>()
@@ -136,14 +155,7 @@ export function benchOf(text: string): Bench {
       calls: p.tools,
     })
   }
-  for (const line of text.split('\n')) {
-    if (!line.startsWith('{')) continue
-    let o: Record<string, any>
-    try {
-      o = JSON.parse(line)
-    } catch {
-      continue
-    }
+  for (const o of typeof text === 'string' ? parseLines(text) : text) {
     if (o.isSidechain) continue
     if (typeof o.uuid === 'string') {
       if (seen.has(o.uuid)) continue

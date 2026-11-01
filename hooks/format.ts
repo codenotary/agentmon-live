@@ -27,7 +27,7 @@ export function percent(part: number, whole: number): string {
 }
 
 export function kilo(n: number): string {
-  return n >= 1000 ? `${decimal(n / 1000)}k` : String(n)
+  return Math.abs(n) >= 1000 ? `${decimal(n / 1000)}k` : String(n)
 }
 
 // The one argument that says what a call did: its file, command, pattern, ...

@@ -293,10 +293,10 @@ test('a stop the done gate sends back is kept in the session record', async ($, 
 test('/agentmon learn keeps a session recorded live and adds the new ones', async ($, on) => {
   const clock = mock.clock(on)
   const store = new Map<string, unknown>()
-  const live = newRecord('old', 1)
-  live.mcp = { mcp__jira: 3000 }
+  // Recorded live by 0.19: the gate's catches counted, the errors not yet.
+  const { errs: _e, ...live } = { ...newRecord('old', 1), mcp: { mcp__jira: 3000 } }
   // Recorded by a version that did not count the done gate's catches.
-  const { gaps: _, ...older } = { ...newRecord('older', 2), mcp: { mcp__jira: 3000 } }
+  const { gaps: _, errs: _f, ...older } = { ...newRecord('older', 2), mcp: { mcp__jira: 3000 } }
   store.set('proj:/p', { sessions: [live, older], mem: [] })
   engine(on, store, [], ['old', 'older', 'new'])
   const line = JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2026-01-01T00:00:00Z', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] } })
@@ -392,4 +392,57 @@ test('a turn far past the project\'s usual tool calls is flagged', async () => {
     r.bench = { ...emptyBench(true, true), turnCalls: [2, 2, 2, 2] }
   })
   expect(learnedItems(few, { ...LIVE, calls: 50 }).some(x => x.key.startsWith('long:'))).toBe(false)
+})
+
+test('a session key outranks the old entry, an active key marks a learned session as with the mod, and a big transcript is read with tail', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>()
+  // An unfinished migration left s1 in the old entry too, older than its own key.
+  const stale = { ...newRecord('s1', 1), turns: 1 }
+  const fresh = { ...newRecord('s1', 1), turns: 5 }
+  store.set('proj:/p', { sessions: [stale], mem: [] })
+  store.set('sess:/p:000000000000001:s1', fresh)
+  store.set('active:big', { at: 1, tokens: 1 })
+  engine(on, store, [], ['big'])
+  const line = JSON.stringify({ type: 'assistant', uuid: 'a1', timestamp: '2026-01-01T00:00:00Z', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] } })
+  on('fs.read', () => {
+    throw new Error('too large')
+  })
+  on('process.run', (_, e) => {
+    const stdout = e.argv.slice(0, 3).join(' ') === 'tail -c 4000000' ? line : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'learn' } as never)
+  const saved = viewOf(store)
+  expect(saved.sessions.find(s => s.id === 's1')?.turns).toBe(5)
+  expect(saved.sessions.find(s => s.id === 'big')?.tools.Bash?.calls).toBe(1)
+  expect(saved.bench.find(r => r.id === 'big')?.mod).toBe(true)
+})
+
+test('/agentmon learn gives a session key only to the newest records and a row to the rest', async ($, on) => {
+  const clock = mock.clock(on)
+  const sets: string[] = []
+  const store = new (class extends Map<string, unknown> {
+    override set(k: string, v: unknown) {
+      sets.push(k)
+      return super.set(k, v)
+    }
+  })()
+  const ids = Array.from({ length: KEEP_SESSIONS + 2 }, (_, i) => `t${i}`)
+  engine(on, store, [], ids)
+  on('fs.read', (_, e) => {
+    const i = Number(e.path.match(/t(\d+)\.jsonl$/)?.[1])
+    return { value: JSON.stringify({ type: 'assistant', uuid: `a${i}`, timestamp: new Date(1_700_000_000_000 + i * 1000).toISOString(), message: { content: [{ type: 'tool_use', id: 't', name: 'Bash' }] } }) }
+  })
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'learn' } as never)
+  const saved = viewOf(store)
+  expect(saved.sessions.length).toBe(KEEP_SESSIONS)
+  expect(saved.sessions.map(s => s.id)).not.toContain('t0')
+  expect(saved.bench.length).toBe(KEEP_SESSIONS + 2)
+  // The two oldest never got a session key, so none was written only to be pruned.
+  expect(sets.filter(k => k.startsWith('sess:') && /:t[01]$/.test(k))).toEqual([])
 })

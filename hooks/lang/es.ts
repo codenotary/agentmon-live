@@ -51,7 +51,6 @@ export const es: Strings = {
   calls: 'llamadas',
   off: 'off',
   context: 'contexto',
-  output: 'salida',
   toolsHeader: 'HERRAMIENTAS · llamadas',
   total: 'total',
   errors: n => `${n} fallos`,
@@ -126,8 +125,7 @@ export const es: Strings = {
     slowest: 'más lentas',
     context: 'contexto',
     ctxLine: (now, delta, cache, compactions) =>
-      `ahora ${now}${delta ? ` · ${delta} en el último turno` : ''}${cache === undefined ? '' : ` · caché ${cache} % última solicitud`}${compactions ? ` · compactado ${compactions}×` : ''}`,
-    biggest: 'resultados más grandes',
+      `ahora ${now}${delta ? ` · ${delta} en el último turno` : ''}${cache === undefined ? '' : ` · caché ${cache} % este turno`}${compactions ? ` · compactado ${compactions}×` : ''}`,
     tokens: (i, cached, o, agents) => `tokens entrada ${i} (${cached} % en caché en la sesión) · salida ${o}${agents ? ` · subagentes ${agents} % de la entrada` : ''}`,
     areas: (n, list) => `${n} cambios este turno · ${list}`,
     reread: 'releído',

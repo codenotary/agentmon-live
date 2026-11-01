@@ -20,7 +20,6 @@ export const EMPTY_INSIGHTS: Insights = {
   cacheTotal: 0,
   tokens: { mainIn: 0, mainOut: 0, mainCached: 0, agentsIn: 0, agentsOut: 0 },
   usd: 0,
-  switches: 0,
   turnSwitches: 0,
   turnAreas: {},
   modelSwitches: 0,

@@ -51,7 +51,6 @@ export const de: Strings = {
   calls: 'Aufrufe',
   off: 'aus',
   context: 'Kontext',
-  output: 'Ausgabe',
   toolsHeader: 'WERKZEUGE · Aufrufe',
   total: 'gesamt',
   errors: n => `${n} fehler`,
@@ -126,8 +125,7 @@ export const de: Strings = {
     slowest: 'am langsamsten',
     context: 'Kontext',
     ctxLine: (now, delta, cache, compactions) =>
-      `jetzt ${now}${delta ? ` · ${delta} im letzten Zug` : ''}${cache === undefined ? '' : ` · Cache ${cache}% letzte Anfrage`}${compactions ? ` · ${compactions}× verdichtet` : ''}`,
-    biggest: 'größte Ergebnisse',
+      `jetzt ${now}${delta ? ` · ${delta} im letzten Zug` : ''}${cache === undefined ? '' : ` · Cache ${cache}% in diesem Zug`}${compactions ? ` · ${compactions}× verdichtet` : ''}`,
     tokens: (i, cached, o, agents) => `Tokens rein ${i} (${cached}% Cache in dieser Sitzung) · raus ${o}${agents ? ` · Subagenten ${agents}% der Eingabe` : ''}`,
     areas: (n, list) => `${n} Wechsel in diesem Zug · ${list}`,
     reread: 'mehrfach gelesen',

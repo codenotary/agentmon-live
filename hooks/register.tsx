@@ -6,7 +6,7 @@ import { addNote } from './advisor'
 import { isDoc } from './gate'
 import { book, newClock, snapshot } from './clock'
 import { priceUsd } from './bench'
-import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, openGaps } from './done'
+import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, openGaps, resetTurn } from './done'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { build, checkRelease, refreshBase, watchBase } from './release'
@@ -21,7 +21,6 @@ import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import type { View } from '../types'
 
-export { brief, fit, gitCommand, kilo, modelName, testsOf } from './format'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -49,6 +48,7 @@ const KEEP_AREAS = 50
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
 let statusQueued = false
+let rateQueued = false
 let isTicking = false
 let reconciledAt = 0
 // One base poll per process, however often the session starts.
@@ -192,18 +192,20 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
   $.clock.after(0, async () => {
     const u = await $.session.usage({ breakdown: 'summary' }).catch(() => undefined)
     const b = u?.context.breakdown
-    if (!b) return
-    const breakdown = b.categories
-      .filter(c => c.kind === 'used' && c.tokens > 0)
-      .sort((x, y) => y.tokens - x.tokens)
-      .slice(0, 6)
-      .map(c => ({ name: c.name, tokens: c.tokens }))
-    const mcpTokens = b.mcpTools.filter(m => m.isLoaded).reduce((n, m) => n + m.tokens, 0)
-    const memoryTokens = b.memoryFiles.reduce((n, m) => n + m.tokens, 0)
-    await update($, insights, v => ({ ...v, breakdown, mcpTokens, memoryTokens }))
+    if (b) {
+      const breakdown = b.categories
+        .filter(c => c.kind === 'used' && c.tokens > 0)
+        .sort((x, y) => y.tokens - x.tokens)
+        .slice(0, 6)
+        .map(c => ({ name: c.name, tokens: c.tokens }))
+      const mcpTokens = b.mcpTools.filter(m => m.isLoaded).reduce((n, m) => n + m.tokens, 0)
+      const memoryTokens = b.memoryFiles.reduce((n, m) => n + m.tokens, 0)
+      await update($, insights, v => ({ ...v, breakdown, mcpTokens, memoryTokens }))
+    }
+    // The turn is learned from even when the engine gives no usage: the tallies and gaps are the session's own.
     const m = await read($, main)
     const fable = (await read($, advisor)).calls
-    await saveTurn($, { tokens: u.context.tokens, window: u.context.window, mcpTools: b.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined })
+    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools ?? [], model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined })
   })
 }
 
@@ -269,7 +271,11 @@ export const register: Register = (on, options) => {
     const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
     await update($, main, m => ({ ...m, model }))
     void debug($, 'session.start', { model, language: cfg.lang, advisorMode: cfg.advisorMode, advisorBudget: cfg.advisorBudget, learning: cfg.learning, gitPollMinutes: baseMinutes, gitFetch: isFetching })
-    // A turn under way when the module reloaded lost its clock; older state lacks fields.
+    // A turn under way when the module reloaded goes on: its clock and gate restart here, what it gathered before is gone. Older state lacks fields.
+    if ((await read($, main)).turnLive) {
+      isTurnLive = true
+      clk = newClock(turn.startedAt, true)
+    }
     await update($, insights, v => ({ ...shapeInsights(v), turn: undefined }))
     // State from an older version or another language holds keys this one does not draw; drop them.
     const known = (k: string) => k in t.cat
@@ -374,12 +380,7 @@ export const register: Register = (on, options) => {
         update($, insights, v => ({ ...EMPTY_INSIGHTS, turn: v.turn })),
       ])
       // The request stays: the turn under way still answers it.
-      turn.tools = 0
-      turn.delegated = 0
-      turn.trail = []
-      turn.edited = new Set()
-      turn.edits = new Map()
-      turn.docs = new Set()
+      resetTurn(turn, [])
       await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const }))
       await refreshStatus($)
       return { text: t.cleared }
@@ -392,6 +393,7 @@ export const register: Register = (on, options) => {
     // A turn a Stop hook sent back (the done gate or another one) goes on as the same turn: its checks and edits still count.
     if (e.agentId === undefined && e.text === '') {
       isTurnLive = true
+      await update($, main, v => ({ ...v, turnLive: true }))
       // The first turn.complete stopped the clock; the work after the send-back is still this turn's.
       if (!clk.inTurn) clk = newClock(await $.clock.now(), true)
     } else if (e.agentId === undefined) {
@@ -400,16 +402,8 @@ export const register: Register = (on, options) => {
       // A prompt that says the last edit turn's change did not work; read before the turn's files reset.
       const isFix = turn.edited.size > 0 && isCorrection(e.text)
       turn.prompt = mask(e.text)
-      turn.tools = 0
-      turn.delegated = 0
       turn.startedAt = await $.clock.now()
-      turn.trail = []
-      turn.edited = new Set()
-      turn.edits = new Map()
-      turn.docs = new Set()
-      turn.before = await read($, checks)
-      turn.codeEditAt = undefined
-      turn.lastCodeEditAt = undefined
+      resetTurn(turn, await read($, checks))
       blockAt = undefined
       isPassed = false
       newPrompt()
@@ -420,9 +414,9 @@ export const register: Register = (on, options) => {
       clk = newClock(turnAt, true)
       await Promise.all([
         update($, stats, s => ({ ...s, streak: 0 })),
-        update($, main, v => ({ ...v, turnAt })),
-        // Loops and switches are this turn's; approvals and re-reads add up over the session.
-        update($, insights, v => ({ ...v, fails: {}, errs: {}, turnCalls: 0, turnSwitches: 0, turnAreas: {}, corrections: isFix ? (v.corrections ?? 0) + 1 : 0 })),
+        update($, main, v => ({ ...v, turnAt, turnLive: true })),
+        // Loops, switches, approvals and the cache share are this turn's; re-reads add up over the session.
+        update($, insights, v => ({ ...v, fails: {}, errs: {}, asked: {}, cacheRead: 0, cacheTotal: 0, turnCalls: 0, turnSwitches: 0, turnAreas: {}, corrections: isFix ? (v.corrections ?? 0) + 1 : 0 })),
       ])
     } else {
       // A finished agent that gets a new message runs again.
@@ -484,8 +478,8 @@ export const register: Register = (on, options) => {
       ...(isMain
         ? {
             ctx: [...v.ctx, total].slice(-80),
-            cacheRead: u.cache_read_input_tokens,
-            cacheTotal: total,
+            cacheRead: v.cacheRead + u.cache_read_input_tokens,
+            cacheTotal: v.cacheTotal + total,
             tokens: { ...v.tokens, mainIn: v.tokens.mainIn + total, mainOut: v.tokens.mainOut + u.output_tokens, mainCached: v.tokens.mainCached + u.cache_read_input_tokens },
             usd: v.usd + (priceUsd(e.model, u) ?? 0),
           }
@@ -610,7 +604,13 @@ export const register: Register = (on, options) => {
       const workPath = e.agentId === undefined && sameTurn && r.deny === undefined ? pathOf(e) : undefined
       const area = workPath === undefined ? undefined : areaOf(workPath, cwd)
       // The history's calls-per-minute rate drops this call after a minute; an idle pane draws nothing on its own.
-      $.clock.after(60_000, async () => $.ui.invalidate('ui.render'))
+      if (!rateQueued) {
+        rateQueued = true
+        $.clock.after(60_000, async () => {
+          rateQueued = false
+          await $.ui.invalidate('ui.render')
+        })
+      }
       // One batch of writes, so the pane redraws once per call.
       const [s] = await Promise.all([
         (r.isError || isMain) &&
@@ -653,7 +653,6 @@ export const register: Register = (on, options) => {
             errs: sig ? bump(v.errs, sig) : v.errs,
             turnCalls: isMain ? v.turnCalls + 1 : v.turnCalls,
             area: area ?? v.area,
-            switches: v.switches + (moved ? 1 : 0),
             turnSwitches: v.turnSwitches + (moved ? 1 : 0),
             turnAreas: area === undefined ? v.turnAreas : bump(v.turnAreas, area),
           }
@@ -692,6 +691,8 @@ export const register: Register = (on, options) => {
     if (r.skip === undefined) noteCompact(before?.context.tokens)
     void debug($, 'compact', { trigger: e.trigger, agent: e.agentId !== undefined, tokensBefore: before?.context.tokens, skipped: r.skip !== undefined })
     if (r.skip === undefined && e.trigger !== 'precompute' && e.agentId === undefined) {
+      // What was read is out of the context now: a read after this is no re-read.
+      await update($, insights, v => ({ ...v, reads: {} }))
       await update($, stats, s => ({ ...s, compactions: s.compactions + 1 }))
       await addLog($, { who: t.mainSession, what: t.compacted(e.trigger), result: '' })
     }
@@ -780,6 +781,7 @@ export const register: Register = (on, options) => {
       await benchPrompt($, turn, blockAt, isPassed)
       await finishTurn($, e.durationMs, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined)
       isTurnLive = false
+      await update($, main, v => ({ ...v, turnLive: false }))
       void debug($, 'turn.complete', { ms: e.durationMs, tools: turn.tools, edited: turn.edited.size })
       lastAnswer = e.answer
       if (baseMinutes > 0) $.clock.after(0, () => refreshBase($, cwd, false))

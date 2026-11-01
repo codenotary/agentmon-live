@@ -6,7 +6,7 @@ import { ago, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, r
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
-import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline } from './insights'
+import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
@@ -493,14 +493,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const ctxDelta = ins.last?.ctxStart !== undefined && ins.last.ctxEnd !== undefined ? ins.last.ctxEnd - ins.last.ctxStart : undefined
   const cachePct = ins.cacheTotal > 0 ? percent(ins.cacheRead, ins.cacheTotal) : undefined
   const allIn = ins.tokens.mainIn + ins.tokens.agentsIn
-  const top = (r: Record<string, number>, n: number, min: number) =>
-    Object.entries(r)
-      .filter(([, v]) => v >= min)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, n)
-  const areaList = top(ins.turnAreas, 4, 1).map(([a, n]) => `${a} ${n}`).join(' · ')
-  const rereads = top(ins.reads, 2, 2).map(([p, n]) => `${shortPath(p)} ${n}×`).join(', ')
-  const churned = top(ins.edits, 2, 2).map(([p, n]) => `${shortPath(p)} ${n}×`).join(', ')
+  const areaList = topCounts(ins.turnAreas, 4, 1).map(([a, n]) => `${a} ${n}`).join(' · ')
+  const rereads = topCounts(ins.reads, 2, 2).map(([p, n]) => `${shortPath(p)} ${n}×`).join(', ')
+  const churned = topCounts(ins.edits, 2, 2).map(([p, n]) => `${shortPath(p)} ${n}×`).join(', ')
   const hasInsights = shownTurn !== undefined || ins.slow.length > 0 || ins.ctx.length > 0
   const insightBox = hasInsights && (
     <Box flexDirection="column" borderStyle="round" borderColor="blue" paddingX={1} flexGrow={1}>

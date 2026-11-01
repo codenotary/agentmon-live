@@ -50,7 +50,6 @@ export const zh: Strings = {
   calls: '调用',
   off: '关闭',
   context: '上下文',
-  output: '输出',
   toolsHeader: '工具 · 调用',
   total: '总计',
   errors: n => `${n} 失败`,
@@ -125,8 +124,7 @@ export const zh: Strings = {
     slowest: '最慢',
     context: '上下文',
     ctxLine: (now, delta, cache, compactions) =>
-      `当前 ${now}${delta ? ` · 上一轮 ${delta}` : ''}${cache === undefined ? '' : ` · 上次请求缓存 ${cache}%`}${compactions ? ` · 压缩 ${compactions}×` : ''}`,
-    biggest: '最大结果',
+      `当前 ${now}${delta ? ` · 上一轮 ${delta}` : ''}${cache === undefined ? '' : ` · 本轮缓存 ${cache}%`}${compactions ? ` · 压缩 ${compactions}×` : ''}`,
     tokens: (i, cached, o, agents) => `输入 ${i}（本会话缓存 ${cached}%）· 输出 ${o}${agents ? ` · 子代理占输入 ${agents}%` : ''}`,
     areas: (n, list) => `本轮切换 ${n} 次 · ${list}`,
     reread: '重复读取',

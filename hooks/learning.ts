@@ -4,7 +4,7 @@ import type { ContextMcpTool, EngineInterface } from 'claude-code'
 import type { Bench, BenchRow, Learned, PromptBench, SessionRecord } from '../types'
 import { addPrompt, benchReport, emptyBench, gapKinds, KEEP_BENCH, upsertRow } from './bench'
 import { debug } from './debuglog'
-import { addGaps, KEEP_SESSIONS, lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare } from './learn'
+import { addGaps, KEEP_SESSIONS, lt, newRecord, parseTranscript, serverOf, shapeLearned, storeKey, tally, totals, upsert, isFlaky, errorShare, trimTools } from './learn'
 import { memRules, refsOf } from './memcheck'
 import type { MemFile } from './memcheck'
 import { keysOf, oldestOfOthers, rowKey, sameId, sessKey, toDrop } from './records'
@@ -89,7 +89,7 @@ async function prune($: EngineInterface) {
 async function putSession($: EngineInterface, r: SessionRecord): Promise<boolean> {
   const keys = await keysNow($)
   const key = sessKey(cwd, r)
-  if (!(await putRoom($, key, r))) return false
+  if (!(await putRoom($, key, trimTools(r)))) return false
   await dropKeys($, sameId(keys, 'sess', cwd, r.id, key))
   const [row] = upsertRow([], r)
   const isRowStored = row ? await putRow($, row, keys) : true
@@ -125,8 +125,11 @@ async function migrate($: EngineInterface, entry: Learned | undefined) {
   const old = shapeLearned(entry)
   if (old.sessions.length === 0 && old.bench.length === 0) return
   let isAllMoved = true
-  for (const r of old.sessions) if (!(await putSession($, r))) isAllMoved = false
-  for (const row of old.bench) if (!(await putRow($, row, await keysNow($)))) isAllMoved = false
+  // A key written since (by this session or a parallel one) is newer than the entry's copy: it stays.
+  const keys = await keysNow($)
+  const has = (kind: 'sess' | 'row', id: string) => sameId(keys, kind, cwd, id, '').length > 0
+  for (const r of old.sessions) if (!has('sess', r.id) && !(await putSession($, r))) isAllMoved = false
+  for (const row of old.bench) if (!has('row', row.id) && !(await putRow($, row, await keysNow($)))) isAllMoved = false
   // The old entry is cleared only once every session and row is in its own key; otherwise loadProject still reads it.
   if (isAllMoved) await putRoom($, storeKey(cwd), { mem: old.mem, sessions: [], bench: [] })
 }
@@ -173,7 +176,7 @@ export function noteCompact(tokens: number | undefined) {
 }
 
 // The end of each main turn: the session's record so far replaces its earlier one in the store.
-export async function saveTurn($: EngineInterface, u: { tokens?: number; window: number; mcpTools: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number }) {
+export async function saveTurn($: EngineInterface, u: { tokens?: number; window?: number; mcpTools: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number }) {
   if (!rec) return
   const r = rec
   // Session totals; the larger one survives a reload or `/agentmon clear`, which start them again from 0.
@@ -181,7 +184,7 @@ export async function saveTurn($: EngineInterface, u: { tokens?: number; window:
   r.bench = { ...b, mod: true, live: true, outTokens: Math.max(b.outTokens, u.outTokens), fable: Math.max(b.fable, u.fable), usd: Math.max(b.usd ?? 0, u.usd ?? 0) || undefined }
   r.turns += 1
   r.peak = Math.max(r.peak, u.tokens ?? 0)
-  r.window = u.window
+  r.window = u.window ?? r.window
   r.model = u.model || r.model
   r.effort = u.effort || r.effort
   const mcp: Record<string, number> = {}
@@ -211,14 +214,17 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
   if (entries.length === 0) return t.learnNone(dir)
   // A session recorded live knows more (MCP schemas, window, effort) than its transcript: keep it.
   // One from a version that did not count the done gate's catches gets only those from its transcript.
-  const have = new Map((await loadProject($)).sessions.map(s => [s.id, s]))
+  const proj = await loadProject($)
+  const have = new Map(proj.sessions.map(s => [s.id, s]))
+  // A session with a live row and no record any more: its transcript would only give a row the live one outranks.
+  const liveRows = new Set(proj.bench.filter(r => r.live).map(r => r.id))
   const recs: SessionRecord[] = []
   const filled: SessionRecord[] = []
   let skipped = 0
   for (const e of entries) {
     const id = e.name.slice(0, -'.jsonl'.length)
     const old = have.get(id)
-    if (id === rec.id || (old && old.gaps && old.errs)) continue
+    if (id === rec.id || (old && old.gaps && old.errs) || (!old && liveRows.has(id))) continue
     const path = `${dir}/${e.name}`
     // shortcut: a transcript over the 4 MiB read cap is learned from its last 4 MiB only; read it in parts if early turns matter.
     const text = await $.fs.read(path).catch(async () => {
@@ -237,10 +243,19 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
       recs.push(r)
     }
   }
+  // Only the newest KEEP_SESSIONS records get a session key, the rest their bench row only: nothing is written to be pruned at once.
+  const all = [...filled, ...recs]
+  const cutoff = [...new Map([...have.values(), ...all].map(s => [s.id, s.at])).values()].sort((a, b) => b - a)[KEEP_SESSIONS - 1] ?? 0
   await queue(async () => {
-    for (const r of [...filled, ...recs]) await putSession($, r)
+    for (const r of all) {
+      if (r.at >= cutoff) await putSession($, r)
+      else {
+        const [row] = upsertRow([], r)
+        if (row) await putRow($, row, await keysNow($))
+      }
+    }
   })
-  await update($, learned, l => [...filled, ...recs].reduce(upsert, l))
+  await update($, learned, l => all.reduce(upsert, l))
   const calls = recs.reduce((n, r) => n + Object.values(r.tools).reduce((m, x) => m + x.calls, 0), 0)
   const compactions = recs.reduce((n, r) => n + r.compactAt.length, 0)
   return t.learned(recs.length, calls, compactions, skipped)
@@ -263,6 +278,8 @@ export function queueMemoryCheck($: EngineInterface) {
 }
 
 // The memory and instruction files the session loads, plus the project's auto-memory folder.
+let lastMem: string | undefined
+
 async function checkMemory($: EngineInterface) {
   const { conf, home } = await configDir($)
   const memDir = `${conf}/projects/${slug(cwd)}/memory`
@@ -281,6 +298,10 @@ async function checkMemory($: EngineInterface) {
     if (!(await $.fs.exists(ref).catch(() => true))) missing.set(ref, file)
   }
   const mem = memRules(files, dir, missing)
+  // The same findings as last time: nothing to write.
+  const memJson = JSON.stringify(mem)
+  if (memJson === lastMem) return
+  lastMem = memJson
   await queue(async () => {
     const { current: _, ...kept } = { ...shapeLearned(await valueOf<Learned>($, storeKey(cwd))), mem }
     await putRoom($, storeKey(cwd), kept)

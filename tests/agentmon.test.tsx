@@ -3,7 +3,7 @@ import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { ago, findCheck, hidesExit, outcomeOf, resetTime, smoothBar, spinner } from '../hooks/format'
-import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/register'
+import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/format'
 import { rank } from '../hooks/state'
 
 // The kit declares the hook-adding `on` without exporting its type.

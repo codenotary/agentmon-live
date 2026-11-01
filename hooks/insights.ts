@@ -51,7 +51,7 @@ const KEEP_DURATIONS = 20
 // 850 -> 0.9s, 12_400 -> 12s, 252_000 -> 4m12s, 3_840_000 -> 1h04m
 export function dur(ms: number): string {
   const s = Math.max(0, ms) / 1000
-  if (s < 10) return `${s.toFixed(1)}s`
+  if (s < 10) return `${decimal(s)}s`
   if (s < 60) return `${Math.round(s)}s`
   const m = Math.floor(s / 60)
   if (m < 60) return `${m}m${pad(Math.floor(s % 60))}s`
@@ -61,6 +61,14 @@ export function dur(ms: number): string {
 // What a tool result costs the context, roughly: four characters a token.
 export function estTokens(text: string): number {
   return Math.ceil(text.length / 4)
+}
+
+// The `n` largest counts of at least `min`, largest first.
+export function topCounts(r: Record<string, number>, n: number, min: number): [string, number][] {
+  return Object.entries(r)
+    .filter(([, v]) => v >= min)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
 }
 
 export function p90(list: readonly number[]): number | undefined {
@@ -198,7 +206,6 @@ export type FocusInput = {
 export function focusList({ ins, doing, agents, percent, window, tokens, now, learned = [], base, edited = [] }: FocusInput): Insight[] {
   const t = cfg.t.ins
   const out: Insight[] = [...learned]
-  const top = <V>(r: Record<string, V>, by: (v: V) => number) => Object.entries(r).sort((a, b) => by(b[1]) - by(a[1]))[0]
 
   // A call running far past what it usually takes.
   for (const a of doing) {
@@ -227,12 +234,12 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
   }
 
   // The same call failing again and again.
-  const loop = top(ins.fails, v => v)
+  const loop = topCounts(ins.fails, 1, 1)[0]
   if (loop && loop[1] >= LOOP_FAILS) {
     out.push({ key: `loop:${loop[0]}:${loop[1]}`, score: 80, tag: t.tag.loop, color: 'red', text: t.loop(loop[1], loop[0]), prompt: t.promptLoop(loop[1], loop[0]) })
   }
   // One error behind different calls: a cause to fix once. The loop above already names it when it is one call.
-  const same = top(ins.errs, v => v)
+  const same = topCounts(ins.errs, 1, 1)[0]
   if (same && same[1] >= LOOP_FAILS && !(loop && loop[1] >= LOOP_FAILS)) {
     out.push({ key: `sameErr:${same[0]}:${same[1]}`, score: 78, tag: t.tag.loop, color: 'red', text: t.sameErr(same[1], same[0]), prompt: t.promptSameErr(same[1], same[0]) })
   }
@@ -260,12 +267,12 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
     }
   }
 
-  const reread = top(ins.reads, v => v)
+  const reread = topCounts(ins.reads, 1, 1)[0]
   if (reread && reread[1] >= REREADS) {
     out.push({ key: `reread:${reread[0]}:${reread[1]}`, score: 45, tag: t.tag.reread, color: 'yellow', text: t.rereadText(shortPath(reread[0]), reread[1]), prompt: t.promptReread(reread[0], reread[1]) })
   }
 
-  const churn = top(ins.edits, v => v)
+  const churn = topCounts(ins.edits, 1, 1)[0]
   if (churn && churn[1] >= CHURN_EDITS) {
     out.push({ key: `churn:${churn[0]}:${churn[1]}`, score: 40, tag: t.tag.churn, color: 'yellow', text: t.churn(shortPath(churn[0]), churn[1]), prompt: t.promptChurn(churn[0], churn[1]) })
   }
@@ -328,7 +335,9 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
     }
   }
 
-  if (ins.cacheTotal >= CACHE_MIN_TOKENS && ins.ctx.length > 2 && ins.cacheRead / ins.cacheTotal < LOW_CACHE) {
+  // Over this turn's requests, from the second on: the first request after a resume or compaction rewrites the cache by design.
+  const steps = (ins.turn ?? ins.last)?.steps ?? 0
+  if (ins.cacheTotal >= CACHE_MIN_TOKENS && steps >= 2 && ins.cacheRead / ins.cacheTotal < LOW_CACHE) {
     out.push({ key: `cache:${ins.turns}`, score: 40, tag: t.tag.cache, color: 'yellow', text: t.cache(Math.round((ins.cacheRead / ins.cacheTotal) * 100)) })
   }
 

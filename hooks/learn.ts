@@ -1,5 +1,6 @@
 import type { GapKind, Learned, MemFinding, SessionRecord, ToolTally } from '../types'
-import { benchOf, gapKinds, textOf, upsertRow } from './bench'
+import { benchOf, gapKinds, parseLines, textOf, upsertRow } from './bench'
+import type { Entry } from './bench'
 import { kilo, mask } from './format'
 import { BIG_RESULT_TOKENS, bump, estTokens, median, p90 } from './insights'
 import type { Insight } from './insights'
@@ -44,7 +45,7 @@ export function shapeLearned(v: unknown): Learned {
 }
 
 export function newRecord(id: string, at: number): SessionRecord {
-  return { id, at, model: '', effort: '', peak: 0, window: 0, compactAt: [], turns: 0, tools: {}, mcp: {}, gaps: {} }
+  return { id, at, model: '', effort: '', peak: 0, window: 0, compactAt: [], turns: 0, tools: {}, mcp: {}, gaps: {}, errs: {} }
 }
 
 // A rejected call says nothing about the tool.
@@ -71,7 +72,7 @@ export function addGaps(rec: SessionRecord, kinds: readonly GapKind[]) {
   for (const k of kinds) rec.gaps = { ...rec.gaps, [k]: (rec.gaps?.[k] ?? 0) + 1 }
 }
 
-function trimTools(rec: SessionRecord): SessionRecord {
+export function trimTools(rec: SessionRecord): SessionRecord {
   const entries = Object.entries(rec.tools)
   const errs = Object.entries(rec.errs ?? {})
   const out = entries.length <= KEEP_TOOLS ? rec : { ...rec, tools: Object.fromEntries(entries.sort((a, b) => b[1].calls - a[1].calls).slice(0, KEEP_TOOLS)) }
@@ -92,19 +93,13 @@ export function errSig(text: string): string | undefined {
 }
 
 // One transcript file (`<id>.jsonl`) as a session record, for the backfill. Lines that do not parse are skipped.
-export function parseTranscript(id: string, text: string): SessionRecord {
+export function parseTranscript(id: string, text: string | Entry[]): SessionRecord {
+  const entries = typeof text === 'string' ? parseLines(text) : text
   const rec = newRecord(id, 0)
   const names = new Map<string, string>()
   // A resumed session repeats entries; each counts once, as in `benchOf`.
   const seen = new Set<string>()
-  for (const line of text.split('\n')) {
-    if (!line.startsWith('{')) continue
-    let o: Record<string, any>
-    try {
-      o = JSON.parse(line)
-    } catch {
-      continue
-    }
+  for (const o of entries) {
     if (typeof o.uuid === 'string') {
       if (seen.has(o.uuid)) continue
       seen.add(o.uuid)
@@ -143,7 +138,7 @@ export function parseTranscript(id: string, text: string): SessionRecord {
       rec.turns += 1
     }
   }
-  rec.bench = benchOf(text)
+  rec.bench = benchOf(entries)
   return rec
 }
 
