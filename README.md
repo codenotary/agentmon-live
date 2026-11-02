@@ -29,6 +29,13 @@ h: history   d: details
 
 [![AgentMon Live demo: the done gate catches a failing test before Claude stops](docs/demo.png)](https://asciinema.org/a/1270436)
 
+<details>
+<summary>What each part of the pane shows</summary>
+
+![AgentMon Live pane, section by section: header, Focus, running call, Insights, done gate, changes and verification, Usage, tool history, subagents and session log](docs/pane-explained.png)
+
+</details>
+
 ## Why you want it
 
 - **No more "all tests pass" when they don't.** Before Claude stops, the done gate checks what really happened: failed or stale tests, open todos, failing subagents. Anything unfinished goes back to Claude once. Fable, a second model that never writes code, checks that every part of your request got an answer.
