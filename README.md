@@ -29,12 +29,9 @@ h: history   d: details
 
 [![AgentMon Live demo: the done gate catches a failing test before Claude stops](docs/demo.png)](https://asciinema.org/a/1270436)
 
-<details>
-<summary>What each part of the pane shows</summary>
+What each part of the pane shows:
 
 ![AgentMon Live pane, section by section: header, Focus, running call, Insights, done gate, changes and verification, Usage, tool history, subagents and session log](docs/pane-explained.png)
-
-</details>
 
 ## Why you want it
 
