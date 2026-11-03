@@ -85,7 +85,7 @@ src/legacy/*.ts    # ported code, split after the migration
 
 ### Test targets
 
-In a repository with several packages, a test run only verifies the package it ran in. The mod records where each test command ran: the shell's directory, moved by a `cd` in the command, `--prefix`/`-C`, a workspace (`pnpm --filter web`, `npm -w web`, `yarn workspace web`, `cargo test -p web`) or a path argument (`go test ./api/...`, `vitest packages/api`). A name filter (`-t`, `-k`, `-run`, `--grep`) or a single test file makes the run focused.
+In a repository with several packages, a test run only verifies the package it ran in. The mod records where each test command ran: the shell's directory, moved by a `cd` in the command, `--prefix`/`-C`, a workspace (`pnpm --filter web`, `npm -w web`, `yarn workspace web`, `cargo test -p web`) or a path argument (`go test ./api/...`, `vitest packages/api`). A name filter (`-t`, `-k`, `-run`, `--grep`) or a single test file makes the run focused. A folder written with `~` or a variable is unknown, so that run reaches no package.
 
 Each edited source file belongs to its nearest package root (a directory with `package.json`, `pyproject.toml`, `Cargo.toml` or `go.mod`); config, lockfiles and data need no test unless a rule below names them. Every test in a chained command counts, each from its own directory. When tests ran after the last edit, every edited package needs a run in it or above it with at least one test executed; a focused run is enough. Otherwise the gate sends back `packages/api: edited (auth.ts), but no test run after the edit reached it`.
 

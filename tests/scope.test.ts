@@ -52,3 +52,18 @@ test('declared test targets need a reason; full and min are read', () => {
   expect(rules[0]!.re.test('packages/api/src/a.ts')).toBe(true)
   expect(rules[0]!.re.test('packages/web/src/a.ts')).toBe(false)
 })
+
+test('review findings: subshell cd, unknown folders, flags without a value, long cargo output', () => {
+  expect(scope('(cd api && npm test)')).toEqual({ dir: '/repo/api', isFocused: false })
+  // `~` and variables are unknown folders: the run reaches no package.
+  expect(scope('cd ~/r/api && npm test').dir).toBe('?')
+  expect(scope('cd $PKG && npm test').dir).toBe('?')
+  expect(scope('cd $PKG && cd sub && npm test').dir).toBe('?')
+  expect(scope('cargo test --workspace')).toEqual({ dir: '/repo', isFocused: false })
+  expect(scope('cargo test --workspace --lib')).toEqual({ dir: '/repo', isFocused: false })
+  expect(scope('pnpm -w run test')).toEqual({ dir: '/repo', isFocused: false })
+  expect(scope('npm -w packages/api test')).toEqual({ dir: '/repo', pkg: 'api', isFocused: false })
+  const crate = (n: number) => `     Running unittests src/lib.rs\n${'test t ... ok\n'.repeat(5)}\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n`
+  const doc = '   Doc-tests c\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n\n'
+  expect(testCounts(Array.from({ length: 8 }, crate).join('') + doc.repeat(8))).toEqual({ ran: 40, skipped: 0 })
+})

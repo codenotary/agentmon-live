@@ -348,6 +348,29 @@ test('each test of a chained command counts, from its own directory', { options:
   expect(await attempt($, clock, 'm3', [API, WEB], ['cd packages/web && npm test && npm run lint'])).toContain(UNCOVERED_API)
 })
 
+test('review findings: a later passing run elsewhere keeps a failure; a rule holds whatever the edit order', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'cd packages/api && npx vitest -t login': '1 passed' })
+  monorepo(on, 'packages/api/src/** packages/api full # auth is shared')
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(await attempt($, clock, 'm1', [API, WEB], ['cd packages/api && npm test -- fail', 'cd packages/web && npm test'])).toContain('test failed: npm test -- fail')
+  // The first edited file has no rule; the second's `full` still applies to the shared target.
+  expect(await attempt($, clock, 'm2', ['/repo/packages/api/scripts/build.ts', API], ['cd packages/api && npx vitest -t login'])).toContain('packages/api: edited (build.ts, auth.ts)')
+})
+
+test('the row of a chained command names the last test with its own folder', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  monorepo(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'cd packages/api && npm test && cd ../web && npx vitest run' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+packages\/web: npx vitest run/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('a filter that selects no tests is no evidence, even when the runner exits 0', { options: { advisorMode: 'gate' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on, { 'npx vitest -t nomatch --passWithNoTests': 'No test files found, exiting with code 0' })

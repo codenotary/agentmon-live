@@ -4,7 +4,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Check, Task } from '../types'
 import { PROMPT_CHURN_EDITS } from './bench'
 import { addNote, consult } from './advisor'
-import { coverageGaps, doneGaps, isDoc, testCfg } from './gate'
+import { coverageGaps, doneGaps, isDoc, isWithin, testCfg } from './gate'
 import type { Target, TestRun } from './gate'
 import { relPath, SOURCE } from './sizeguard'
 import { mask } from './format'
@@ -47,7 +47,7 @@ const packageRoots = new Map<string, string>()
 async function packageRoot($: EngineInterface, dir: string, root: string): Promise<string> {
   const known = packageRoots.get(dir)
   if (known !== undefined) return known
-  const found = dir === root || !dir.startsWith(`${root}/`) ? root
+  const found = dir === root || !isWithin(dir, root) ? root
     : (await Promise.all(MANIFESTS.map(m => $.fs.exists(`${dir}/${m}`).catch(() => false)))).some(Boolean) ? dir
     : await packageRoot($, dir.slice(0, dir.lastIndexOf('/')) || '/', root)
   packageRoots.set(dir, found)
@@ -65,7 +65,13 @@ export async function targetsOf($: EngineInterface, turn: Turn): Promise<Target[
     // Config, lockfiles and data have no tests of their own unless a rule says so.
     if (!rule && !SOURCE.test(path)) continue
     const dir = rule ? (rule.dir === '.' ? root : `${root === '/' ? '' : root}/${rule.dir}`) : await packageRoot($, path.slice(0, path.lastIndexOf('/')) || '/', root)
-    const target = byDir.get(dir) ?? { dir, label: relPath(dir, root) || '.', files: [], isFull: rule?.isFull ?? false, min: rule?.min ?? 1, isDeclared: rule !== undefined }
+    const target = byDir.get(dir) ?? { dir, label: relPath(dir, root) || '.', files: [], isFull: false, min: 1, isDeclared: false }
+    // Files that share a target add up: the strictest rule any of them matched holds, whatever the edit order.
+    if (rule) {
+      target.min = target.isDeclared ? Math.max(target.min, rule.min) : rule.min
+      target.isFull ||= rule.isFull
+      target.isDeclared = true
+    }
     target.files.push(path.slice(path.lastIndexOf('/') + 1))
     byDir.set(dir, target)
   }
@@ -112,7 +118,7 @@ export async function benchPrompt($: EngineInterface, turn: Turn, blockAt: numbe
   const after = checked.filter(c => c.at >= (turn.lastCodeEditAt ?? Infinity) && c.result !== 'running')
   notePrompt({
     edit: turn.lastCodeEditAt !== undefined,
-    verified: after.length > 0 && after.every(c => c.result === 'ok') && coverageGaps(cfg.t, turn.tests, targets, turn.lastCodeEditAt).length === 0,
+    verified: after.length > 0 && after.every(c => c.result === 'ok') && coverageGaps(cfg.t, turn.tests, targets, turn.lastCodeEditAt, turn.before.some(b => b.kind === 'test' && b.result === 'failed')).length === 0,
     churn: [...turn.edits.values()].some(n => n >= PROMPT_CHURN_EDITS),
     ms: turn.tools > 0 ? now - turn.startedAt : 0,
     block: blockAt !== undefined,

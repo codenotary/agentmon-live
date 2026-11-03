@@ -219,9 +219,10 @@ export function joinPath(base: string, to: string): string {
 }
 
 const PATH_FLAG = /^(?:--prefix|--dir|--cwd|-C)$/
-// Only after a package manager: `-w` is watch mode to vitest, `-p` a plugin to pytest.
-const PKG_FLAG = /^(?:--workspace|-w|--filter|-F|--package|-p)$/
-const MANAGER = /^(?:npm|pnpm|yarn|bun|cargo)$/
+// The package flags that take a name, per manager: cargo's `--workspace` and pnpm's `-w` (the root) take none; `-w` is watch mode to vitest.
+const PKG_FLAG: Record<string, RegExp> = { npm: /^(?:-w|--workspace)$/, pnpm: /^(?:--filter|-F)$/, bun: /^--filter$/, cargo: /^(?:-p|--package)$/ }
+// A folder known only at run time: `~`, `$VAR`, a command substitution.
+export const UNKNOWN_DIR = '?'
 const FOCUS_FLAG = /^(?:-t|--testNamePattern|--test-name-pattern|--grep|-g|-k|-run|--only|--exact)$/
 
 export type TestScope = { dir: string; pkg?: string; isFocused: boolean }
@@ -231,10 +232,11 @@ export type TestScope = { dir: string; pkg?: string; isFocused: boolean }
 export function testScope(command: string, part: string, shellDir: string, from = 0): TestScope {
   // shortcut: whitespace tokens and plain paths only, a runner's own config (`projects`, `testMatch`) is not read; upgrade when a project's runs are misplaced.
   let dir = shellDir
+  const go = (to: string) => (dir = dir === UNKNOWN_DIR || /^~|[$`]/.test(to) ? UNKNOWN_DIR : joinPath(dir, to))
   const at = Math.max(0, command.indexOf(part, from))
-  for (const m of command.slice(0, at).matchAll(/(?:^|&&|;|\n)\s*(?:cd|pushd)\s+([^\s;&|]+)/g)) dir = joinPath(dir, m[1]!.replace(/^['"]|['"]$/g, ''))
+  for (const m of command.slice(0, at).matchAll(/(?:^|&&|;|\n|\()\s*(?:cd|pushd)\s+([^\s;&|)]+)/g)) go(m[1]!.replace(/^['"]|['"]$/g, ''))
   const words = part.split(/\s+/).map(w => w.replace(/^['"]|['"]$/g, ''))
-  const isManager = MANAGER.test(words[0] ?? '')
+  const pkgFlag = PKG_FLAG[words[0] ?? '']
   let pkg: string | undefined
   let path: string | undefined
   let isFocused = false
@@ -243,9 +245,9 @@ export function testScope(command: string, part: string, shellDir: string, from 
     const eq = word.startsWith('-') ? word.indexOf('=') : -1
     const flag = eq > 0 ? word.slice(0, eq) : word
     const value = () => (eq > 0 ? word.slice(eq + 1) : (words[++i] ?? ''))
-    if (PATH_FLAG.test(flag)) dir = joinPath(dir, value())
+    if (PATH_FLAG.test(flag)) go(value())
     // `@acme/web` and `./packages/web` both name the package `web`.
-    else if (isManager && (PKG_FLAG.test(flag) || (flag === 'workspace' && i === 1))) pkg = value().replace(/\/+$/, '').replace(/^.*\//, '')
+    else if (pkgFlag?.test(flag) || (words[0] === 'yarn' && flag === 'workspace' && i === 1)) pkg = value().replace(/\/+$/, '').replace(/^.*\//, '')
     else if (FOCUS_FLAG.test(flag)) {
       value()
       isFocused = true
@@ -254,7 +256,7 @@ export function testScope(command: string, part: string, shellDir: string, from 
   if (path) {
     const isFile = /\.\w+(?:::.*)?$/.test(path) && !/\.\.\.$/.test(path)
     const clean = path.replace(/::.*$/, '').replace(/\/?\.\.\.$/, '')
-    dir = joinPath(dir, isFile ? clean.replace(/\/?[^/]*$/, '') : clean)
+    go(isFile ? clean.replace(/\/?[^/]*$/, '') || '.' : clean || '.')
     if (isFile) isFocused = true
   }
   return pkg === undefined ? { dir, isFocused } : { dir, pkg, isFocused }
@@ -263,6 +265,8 @@ export function testScope(command: string, part: string, shellDir: string, from 
 const COUNT_FIRST = /(\d+)\s+(?:tests?\s+)?(passed|passing|pass|failed|failing|fail|skipped|pending|ignored|todo)\b/gi
 // node's runner: `# pass 3`, `ℹ skipped 1`.
 const WORD_FIRST = /^\s*(?:#|ℹ)\s*(pass|fail|skipped|todo)\s+(\d+)\s*$/i
+// cargo prints a line per test binary, doc tests last; a workspace's lines can run past any tail.
+const CARGO_RESULT = /^test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored/gm
 const NO_TESTS = /No test files found|No tests found|no tests? (?:ran|to run)|\[no test files\]|collected 0 items|Ran 0 tests|^\s*0 passing\b/i
 
 // How many tests a run executed and skipped, from the runner's summary (jest, vitest, node, bun, mocha, pytest, cargo, go).
@@ -273,9 +277,14 @@ export function testCounts(output: string): { ran: number; skipped: number } | u
   let isSeen = false
   let isNone = false
   let isGoRun = false
+  for (const m of output.matchAll(CARGO_RESULT)) {
+    isSeen = true
+    ran += Number(m[1]) + Number(m[2])
+    skipped += Number(m[3])
+  }
   for (const line of output.slice(-20_000).split('\n').slice(-40)) {
     // Suites and files are not tests: jest's `Test Suites: 2 passed`, vitest's `Test Files  1 passed`.
-    if (/^\s*Test (?:Suites|Files)\b/.test(line)) continue
+    if (/^\s*Test (?:Suites|Files)\b|^test result:/.test(line)) continue
     if (NO_TESTS.test(line)) isNone = true
     else if (/^ok\s+\S+\s/.test(line)) isGoRun = true
     const tally = (word: string, n: number) => {

@@ -547,7 +547,7 @@ export const register: Register = (on, options) => {
     }
 
     const command = e.tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
-    // One row per kind; the row names the part that ran the check, not a script the same command ran first.
+    // One row per kind, named by its last part: the one a failure is blamed on, not a script the same command ran first.
     const kinds = e.tool === 'Bash' ? findChecks(command, true) : []
     const found = [...new Map(kinds.map(c => [c.kind, c])).values()]
     const lastKind = kinds.at(-1)?.kind
@@ -561,8 +561,8 @@ export const register: Register = (on, options) => {
       from = Math.max(from, command.indexOf(part, from) + part.length)
       return { ...scope, part }
     })
-    // The pane row shows the first test part, as before.
-    const scopeDir = scopes[0] && relPath(scopes[0].dir, cwd)
+    // The row's folder is its own part's.
+    const scopeDir = scopes.at(-1) && relPath(scopes.at(-1)!.dir, cwd)
     // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
     await Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),

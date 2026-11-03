@@ -1,7 +1,7 @@
 import type { Card, Check, Task } from '../types'
 import type { TestScope } from './format'
 import type { Strings } from './i18n'
-import { globToRegExp, MAX_WILDCARDS } from './sizeguard'
+import { globToRegExp, reasonedLines } from './sizeguard'
 
 // One test run this turn: where it ran, whether it was a subset, and how many tests it executed when the summary said.
 export type TestRun = TestScope & { command: string; at: number; result: Check['result']; ran?: number }
@@ -14,20 +14,14 @@ export const testCfg = { rules: [] as TestRule[] }
 
 // `<glob> <dir> [full] [min=N]  # <reason>` per line; a line without a reason is ignored, as in `.agentmon-size`.
 export function parseTestRules(text: string): TestRule[] {
-  return text
-    .split('\n')
-    .map(l => l.trim())
-    .filter(l => l && !l.startsWith('#'))
-    .flatMap(l => {
-      const [spec, reason] = l.split(/\s+#\s*/, 2)
-      const [glob, dir, ...opts] = (spec ?? '').split(/\s+/)
-      if (!glob || !dir || !reason?.trim() || (glob.match(/[*?]/g) ?? []).length > MAX_WILDCARDS) return []
-      const min = Number(opts.find(o => o.startsWith('min='))?.slice(4) ?? 1)
-      return [{ re: globToRegExp(glob), dir: dir.replace(/^\.\/|\/+$/g, '') || '.', isFull: opts.includes('full'), min: Number.isInteger(min) && min >= 0 ? min : 1 }]
-    })
+  return reasonedLines(text).flatMap(([glob, dir, ...opts]) => {
+    if (!glob || !dir) return []
+    const min = Number(opts.find(o => o.startsWith('min='))?.slice(4) ?? 1)
+    return [{ re: globToRegExp(glob), dir: dir.replace(/^\.\/|\/+$/g, '') || '.', isFull: opts.includes('full'), min: Number.isInteger(min) && min >= 0 ? min : 1 }]
+  })
 }
 
-const isWithin = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith('/') ? dir : `${dir}/`)
+export const isWithin = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith('/') ? dir : `${dir}/`)
 
 // A run reaches a target when it ran in the target's directory or above it, or in its workspace; below it, it ran only part of it.
 function reaches(r: TestRun, t: Target): { isPart: boolean } | undefined {
@@ -36,20 +30,26 @@ function reaches(r: TestRun, t: Target): { isPart: boolean } | undefined {
   return isWithin(r.dir, t.dir) ? { isPart: true } : undefined
 }
 
-// Runs after the last code edit that executed nothing, and targets no such run covered.
-// A failed run in a target is its own gap, never also "uncovered"; an unread summary is taken as tests run.
-export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined): string[] {
+// Runs after the last code edit that executed nothing, targets whose latest run failed, and targets no run covered.
+// The checks keep one row per kind, so a target's failure is reported here: a later pass elsewhere replaces its row.
+// `isOldFail`: the tests already failed at the prompt, so a failure is not this turn's. An unread summary is taken as tests run.
+export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined, isOldFail = false): string[] {
   if (lastCodeEditAt === undefined) return []
   const fresh = runs.filter(r => r.at >= lastCodeEditAt && r.result !== 'running')
   const gaps = fresh.filter(r => r.result === 'ok' && r.ran === 0).map(r => t.gapEmpty(r.command))
   for (const target of targets) {
     if (!target.isDeclared && fresh.length === 0) continue
-    const isCovered = fresh.some(r => {
+    const hits = fresh.flatMap(r => {
       const hit = reaches(r, target)
-      if (!hit) return false
-      if (r.result === 'failed') return true
-      return (r.ran ?? target.min) >= target.min && !(target.isFull && (r.isFocused || hit.isPart))
+      return hit ? [{ ...r, ...hit }] : []
     })
+    const last = hits.at(-1)
+    if (last?.result === 'failed') {
+      const gap = t.gapFailed(t.check.test, last.command)
+      if (!isOldFail && !gaps.includes(gap)) gaps.push(gap)
+      continue
+    }
+    const isCovered = hits.some(r => r.result !== 'failed' && (r.ran ?? target.min) >= target.min && !(target.isFull && (r.isFocused || r.isPart)))
     if (!isCovered) gaps.push(t.gapUncovered(target.label, target.files.slice(0, 3).join(', ')))
   }
   return gaps
@@ -92,7 +92,8 @@ export function doneGaps(t: Strings, { checks, before, tasks, agents, since, cod
     if (c.result === 'failed' && !isOld) gaps.push(t.gapFailed(t.check[c.kind], c.command))
     else if ((lastCodeEditAt ?? 0) > c.at) gaps.push(t.gapStale(t.check[c.kind], c.command))
   }
-  gaps.push(...coverageGaps(t, runs, targets, lastCodeEditAt))
+  const isOldFail = before.some(b => b.kind === 'test' && b.result === 'failed')
+  for (const gap of coverageGaps(t, runs, targets, lastCodeEditAt, isOldFail)) if (!gaps.includes(gap)) gaps.push(gap)
   // Code changed, the answer says the checks pass, and nothing ran after the change: the claim has no evidence.
   const claim = lastCodeEditAt === undefined || gaps.length > 0 ? undefined : claimOf(answer)
   if (claim && !checks.some(c => c.at >= lastCodeEditAt! && c.result !== 'running' && c.result !== 'failed')) gaps.push(t.gapClaim(claim))
