@@ -70,6 +70,7 @@ export const zh: Strings = {
   gapAgent: (type, why) => `子代理 ${type} 报告测试失败：${why}`,
   gapUncovered: (dir, files) => `${dir}：已修改（${files}），但修改后运行的测试都没有覆盖它`,
   gapEmpty: command => `${command} 没有运行任何测试`,
+  gapDropped: (command, ran, skipped, ranNow, skippedNow) => `${command} 修改后运行 ${ranNow} 个测试、跳过 ${skippedNow} 个，修改前为运行 ${ran} 个、跳过 ${skipped} 个`,
   testsRan: (ran, skipped) => `已运行 ${ran}${skipped > 0 ? ` · 跳过 ${skipped}` : ''}`,
   askClaude: '询问 Claude',
   checkAfterTurn: '本轮结束后，完成检查会检查回答。',

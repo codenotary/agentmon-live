@@ -78,6 +78,7 @@ const en = {
   gapAgent: (type: string, why: string) => `subagent ${type} reported failing tests: ${why}`,
   gapUncovered: (dir: string, files: string) => `${dir}: edited (${files}), but no test run after the edit reached it`,
   gapEmpty: (command: string) => `${command} ran no tests`,
+  gapDropped: (command: string, ran: number, skipped: number, ranNow: number, skippedNow: number) => `${command} ran ${ranNow} tests and skipped ${skippedNow} after the edit, ${ran} and ${skipped} before it`,
   testsRan: (ran: number, skipped: number) => `${ran} run${skipped > 0 ? ` · ${skipped} skipped` : ''}`,
   askClaude: 'ask Claude',
   checkAfterTurn: 'The done gate checks the answer when this turn ends.',

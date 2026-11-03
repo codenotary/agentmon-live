@@ -23,7 +23,7 @@ export const HABIT_BIG = 4
 export const ENVELOPE_MARGIN = 1.25
 export const ENVELOPE_MIN_SAMPLES = 5
 export const ENVELOPE_MIN_CALLS = 10
-const GAP_KINDS: readonly GapKind[] = ['failed', 'stale', 'claim', 'todos', 'agent', 'fable', 'uncovered', 'empty']
+const GAP_KINDS: readonly GapKind[] = ['failed', 'stale', 'claim', 'todos', 'agent', 'fable', 'uncovered', 'empty', 'dropped']
 // Suggest a plan this far below where past sessions compacted; with no history, at this share of the window.
 export const CTX_MARGIN = 0.9
 export const CTX_FALLBACK = 0.7
@@ -256,7 +256,7 @@ export function learnedItems(learned: Learned, live: Live): Insight[] {
   const [kind, n] = GAP_KINDS.map(k => [k, learned.sessions.filter(s => (s.gaps?.[k] ?? 0) > 0).length] as const).sort((a, b) => b[1] - a[1])[0]!
   if (n >= MIN_SESSIONS) {
     const what = t.gateKind[kind]
-    const rule = t.gateRule[kind === 'failed' || kind === 'stale' || kind === 'claim' || kind === 'uncovered' || kind === 'empty' ? 'check' : kind]
+    const rule = t.gateRule[kind === 'failed' || kind === 'stale' || kind === 'claim' || kind === 'uncovered' || kind === 'empty' || kind === 'dropped' ? 'check' : kind]
     const total = Math.max(n, learned.sessions.filter(s => s.bench?.mod).length)
     out.push({ key: `gate:${kind}`, score: 30, tag: t.tag.gate, color: 'yellow', text: t.gateHabit(what, n, total), prompt: t.promptGateRule(what, rule) })
   }

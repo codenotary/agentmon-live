@@ -71,7 +71,7 @@ export type SessionRecord = {
   errs?: Record<string, number>
 }
 
-export type GapKind = 'failed' | 'stale' | 'claim' | 'todos' | 'agent' | 'fable' | 'uncovered' | 'empty'
+export type GapKind = 'failed' | 'stale' | 'claim' | 'todos' | 'agent' | 'fable' | 'uncovered' | 'empty' | 'dropped'
 
 // What one session's work came to, for `/agentmon bench`: `mod` when AgentMon Live ran in it, `live` when recorded as it ran (not read back from a transcript).
 // Turn counts are per prompt: a turn the done gate sent back is the same prompt. `turnMs` holds the durations of prompts that used tools.

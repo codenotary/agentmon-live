@@ -71,6 +71,7 @@ export const de: Strings = {
   gapAgent: (type, why) => `Subagent ${type} meldet fehlschlagende Tests: ${why}`,
   gapUncovered: (dir, files) => `${dir}: geändert (${files}), aber kein Testlauf nach der Änderung hat es erreicht`,
   gapEmpty: command => `${command} hat keine Tests ausgeführt`,
+  gapDropped: (command, ran, skipped, ranNow, skippedNow) => `${command} hat nach der Änderung ${ranNow} Tests ausgeführt und ${skippedNow} übersprungen, davor ${ran} und ${skipped}`,
   testsRan: (ran, skipped) => `${ran} gelaufen${skipped > 0 ? ` · ${skipped} übersprungen` : ''}`,
   askClaude: 'Claude fragen',
   checkAfterTurn: 'Die Fertig-Prüfung prüft die Antwort, wenn dieser Zug endet.',

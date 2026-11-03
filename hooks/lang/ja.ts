@@ -71,6 +71,7 @@ export const ja: Strings = {
   gapAgent: (type, why) => `サブエージェント ${type} がテスト失敗を報告: ${why}`,
   gapUncovered: (dir, files) => `${dir}: 変更あり（${files}）。変更後に実行したテストはどれもここに届いていません`,
   gapEmpty: command => `${command} はテストを1件も実行していません`,
+  gapDropped: (command, ran, skipped, ranNow, skippedNow) => `${command} は変更後に ${ranNow} 件実行・${skippedNow} 件スキップ（変更前は ${ran} 件実行・${skipped} 件スキップ）`,
   testsRan: (ran, skipped) => `${ran} 件実行${skipped > 0 ? ` · ${skipped} 件スキップ` : ''}`,
   askClaude: 'Claude に聞く',
   checkAfterTurn: 'このターンが終わったら完了チェックが回答を確認します。',

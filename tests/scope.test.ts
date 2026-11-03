@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
 import { findChecks, joinPath, testCounts, testScope } from '../hooks/format'
-import { parseTestRules } from '../hooks/gate'
+import { coverageGaps, parseTestRules, type TestRun } from '../hooks/gate'
+import { LANGUAGES } from '../hooks/i18n'
 
 const scope = (command: string, shell = '/repo') => testScope(command, findChecks(command).find(c => c.kind === 'test')!.part, shell)
 
@@ -66,4 +67,20 @@ test('review findings: subshell cd, unknown folders, flags without a value, long
   const crate = (n: number) => `     Running unittests src/lib.rs\n${'test t ... ok\n'.repeat(5)}\ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n`
   const doc = '   Doc-tests c\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out\n\n'
   expect(testCounts(Array.from({ length: 8 }, crate).join('') + doc.repeat(8))).toEqual({ ran: 40, skipped: 0 })
+})
+
+const en = LANGUAGES.en!
+
+test('a run after the edit with fewer tests, or more skipped, than the same run before it is a gap', () => {
+  const run = (at: number, ran: number, skipped = 0, command = 'npm test'): TestRun => ({ dir: '/repo', isFocused: false, command, at, result: 'ok', ran, skipped })
+  const gaps = (runs: TestRun[]) => coverageGaps(en, runs, [], 10)
+  expect(gaps([run(5, 40), run(20, 35)])).toEqual([en.gapDropped('npm test', 40, 0, 35, 0)])
+  expect(gaps([run(5, 40), run(20, 40, 2)])).toEqual([en.gapDropped('npm test', 40, 0, 40, 2)])
+  // Only the latest run after the edit counts, against the latest before it: tests added, then removed, are caught.
+  expect(gaps([run(3, 40), run(5, 45), run(20, 40)])).toEqual([en.gapDropped('npm test', 45, 0, 40, 0)])
+  expect(gaps([run(5, 40), run(20, 35), run(30, 41)])).toEqual([])
+  expect(gaps([run(5, 40), run(20, 40)])).toEqual([])
+  // A different command is a different set; two runs after the edit have no baseline.
+  expect(gaps([run(5, 40), run(20, 3, 0, 'npx vitest -t login')])).toEqual([])
+  expect(gaps([run(12, 40), run(20, 35)])).toEqual([])
 })

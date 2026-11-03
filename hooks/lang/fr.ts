@@ -71,6 +71,7 @@ export const fr: Strings = {
   gapAgent: (type, why) => `le sous-agent ${type} signale des tests en échec : ${why}`,
   gapUncovered: (dir, files) => `${dir} : modifié (${files}), mais aucun test lancé après la modification ne l'a atteint`,
   gapEmpty: command => `${command} n'a lancé aucun test`,
+  gapDropped: (command, ran, skipped, ranNow, skippedNow) => `${command} a lancé ${ranNow} tests et en a ignoré ${skippedNow} après la modification, contre ${ran} et ${skipped} avant`,
   testsRan: (ran, skipped) => `${ran} lancés${skipped > 0 ? ` · ${skipped} ignorés` : ''}`,
   askClaude: 'demander à Claude',
   checkAfterTurn: 'Le contrôle de fin vérifie la réponse à la fin de ce tour.',

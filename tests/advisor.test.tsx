@@ -19,7 +19,8 @@ const STOP = { stop_hook_active: false, last_assistant_message: 'All done.' } as
 const USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 
 // The engine answers every test needs; copied from agentmon.test.tsx. A command containing `fail` fails; `outputs` is what a command prints, `denied` the commands the person denies.
-function engine(on: On, outputs: Record<string, string> = {}, denied: string[] = []) {
+// An output list answers the command's calls in turn.
+function engine(on: On, outputs: Record<string, string | string[]> = {}, denied: string[] = []) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -35,7 +36,7 @@ function engine(on: On, outputs: Record<string, string> = {}, denied: string[] =
   on('tool.call', (_, e) => {
     const command = String((e as { command?: unknown }).command ?? '')
     if (denied.includes(command)) return { deny: 'denied by the user' }
-    return command.includes('fail') ? { result: {}, text: '1 failing', isError: true } : { result: {}, text: outputs[command] ?? '' }
+    return command.includes('fail') ? { result: {}, text: '1 failing', isError: true } : { result: {}, text: (Array.isArray(outputs[command]) ? outputs[command].shift() : outputs[command]) ?? '' }
   })
 }
 
@@ -379,6 +380,22 @@ test('a filter that selects no tests is no evidence, even when the runner exits 
   const block = await attempt($, clock, 'm1', [API], ['npx vitest -t nomatch --passWithNoTests'])
   expect(block).toContain('npx vitest -t nomatch --passWithNoTests ran no tests')
   expect(block).toContain(UNCOVERED_API)
+})
+
+test('a test run that skips tests the same run did not skip before the edit is sent back', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': ['Tests:       40 passed, 40 total', 'Tests:       38 passed, 2 skipped, 40 total'] })
+  monorepo(on).cd('/repo/packages/api')
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the api', turnId: 'm1' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Edit', file_path: API, old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  const block = (await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block
+  expect(block).toContain('npm test ran 38 tests and skipped 2 after the edit, 40 and 0 before it')
 })
 
 test('a root run covers every package; a workspace run only its own', { options: { advisorMode: 'gate' } }, async ($, on) => {

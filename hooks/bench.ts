@@ -23,6 +23,7 @@ const GATE = Object.values(LANGUAGES).map(l => l.gateReason('').split('\n')[0] ?
 // Each gap line the gate writes, in every language, as a pattern: the template with its values as wildcards.
 // Most specific first, across languages: Fable may quote another gap, and a failed check's wording sits inside others (zh, ja).
 const HOLE = '\u0001'
+const N = HOLE as unknown as number
 const gapPattern = (s: string) => new RegExp(`^${s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll(HOLE, '.*')}$`, 's')
 const TEMPLATES: [GapKind, (l: Strings) => string][] = [
   ['fable', l => l.fableSays(HOLE)],
@@ -30,8 +31,9 @@ const TEMPLATES: [GapKind, (l: Strings) => string][] = [
   ['stale', l => l.gapStale(HOLE, HOLE)],
   ['claim', l => l.gapClaim(HOLE)],
   ['uncovered', l => l.gapUncovered(HOLE, HOLE)],
+  ['dropped', l => l.gapDropped(HOLE, N, N, N, N)],
   ['empty', l => l.gapEmpty(HOLE)],
-  ['todos', l => l.gapTodos(HOLE as unknown as number, HOLE)],
+  ['todos', l => l.gapTodos(N, HOLE)],
   ['failed', l => l.gapFailed(HOLE, HOLE)],
 ]
 const GAPS = TEMPLATES.flatMap(([kind, of]) => Object.values(LANGUAGES).map(l => [kind, gapPattern(of(l))] as const))

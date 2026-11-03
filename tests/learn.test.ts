@@ -59,11 +59,11 @@ test('a transcript becomes a session record', async () => {
 test('the done gate feedback reads as kinds of gap, in every language', async () => {
   for (const l of Object.values(LANGUAGES)) {
     const block = l.gateReason(
-      [l.gapFailed(l.check.test, 'npm test'), l.gapStale(l.check.lint, 'npm run lint'), l.gapClaim('tests pass'), l.gapTodos(2, 'a; b'), l.gapAgent('Explore', 'FAIL'), l.gapUncovered('packages/api', 'auth.ts'), l.gapEmpty('npx vitest -t x'), l.fableSays(l.gapFailed('x', 'y')), `→ check why it ${l.gapFailed('build', 'tsc')}`]
+      [l.gapFailed(l.check.test, 'npm test'), l.gapStale(l.check.lint, 'npm run lint'), l.gapClaim('tests pass'), l.gapTodos(2, 'a; b'), l.gapAgent('Explore', 'FAIL'), l.gapUncovered('packages/api', 'auth.ts'), l.gapEmpty('npx vitest -t x'), l.gapDropped('npm test', 40, 0, 35, 5), l.fableSays(l.gapFailed('x', 'y')), `→ check why it ${l.gapFailed('build', 'tsc')}`]
         .map(g => `- ${g}`)
         .join('\n'),
     )
-    expect(gapKinds(`Stop hook feedback:\n${block}`)).toEqual(['failed', 'stale', 'claim', 'todos', 'agent', 'uncovered', 'empty', 'fable'])
+    expect(gapKinds(`Stop hook feedback:\n${block}`)).toEqual(['failed', 'stale', 'claim', 'todos', 'agent', 'uncovered', 'empty', 'dropped', 'fable'])
   }
   // Another Stop hook's feedback is not the gate's.
   expect(gapKinds('Stop hook feedback:\n- test failed: npm test')).toEqual([])

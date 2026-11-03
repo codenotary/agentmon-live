@@ -3,8 +3,8 @@ import type { TestScope } from './format'
 import type { Strings } from './i18n'
 import { globToRegExp, reasonedLines } from './sizeguard'
 
-// One test run this turn: where it ran, whether it was a subset, and how many tests it executed when the summary said.
-export type TestRun = TestScope & { command: string; at: number; result: Check['result']; ran?: number }
+// One test run this turn: where it ran, whether it was a subset, and how many tests it executed and skipped when the summary said.
+export type TestRun = TestScope & { command: string; at: number; result: Check['result']; ran?: number; skipped?: number }
 // Where edited files must be tested: `min` tests at least, `isFull` with no name or file filter; a declared one is expected even when no test ran.
 export type Target = { dir: string; label: string; files: string[]; isFull: boolean; min: number; isDeclared: boolean }
 export type TestRule = { re: RegExp; dir: string; isFull: boolean; min: number }
@@ -30,13 +30,20 @@ function reaches(r: TestRun, t: Target): { isPart: boolean } | undefined {
   return isWithin(r.dir, t.dir) ? { isPart: true } : undefined
 }
 
-// Runs after the last code edit that executed nothing, targets whose latest run failed, and targets no run covered.
+// Runs after the last code edit that executed nothing or fewer tests than before it, targets whose latest run failed, and targets no run covered.
 // The checks keep one row per kind, so a target's failure is reported here: a later pass elsewhere replaces its row.
 // `isOldFail`: the tests already failed at the prompt, so a failure is not this turn's. An unread summary is taken as tests run.
 export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined, isOldFail = false): string[] {
   if (lastCodeEditAt === undefined) return []
   const fresh = runs.filter(r => r.at >= lastCodeEditAt && r.result !== 'running')
   const gaps = fresh.filter(r => r.result === 'ok' && r.ran === 0).map(r => t.gapEmpty(r.command))
+  // The same command ran fewer tests, or skipped more, after the edit than before it: tests were deleted or skipped.
+  // The baseline is the latest such run before the last edit, so tests added and then removed are caught.
+  // shortcut: the baseline is from this turn only, upgrade when a dropped test across turns matters.
+  for (const last of new Map(fresh.filter(r => r.result === 'ok' && r.ran !== undefined).map(r => [`${r.dir}\0${r.command}`, r])).values()) {
+    const base = runs.filter(r => r.at < lastCodeEditAt && r.ran !== undefined && r.result !== 'running' && r.dir === last.dir && r.command === last.command).at(-1)
+    if (base && (last.ran! < base.ran! || (last.skipped ?? 0) > (base.skipped ?? 0))) gaps.push(t.gapDropped(last.command, base.ran!, base.skipped ?? 0, last.ran!, last.skipped ?? 0))
+  }
   for (const target of targets) {
     if (!target.isDeclared && fresh.length === 0) continue
     const hits = fresh.flatMap(r => {

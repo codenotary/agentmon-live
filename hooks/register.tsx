@@ -621,7 +621,7 @@ export const register: Register = (on, options) => {
       if (sameTurn && r.deny === undefined)
         for (const [i, { part, ...scope }] of scopes.entries()) {
           const isLast = i === scopes.length - 1
-          turn.tests.push({ ...scope, command: mask(part).slice(0, 200), at: startedAt, result: isLast || !r.isError ? resultOf('test') : 'unknown', ...(counts && scopes.length === 1 ? { ran: counts.ran } : {}) })
+          turn.tests.push({ ...scope, command: mask(part).slice(0, 200), at: startedAt, result: isLast || !r.isError ? resultOf('test') : 'unknown', ...(counts && scopes.length === 1 ? { ran: counts.ran, skipped: counts.skipped } : {}) })
         }
       if (sameTurn)
         for (const f of found) {
