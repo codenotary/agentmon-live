@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
 import { addNote } from './advisor'
-import { isDoc } from './gate'
+import { isDoc, parseTestRules, testCfg } from './gate'
 import { book, newClock, snapshot } from './clock'
 import { priceUsd } from './bench'
 import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, openGaps, resetTurn } from './done'
@@ -12,7 +12,7 @@ import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { build, checkRelease, refreshBase, watchBase } from './release'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
-import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testsOf } from './format'
+import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
@@ -254,7 +254,7 @@ export const register: Register = (on, options) => {
   // Who runs each Skill call under way, for the `skill.prompt` it raises; none matches when the person typed the command.
   const skillRuns: { skill: string; who: string }[] = []
   // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
-  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), edits: new Map(), docs: new Set(), before: [] }
+  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), edits: new Map(), docs: new Set(), before: [], tests: [], root: '' }
   // Fable judges an answer, so "check now" during a turn waits for the turn's answer.
   let isTurnLive = false
   let isCheckQueued = false
@@ -281,6 +281,7 @@ export const register: Register = (on, options) => {
       argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|learn|memory|debug]`,
     })
     cwd = e.cwd
+    turn.root = cwd
     pulse($)
     // After a reload mid-turn, older todos and agent results must not count as this turn's.
     turn.startedAt = await $.clock.now()
@@ -288,6 +289,12 @@ export const register: Register = (on, options) => {
     // The project's own size exceptions, each with a reason.
     void $.fs.read(`${cwd}/.agentmon-size`).then(
       text => configureSize(options.sizeLimit, options.sizeExclude, parseExceptions(text)),
+      () => undefined,
+    )
+    // The project's required test targets; none when the file is missing.
+    testCfg.rules = []
+    void $.fs.read(`${cwd}/.agentmon-tests`).then(
+      text => (testCfg.rules = parseTestRules(text)),
       () => undefined,
     )
     const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
@@ -541,10 +548,21 @@ export const register: Register = (on, options) => {
 
     const command = e.tool === 'Bash' ? String((e as { command?: unknown }).command ?? '') : ''
     // One row per kind; the row names the part that ran the check, not a script the same command ran first.
-    const kinds = e.tool === 'Bash' ? findChecks(command) : []
+    const kinds = e.tool === 'Bash' ? findChecks(command, true) : []
     const found = [...new Map(kinds.map(c => [c.kind, c])).values()]
     const lastKind = kinds.at(-1)?.kind
     const isMine = (c: Check) => c.at === startedAt && found.some(f => f.kind === c.kind)
+    // Where each test part runs: the shell's directory (a subagent's own, read here) moved by the command's own `cd`, flags and paths.
+    const testParts = kinds.filter(k => k.kind === 'test').map(k => k.part)
+    const shellDir = testParts.length > 0 ? await $.session.cwd().catch(() => cwd) : cwd
+    let from = 0
+    const scopes = testParts.map(part => {
+      const scope = testScope(command, part, shellDir, from)
+      from = Math.max(from, command.indexOf(part, from) + part.length)
+      return { ...scope, part }
+    })
+    // The pane row shows the first test part, as before.
+    const scopeDir = scopes[0] && relPath(scopes[0].dir, cwd)
     // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
     await Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
@@ -554,7 +572,7 @@ export const register: Register = (on, options) => {
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
-          ...found.map(f => ({ kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const })),
+          ...found.map(f => ({ kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const, ...(f.kind === 'test' && scopeDir ? { dir: scopeDir } : {}) })),
         ]),
     ])
     queueStatus($)
@@ -597,6 +615,14 @@ export const register: Register = (on, options) => {
       const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
       // A check that fails before the turn's first code edit was broken already; it counts as failing at the prompt.
       // Once it passes, it is no longer: a later failure is this turn's.
+      const counts = scopes.length > 0 ? testCounts(output) : undefined
+      // A denied run never ran. A failure is the last test part's; the summary's counts belong to one part only when there is one.
+      // shortcut: counts of a chained run are not split per part, so an empty part beside a full one is not caught; upgrade when agents chain such runs.
+      if (sameTurn && r.deny === undefined)
+        for (const [i, { part, ...scope }] of scopes.entries()) {
+          const isLast = i === scopes.length - 1
+          turn.tests.push({ ...scope, command: mask(part).slice(0, 200), at: startedAt, result: isLast || !r.isError ? resultOf('test') : 'unknown', ...(counts && scopes.length === 1 ? { ran: counts.ran } : {}) })
+        }
       if (sameTurn)
         for (const f of found) {
           const result = resultOf(f.kind)
@@ -645,7 +671,7 @@ export const register: Register = (on, options) => {
         update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
         update($, flow, all => [...all, { cat, at }].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
-        found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind) } : c))),
+        found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
         !failed && sized && recordSize($, sized),
         touched &&

@@ -29,6 +29,8 @@ const TEMPLATES: [GapKind, (l: Strings) => string][] = [
   ['agent', l => l.gapAgent(HOLE, HOLE)],
   ['stale', l => l.gapStale(HOLE, HOLE)],
   ['claim', l => l.gapClaim(HOLE)],
+  ['uncovered', l => l.gapUncovered(HOLE, HOLE)],
+  ['empty', l => l.gapEmpty(HOLE)],
   ['todos', l => l.gapTodos(HOLE as unknown as number, HOLE)],
   ['failed', l => l.gapFailed(HOLE, HOLE)],
 ]

@@ -342,7 +342,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         <Text>
           {fit(t.check[c.kind], 12)}
           {c.result === 'unknown' ? <Text dimColor>{t.unknown}</Text> : chip(checkLabel(c), RESULT_COLOR[c.result])} {isStale(c) && <Text>{chip(t.stale, 'yellow')} </Text>}
-          <Text dimColor>{cut(c.command, whatRoom)}</Text>
+          <Text dimColor>{cut(`${c.ran !== undefined ? `${t.testsRan(c.ran, c.skipped ?? 0)} · ` : ''}${c.dir ? `${c.dir}: ` : ''}${c.command}`, whatRoom)}</Text>
         </Text>
       ))}
     </Box>

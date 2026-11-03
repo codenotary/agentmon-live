@@ -10,7 +10,7 @@ export const SIZE_LIMIT = 20_000
 const KEEP_PATHS = 100
 
 // Maintained source; docs, data and binaries never count.
-const SOURCE = /\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|swift|rb|php|c|h|cc|cpp|hpp|cs|scala|sh|sql|vue|svelte|css|scss|lua|dart|exs?|zig)$/i
+export const SOURCE = /\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|swift|rb|php|c|h|cc|cpp|hpp|cs|scala|sh|sql|vue|svelte|css|scss|lua|dart|exs?|zig)$/i
 
 // Files nobody maintains by hand: lockfiles, generated code, vendored code, build output and fixtures.
 export const SIZE_EXCLUDE = [
@@ -38,7 +38,7 @@ export function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${re}$`)
 }
 
-const MAX_WILDCARDS = 4
+export const MAX_WILDCARDS = 4
 
 // `<glob>  # <reason>` per line; a line without a reason is no exception, so every exception says why.
 export function parseExceptions(text: string): string[] {

@@ -1,9 +1,64 @@
 import type { Card, Check, Task } from '../types'
+import type { TestScope } from './format'
 import type { Strings } from './i18n'
+import { globToRegExp, MAX_WILDCARDS } from './sizeguard'
+
+// One test run this turn: where it ran, whether it was a subset, and how many tests it executed when the summary said.
+export type TestRun = TestScope & { command: string; at: number; result: Check['result']; ran?: number }
+// Where edited files must be tested: `min` tests at least, `isFull` with no name or file filter; a declared one is expected even when no test ran.
+export type Target = { dir: string; label: string; files: string[]; isFull: boolean; min: number; isDeclared: boolean }
+export type TestRule = { re: RegExp; dir: string; isFull: boolean; min: number }
+
+// Set on each load from `.agentmon-tests`.
+export const testCfg = { rules: [] as TestRule[] }
+
+// `<glob> <dir> [full] [min=N]  # <reason>` per line; a line without a reason is ignored, as in `.agentmon-size`.
+export function parseTestRules(text: string): TestRule[] {
+  return text
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#'))
+    .flatMap(l => {
+      const [spec, reason] = l.split(/\s+#\s*/, 2)
+      const [glob, dir, ...opts] = (spec ?? '').split(/\s+/)
+      if (!glob || !dir || !reason?.trim() || (glob.match(/[*?]/g) ?? []).length > MAX_WILDCARDS) return []
+      const min = Number(opts.find(o => o.startsWith('min='))?.slice(4) ?? 1)
+      return [{ re: globToRegExp(glob), dir: dir.replace(/^\.\/|\/+$/g, '') || '.', isFull: opts.includes('full'), min: Number.isInteger(min) && min >= 0 ? min : 1 }]
+    })
+}
+
+const isWithin = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith('/') ? dir : `${dir}/`)
+
+// A run reaches a target when it ran in the target's directory or above it, or in its workspace; below it, it ran only part of it.
+function reaches(r: TestRun, t: Target): { isPart: boolean } | undefined {
+  if (r.pkg !== undefined) return t.dir.split('/').at(-1) === r.pkg && isWithin(t.dir, r.dir) ? { isPart: false } : undefined
+  if (isWithin(t.dir, r.dir)) return { isPart: false }
+  return isWithin(r.dir, t.dir) ? { isPart: true } : undefined
+}
+
+// Runs after the last code edit that executed nothing, and targets no such run covered.
+// A failed run in a target is its own gap, never also "uncovered"; an unread summary is taken as tests run.
+export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined): string[] {
+  if (lastCodeEditAt === undefined) return []
+  const fresh = runs.filter(r => r.at >= lastCodeEditAt && r.result !== 'running')
+  const gaps = fresh.filter(r => r.result === 'ok' && r.ran === 0).map(r => t.gapEmpty(r.command))
+  for (const target of targets) {
+    if (!target.isDeclared && fresh.length === 0) continue
+    const isCovered = fresh.some(r => {
+      const hit = reaches(r, target)
+      if (!hit) return false
+      if (r.result === 'failed') return true
+      return (r.ran ?? target.min) >= target.min && !(target.isFull && (r.isFocused || hit.isPart))
+    })
+    if (!isCovered) gaps.push(t.gapUncovered(target.label, target.files.slice(0, 3).join(', ')))
+  }
+  return gaps
+}
 
 // `before` is the checks as they stood when the prompt came in; `codeEditAt` and `lastCodeEditAt` the turn's first and last edit of a file that is not a doc.
 // `answer` is Claude's final answer, to catch a claim that checks pass with nothing run to back it.
-export type GateInput = { checks: readonly Check[]; before: readonly Check[]; tasks: readonly Task[]; agents: readonly Card[]; since: number; codeEditAt?: number; lastCodeEditAt?: number; answer?: string }
+// `runs` and `targets` say which edited parts a test reached.
+export type GateInput = { checks: readonly Check[]; before: readonly Check[]; tasks: readonly Task[]; agents: readonly Card[]; since: number; codeEditAt?: number; lastCodeEditAt?: number; answer?: string; runs?: readonly TestRun[]; targets?: readonly Target[] }
 
 // Prose cannot break a test, lint, typecheck or build.
 const DOC = /\.(md|mdx|markdown|txt|rst|adoc)$/i
@@ -28,7 +83,7 @@ export function claimOf(answer: string): string | undefined {
 
 // What visibly is not finished when Claude is about to stop: facts the session recorded, no model involved.
 // `since` is when the turn started; only this turn's checks and subagents count, open todos always do.
-export function doneGaps(t: Strings, { checks, before, tasks, agents, since, codeEditAt, lastCodeEditAt, answer = '' }: GateInput): string[] {
+export function doneGaps(t: Strings, { checks, before, tasks, agents, since, codeEditAt, lastCodeEditAt, answer = '', runs = [], targets = [] }: GateInput): string[] {
   const gaps: string[] = []
   for (const c of checks) {
     if (c.at < since || c.result === 'running') continue
@@ -37,6 +92,7 @@ export function doneGaps(t: Strings, { checks, before, tasks, agents, since, cod
     if (c.result === 'failed' && !isOld) gaps.push(t.gapFailed(t.check[c.kind], c.command))
     else if ((lastCodeEditAt ?? 0) > c.at) gaps.push(t.gapStale(t.check[c.kind], c.command))
   }
+  gaps.push(...coverageGaps(t, runs, targets, lastCodeEditAt))
   // Code changed, the answer says the checks pass, and nothing ran after the change: the claim has no evidence.
   const claim = lastCodeEditAt === undefined || gaps.length > 0 ? undefined : claimOf(answer)
   if (claim && !checks.some(c => c.at >= lastCodeEditAt! && c.result !== 'running' && c.result !== 'failed')) gaps.push(t.gapClaim(claim))
