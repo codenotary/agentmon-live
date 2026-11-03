@@ -1,6 +1,6 @@
 {
   "name": "agentmon-live",
-  "version": "0.20.3",
+  "version": "0.21.0",
   "description": "AgentMon Live: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -59,6 +59,29 @@
       "title": "Hidden sections",
       "description": "Comma-separated dashboard sections to hide: tasks, insights, skills, advisor, changes, usage",
       "default": ""
+    },
+    "refreshRate": {
+      "type": "string",
+      "title": "Refresh rate",
+      "description": "Seconds between pane redraws: 5, 15, 30 or 60; live redraws on every change. Keys always redraw at once",
+      "default": "live",
+      "options": [
+        "live",
+        "5",
+        "15",
+        "30",
+        "60"
+      ]
+    },
+    "layout": {
+      "type": "string",
+      "title": "Layout",
+      "description": "calm: fewer sections, quiet animation; classic: every section. v switches in the pane",
+      "default": "calm",
+      "options": [
+        "calm",
+        "classic"
+      ]
     },
     "learning": {
       "type": "string",

@@ -34,26 +34,30 @@ export function kilo(n: number): string {
 export function brief(call: object): string {
   const a = call as Record<string, unknown>
   const arg = ['file_path', 'command', 'pattern', 'url', 'query', 'description', 'skill'].map(k => a[k]).find(v => typeof v === 'string')
-  return typeof arg === 'string' ? mask(arg.replace(/\s+/g, ' ')).slice(0, 100) : ''
+  return typeof arg === 'string' ? mask(arg.slice(0, 2000).replace(/\s+/g, ' ')).slice(0, 100) : ''
 }
 
 // A quoted value is masked to its closing quote (spaces and all), an unquoted one to the next space.
 // After a bare space only a secret-looking value counts (a digit, 16+ characters or a quote), so `token refresh bug` stays.
-const SECRET_NAME = /((?<![a-z])(?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40})(\s*[=:]\s*|\s+(?=["']|(?:bearer|basic)\s|[^\s"']*\d|[^\s"']{16}))(?:(["'])((?:bearer|basic)\s+)?[^"'\n]{1,200}\3|((?:bearer|basic)\s+)?[^\s"']+)/gi
+// A JSON key's closing quote may sit before the separator: `{"token": "x"}`. `sig` must end there, so `signal 9` stays.
+const SECRET_NAME = /((?<![a-z])(?:(?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40}|sig(?:nature)?(?![a-z])))(["']?\s*[=:]\s*|\s+(?=["']|(?:bearer|basic|token)\s|[^\s"']*\d|[^\s"']{16}))(?:(["'])((?:bearer|basic|token)\s+)?[^"'\n]{1,200}\3|((?:bearer|basic|token)\s+)?[^\s"'&]+)/gi
 // camelCase and prefixed names (`accessToken`, `PGPASSWORD`), only with `=` or `:`, and only when the name ends there: `maxTokens: 4000` stays.
 // The prefix is bounded, so a long word cannot make it quadratic.
 const PREFIXED_SECRET = /\b([a-z_]{1,40}(?:password|passwd|secret|token|api_?key))(?![a-z])(["']?\s*[=:]\s*)(?:(["'])[^"'\n]{1,200}\3|[^\s"',;]+)/gi
 // Only `[^\s:@/]` and `[^\s@/]` follow `://`, so each scan stops at the next slash or space: linear.
 const URL_CREDENTIALS = /:\/\/([^\s:@/]+):[^\s@/]+@/g
-const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|[sr]k_(?:live|test)_\w{16,}|ghp_\w{20,}|github_pat_\w{20,}|glpat-[\w-]{20,}|xox[bp]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|npm_\w{36}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]+)/g
-// `curl -u user:pw`, `mysql -ppw` and cookie headers carry secrets without a telling name.
-const FLAG_SECRET = /(\s(?:-u\s*|--user[=\s]\s*)[^\s:"']+:)[^\s"']+|(\b(?:mysql|mysqldump|mariadb)\b[^|;&\n]{0,200}?\s-p)[^\s"']+|(\b(?:set-)?cookie\s*:\s*)[^\n"']+/gi
+const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|[sr]k_(?:live|test)_\w{16,}|gh[pousr]_\w{20,}|hf_\w{20,}|whsec_\w{20,}|ya29\.[\w-]{20,}|xapp-[\w-]{10,}|hooks\.slack\.com\/services\/[\w/]+|github_pat_\w{20,}|glpat-[\w-]{20,}|xox[abprs]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|npm_\w{36}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]+)/g
+// `curl -u user:pw`, `mysql -ppw`, `sshpass -p pw`, `redis-cli -a pw`, `--password pw` and cookie headers carry secrets without a telling name.
+const FLAG_SECRET = /(\s(?:-u\s*|--user[=\s]\s*)[^\s:"']+:)[^\s"']+|(\b(?:mysql|mysqldump|mariadb)\b[^|;&\n]{0,200}?\s-p)[^\s"']+|(\bsshpass\s+-p\s*|\bredis-cli\b[^|;&\n]{0,200}?\s-a\s+|--password[=\s]\s*)[^\s"']+|(\b(?:set-)?cookie\s*:\s*)[^\n"']+/gi
+// A PEM private key spans lines: masked whole, up to its END line or the end of the text.
+const PRIVATE_KEY = /(-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----)[\s\S]*?(?:-----END[^\n]*|$)/g
 
 // brief() goes to the advisor model and the pane; the name's tail is bounded so long words cannot make it quadratic.
 export function mask(s: string): string {
   return s
+    .replace(PRIVATE_KEY, '$1***')
     .replace(URL_CREDENTIALS, '://$1:***@')
-    .replace(FLAG_SECRET, (_, user, mysql, cookie) => `${user ?? mysql ?? cookie}***`)
+    .replace(FLAG_SECRET, (_, user, mysql, flag, cookie) => `${user ?? mysql ?? flag ?? cookie}***`)
     .replace(SECRET_NAME, (_, name, sep, quote, quotedScheme, scheme) => (quote ? `${name}${sep}${quote}${quotedScheme ?? ''}***${quote}` : `${name}${sep}${scheme ?? ''}***`))
     .replace(PREFIXED_SECRET, (_, name, sep, quote = '') => `${name}${sep}${quote}***${quote}`)
     .replace(SECRET_SHAPE, '***')
@@ -223,6 +227,12 @@ const FRAMES = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 // The spinner frame for `now`; the pane redraws twice a second while something runs.
 export function spinner(now: number): string {
   return FRAMES[Math.floor(now / 500) % FRAMES.length] ?? '⠋'
+}
+
+// The calm layout's spinner: a dot that grows and shrinks in place, no rotation for the eye to follow.
+const BREATH = '·∙•●•∙'
+export function breath(now: number): string {
+  return BREATH[Math.floor(now / 500) % BREATH.length] ?? '•'
 }
 
 // A limit's short name for a narrow label: five_hour -> 5h.

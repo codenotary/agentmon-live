@@ -125,7 +125,7 @@ test('a /model switch shows in the title before the next prompt', async ($, on) 
   await ui.unmount()
 })
 
-test('pane counts failed calls and compactions', async ($, on) => {
+test('pane counts failed calls and compactions', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -250,7 +250,7 @@ test('a resumed agent runs again', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^0 \/ 0 · 0 files/ })).toBeTruthy()
   await $.turn.start({ text: 'one more thing', turnId: 't2', agentId: 'a1' })
-  expect(await ui.find({ type: 'Text', text: /^⟳ 0 s · 0 files/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^⟳ <5 s · 0 files/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -314,7 +314,7 @@ test('an advisor answer that arrives after a clear is dropped', async ($, on) =>
   await ui.unmount()
 })
 
-test('a call waiting for approval needs attention until it runs', async ($, on) => {
+test('a call waiting for approval needs attention until it runs', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   // Only the check this test raises asks; a test has no person to answer a dialog.
@@ -367,7 +367,7 @@ test('the engine\'s agent status wins over the card', async ($, on) => {
 
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^ WAITING  Explore/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /^⟳ 0 s · 0 files/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^⟳ <5 s · 0 files/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -449,7 +449,7 @@ test('checks show their outcome and go stale after an edit', async ($, on) => {
   await ui.unmount()
 })
 
-test('a call shows in its tab while it runs', async ($, on) => {
+test('a call shows in its tab while it runs', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', async () => {
@@ -473,7 +473,7 @@ test('a call shows in its tab while it runs', async ($, on) => {
   await ui.unmount()
 })
 
-test('usage says unavailable rather than zero, and shows rate limits', async ($, on) => {
+test('usage says unavailable rather than zero, and shows rate limits', { options: { layout: 'classic' } }, async ($, on) => {
   mock.clock(on)
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -511,7 +511,7 @@ test('history folds and details unfold long text', async ($, on) => {
   await ui.unmount()
 })
 
-test('a narrow pane still draws every section', async ($, on) => {
+test('a narrow pane still draws every section', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
@@ -812,7 +812,7 @@ test('a dropped advisor answer still counts its tokens, and a reload keeps unava
   await ui.unmount()
 })
 
-test('loaded skills show who loaded them and how often', async ($, on) => {
+test('loaded skills show who loaded them and how often', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
@@ -837,12 +837,14 @@ test('loaded skills show who loaded them and how often', async ($, on) => {
   await ui.unmount()
 })
 
-test('sections are ranked: urgent first, then the recently active, then the usual order', () => {
+test('sections are ranked: urgent first; calm keeps the usual order, classic puts the recently active next', () => {
   const s = (key: string, isUrgent: boolean, at: number) => ({ key, isUrgent, at })
-  const order = (list: ReturnType<typeof s>[]) => rank(list, 1_000_000).map(x => x.key)
-  expect(order([s('tasks', false, 0), s('advisor', false, 0), s('usage', false, 0)])).toEqual(['tasks', 'advisor', 'usage'])
-  expect(order([s('tasks', false, 0), s('changes', false, 990_000), s('skills', false, 999_000)])).toEqual(['skills', 'changes', 'tasks'])
+  const order = (list: ReturnType<typeof s>[], isClassic = false) => rank(list, 1_000_000, isClassic).map(x => x.key)
+  const recent = [s('tasks', false, 0), s('changes', false, 990_000), s('skills', false, 999_000)]
+  expect(order(recent)).toEqual(['tasks', 'changes', 'skills'])
+  expect(order(recent, true)).toEqual(['skills', 'changes', 'tasks'])
   expect(order([s('tasks', false, 999_000), s('usage', true, 0)])).toEqual(['usage', 'tasks'])
+  expect(order([s('tasks', false, 999_000), s('usage', true, 0)], true)).toEqual(['usage', 'tasks'])
 })
 
 test('a failed check moves its section to the top', async ($, on) => {
@@ -884,7 +886,7 @@ test('the header names the loaded version and commit', async ($, on) => {
   await ui.unmount()
 })
 
-test('a few subagents get cards side by side; many get one line each', async ($, on) => {
+test('classic: a few subagents get cards side by side; many get one line each', { options: { layout: 'classic' } }, async ($, on) => {
   mock.clock(on)
   engine(on)
   let n = 0
@@ -925,7 +927,7 @@ test('only the main loop keeps the task list; todo ids never meet task ids; an u
   await ui.unmount()
 })
 
-test('two Skill calls at once each name their own caller', async ($, on) => {
+test('two Skill calls at once each name their own caller', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
@@ -974,7 +976,7 @@ test('a compound command gets a row per check; a failure blames the last one', a
   await ui.unmount()
 })
 
-test('clear empties the task list and the skills', async ($, on) => {
+test('clear empties the task list and the skills', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {} }))
@@ -1178,5 +1180,137 @@ test('a subagent that runs again drops its old FAIL', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /NEEDS ATTENTION/ })).toBe(undefined)
   // The session log keeps the old report; the card's chip no longer says FAIL.
   expect(await ui.find({ type: 'Text', text: /^ FAIL $/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('a refresh rate keeps the frame until the period ends while work runs; a key or an idle pane redraws at once', { options: { refreshRate: '5' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  // A running subagent keeps the session busy, so the pane holds its frame.
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: 'total 0' })).toBeTruthy()
+  await $.tool.call({ tool: 'Read', file_path: '/x' })
+  await clock.advance(1000)
+  expect(await ui.find({ type: 'Text', text: 'total 0' })).toBeTruthy()
+  await clock.advance(4000)
+  expect(await ui.find({ type: 'Text', text: 'total 1' })).toBeTruthy()
+
+  await $.tool.call({ tool: 'Read', file_path: '/y' })
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ type: 'Text', text: 'total 2' })).toBeTruthy()
+
+  // A frame drawn just before a boundary does not outlive it.
+  await clock.advance(4900)
+  await ui.press({ key: 'details' })
+  await $.tool.call({ tool: 'Read', file_path: '/z' })
+  expect(await ui.find({ type: 'Text', text: 'total 2' })).toBeTruthy()
+  await clock.advance(100)
+  expect(await ui.find({ type: 'Text', text: 'total 3' })).toBeTruthy()
+
+  // `c` writes the advisor, and the pane shows it at once.
+  await $.tool.call({ tool: 'Read', file_path: '/w' })
+  await ui.press({ key: 'advisor:check' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'total 4' })).toBeTruthy()
+
+  // Idle, nothing is held back: a write shows at once.
+  await $.turn.complete({ ...DONE, agentId: 'a1' })
+  await clock.settle()
+  await $.tool.call({ tool: 'Read', file_path: '/v' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: 'total 5' })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('past four running subagents, four stay cards and the rest fold behind a', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  let n = 0
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${++n}` }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  for (let i = 1; i <= 6; i++) await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}`, description: `job ${i}` })
+  await clock.settle()
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Button', text: /2 more agents$/ })).toBeTruthy()
+  expect((await ui.findAll({ type: 'Text', text: /^job \d$/ })).length).toBe(4)
+  await ui.press({ key: 'fold:agents' })
+  expect(await ui.find({ type: 'Button', text: /all 6 agents$/ })).toBeTruthy()
+  expect(await ui.findAll({ type: 'Text', text: /^[·∙•●] Explore\s+Haiku 5\.5\s+job \d/ })).toHaveLength(6)
+  await ui.press({ key: 'fold:agents' })
+  expect(await ui.find({ type: 'Button', text: /2 more agents/ })).toBeTruthy()
+  // `v` switches to classic: six cards, no fold.
+  await ui.press({ key: 'layout:switch' })
+  expect(await ui.find({ type: 'Button', text: /◐ classic/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Button', text: /more agents/ })).toBe(undefined)
+  expect((await ui.findAll({ type: 'Text', text: /^job \d$/ })).length).toBe(6)
+  await ui.unmount()
+})
+
+test('calm leaves out insights, skills and usage, details or not; the header switches to classic', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Read', file_path: '/x' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /● USAGE/ })).toBe(undefined)
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ type: 'Text', text: /● USAGE/ })).toBe(undefined)
+  await ui.press({ key: 'details' })
+  await ui.press({ key: 'layout:switch' })
+  expect(await ui.find({ type: 'Button', text: /◐ classic/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /● USAGE/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a refresh rate stops when nothing runs, after drawing the final state', { options: { refreshRate: '5' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^ RUNNING / })).toBeTruthy()
+  await clock.advance(2000)
+  await $.turn.complete({ ...DONE, agentId: 'a1' })
+  await clock.advance(5000)
+  expect(await ui.find({ type: 'Text', text: /^ DONE / })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('calm: with nothing in Focus, i still reaches the slowest call', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  const filled: string[] = []
+  on('prompt.fill', (_, e) => {
+    filled.push(e.text)
+    return { isFilled: true }
+  })
+  on('tool.call', async () => {
+    await clock.sleep(6000)
+    return { result: {} }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const call = $.tool.call({ tool: 'Read', file_path: '/x' })
+  await clock.advance(6000)
+  await call
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'investigate:slowest' })
+  expect(filled.at(-1)).toMatch(/^The call Read .*took 6\.0s/)
+  await ui.press({ key: 'layout:switch' })
+  expect(await ui.find({ type: 'Button', key: 'investigate:slowest' })).toBe(undefined)
   await ui.unmount()
 })

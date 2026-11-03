@@ -64,9 +64,9 @@ export async function openGaps($: EngineInterface, turn: Turn, answer: string): 
   const [checked, planned, list] = await Promise.all([read($, checks), read($, tasks), read($, agents)])
   const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer })
   if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines, judged: true }
-  const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-4000))}` : ''}`)
+  const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-8000)).slice(-4000)}` : ''}`)
   // Fable read untrusted tool output; what it says goes to Claude as a claim, never as a fact.
-  return v && !v.ok ? { lines: [t.fableSays(mask(v.text))], fix: v.fix && mask(v.fix), judged: true } : { lines: [], judged: v !== undefined }
+  return v && !v.ok ? { lines: [t.fableSays(mask(v.text))], fix: v.fix && t.fableSays(mask(v.fix)), judged: true } : { lines: [], judged: v !== undefined }
 }
 
 // This prompt's part of the self benchmark, recomputed at each main turn end and stop.

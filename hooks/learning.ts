@@ -219,15 +219,15 @@ export async function learnCommand($: EngineInterface, arg: string): Promise<str
   // One from a version that did not count the done gate's catches gets only those from its transcript.
   const proj = await loadProject($)
   const have = new Map(proj.sessions.map(s => [s.id, s]))
-  // A session with a live row and no record any more: its transcript would only give a row the live one outranks.
-  const liveRows = new Set(proj.bench.filter(r => r.live).map(r => r.id))
+  // A session with a row and no record any more: learned already, or recorded live, which outranks its transcript.
+  const rows = new Set(proj.bench.map(r => r.id))
   const recs: SessionRecord[] = []
   const filled: SessionRecord[] = []
   let skipped = 0
   for (const e of entries) {
     const id = e.name.slice(0, -'.jsonl'.length)
     const old = have.get(id)
-    if (id === rec.id || (old && old.gaps && old.errs) || (!old && liveRows.has(id))) continue
+    if (id === rec.id || (old && old.gaps && old.errs) || (!old && rows.has(id))) continue
     const path = `${dir}/${e.name}`
     // shortcut: a transcript over the 4 MiB read cap is learned from its last 4 MiB only; read it in parts if early turns matter.
     const text = await $.fs.read(path).catch(async () => {

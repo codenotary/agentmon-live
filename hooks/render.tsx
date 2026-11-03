@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, RenderChildren, RenderInput } from 'claude-code'
+import type { EngineInterface, RenderChildren, RenderElement, RenderInput } from 'claude-code'
 
 import type { Card, Check, Note } from '../types'
-import { ago, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
+import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
@@ -32,8 +32,34 @@ const FOCUS_SHOWN = 3
 
 const RESULT_COLOR: Record<Check['result'], string> = { ok: 'green', failed: 'red', running: 'cyan', unknown: 'gray' }
 
-// Order, as the review asks: needs attention, running now, changes and verification, usage, then the folding history.
+// Running subagents shown as cards. Calm folds the rest behind `a`; classic lists all one line each past six.
+const MAX_CARDS = 4
+const MAX_CARDS_CLASSIC = 6
+// Sections calm leaves out unless they need the person; `v` (classic) shows them all.
+const CALM_HIDDEN = ['insights', 'skills', 'usage']
+
+// The last frame drawn, kept for `refreshRate`, and what it was drawn for.
+let frame: { key: string; tree: RenderElement } | undefined
+
+// With a refresh rate, while work runs a change redraws the pane at the next period boundary; a key press, a resize,
+// `c` or a clear (both write the advisor), a new urgent item and an idle pane redraw at once. A frame kept skips the other reads, so their writes do not redraw it;
+// register.tsx's pulse, on each boundary, draws the next one.
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
+  if (cfg.refreshMs <= 0) return drawFresh($, e)
+  const [lay, tab, adv, now, doing, checked, list] = await Promise.all([read($, layout), read($, view), read($, advisor), $.clock.now(), read($, active), read($, checks), read($, agents)])
+  // Idle, the few writes left (the turn's last bookkeeping, a base or memory check) draw at once; only running work is held to the period.
+  if (doing.length === 0 && !list.some(a => a.status === 'running')) return drawFresh($, e)
+  // A new urgent item (a call waiting for approval, a failed check or subagent) redraws at once, not a period late.
+  const urgentCount = [doing.filter(a => a.isAsking).length, checked.filter(c => c.result === 'failed').length, list.filter(a => a.status === 'error' || a.tests === 'FAIL').length]
+  const key = JSON.stringify([lay, tab, adv, e.props.bodyColumns, e.surface, cfg.lang, cfg.isClassic, cfg.hidden, urgentCount, Math.floor(now / cfg.refreshMs)])
+  if (frame?.key === key) return frame.tree
+  const tree = await drawFresh($, e)
+  frame = { key, tree }
+  return tree
+}
+
+// Order, as the review asks: needs attention, running now, changes and verification, usage, then the folding history.
+async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
   const { Box, Button, Text } = $.ui.resolve(e)
   const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt] = await Promise.all([
@@ -76,7 +102,11 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   const whatRoom = Math.max(10, Math.min(40, cols - 50))
   const shown = recent.filter(c => c.view === tab).slice(-5)
   const perMin = (cat: string) => flows.filter(f => f.cat === cat && now - f.at < 60_000).length
-  const secs = (from: number) => ago(now - from)
+  // The person's switch (`v`) beats the `layout` option.
+  const isClassic = lay.isClassic ?? cfg.isClassic
+  // Calm: a breathing dot, and running times that move in 5 s steps, so fewer cells change each redraw.
+  const spin = isClassic ? spinner : breath
+  const secs = (from: number) => (isClassic ? ago(now - from) : now - from < 5000 ? '<5 s' : ago(Math.floor((now - from) / 5000) * 5000))
   // Details off cuts long texts to the room they have; on, they are drawn whole.
   const cut = (s: string, n: number) => (lay.isDetailed || width(s) <= n ? s : `${clip(s, n - 1)}…`)
   const isStale = (c: Check) => c.result !== 'running' && touched.editedAt > c.at
@@ -207,42 +237,58 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
     </Box>
   )
-  // Past six running subagents, one line each: ten agents stay ten rows, not four rows of cards.
+  // Calm: a call's row and the last call's row stay one line each, cut at the edge, so swapping one for the other moves nothing.
+  const rowWrap = isClassic ? undefined : ('truncate-end' as const)
+  // Past four running subagents, the first four stay cards and the rest fold behind `a`; open, one line each.
   const agentLine = (a: Card) => (
-    <Text>
-      <Text color="cyan">{spinner(now)} </Text>
+    <Text wrap={rowWrap}>
+      <Text color="cyan">{spin(now)} </Text>
       <Text bold>{fit(a.type, 18)}</Text>
       <Text color="blue">{fit(modelName(a.model), 11)}</Text>
       {fit(cut(a.task, whatRoom), whatRoom + 1)}
       <Text dimColor>{secs(a.startedAt)} · {a.files} {t.files}</Text>
     </Text>
   )
-  const MAX_CARDS = 6
   const liveAgents = list.filter(isLive)
+  const maxCards = isClassic ? MAX_CARDS_CLASSIC : MAX_CARDS
+  const isFolded = !isClassic && liveAgents.length > maxCards && !lay.isAgentsOpen
+  // The first four by start, so the cards stay put while the agents work.
+  const cardAgents = isFolded ? liveAgents.slice(0, maxCards) : liveAgents
+  const callRows = doing.length > 0 ? Math.min(3, doing.length) : last ? 1 : 0
+  // Calm: Running now always keeps three rows, so the sections below do not jump with each call or turn.
+  const padRows = isClassic ? 0 : Math.max(0, 3 - callRows)
 
   const runningNow = (
     <Box flexDirection="column">
       {doing.slice(-3).map(a => (
-        <Text>
-          <Text color="cyan">{spinner(now)} </Text>
+        <Text wrap={rowWrap}>
+          <Text color="cyan">{spin(now)} </Text>
           <Text bold>{fit(a.tool, 10)}</Text>
           {fit(cut(a.what, whatRoom), whatRoom + 1)}
           <Text dimColor>{a.who.slice(0, 16)}{a.model ? ` · ${modelName(a.model)}` : ''} · {secs(a.startedAt)}</Text>
         </Text>
       ))}
       {doing.length === 0 && last && (
-        <Text dimColor>
+        <Text dimColor wrap={rowWrap}>
           {t.lastCall} · {last.tool}{last.what ? ` ${cut(last.what, whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
         </Text>
       )}
-      {liveAgents.length > MAX_CARDS ? (
+      {Array.from({ length: padRows }, () => (
+        <Text> </Text>
+      ))}
+      {liveAgents.length > maxCards && !isFolded ? (
         <Box flexDirection="column">{liveAgents.map(agentLine)}</Box>
       ) : (
-        liveAgents.length > 0 && (
+        cardAgents.length > 0 && (
           <Box flexDirection="row" flexWrap="wrap">
-            {liveAgents.map(card)}
+            {cardAgents.map(card)}
           </Box>
         )
+      )}
+      {!isClassic && liveAgents.length > maxCards && (
+        <Button key="fold:agents" plain hotkey="a" onPress={() => update($, layout, l => ({ ...l, isAgentsOpen: !l.isAgentsOpen }))}>
+          {isFolded ? `▸ ${t.moreAgents(liveAgents.length - maxCards)}` : `▾ ${t.agentsAll(liveAgents.length)}`}
+        </Button>
       )}
     </Box>
   )
@@ -257,7 +303,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
       {current && (
         <Text>
-          <Text color="cyan">{spinner(now)} </Text>
+          <Text color="cyan">{spin(now)} </Text>
           {cut(current.activeForm || current.subject, whatRoom + 20)}
         </Text>
       )}
@@ -431,7 +477,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             <Text>
               <Text dimColor>{clockTime(c.at)} </Text>
               <Text color={c.result === 'running' ? 'cyan' : c.result !== 'ok' ? 'red' : c.view === 'git' ? 'yellow' : undefined}>
-                {c.result === 'running' ? `${spinner(now)} ` : ''}{cut(c.what, barRoom + 20)}
+                {c.result === 'running' ? `${spin(now)} ` : ''}{cut(c.what, barRoom + 20)}
               </Text>
               <Text dimColor> {c.who.slice(0, 16)}</Text>
             </Text>
@@ -576,10 +622,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
       { key: 'advisor', node: advisorBox, isUrgent: !!verdict && !verdict.ok && !verdict.isSent, at: verdict?.at ?? 0 },
       { key: 'changes', node: changes, isUrgent: checked.some(c => c.result === 'failed' && !isStale(c)), at: latest(touched.editedAt, ...checked.map(c => c.at)) },
       { key: 'usage', node: usageBox, isUrgent: isHigh(pct ?? 0) || usage.rateLimits.some(r => isHigh(r.percentUsed)), at: 0 },
-    ].filter(s => s.node && !cfg.hidden.includes(s.key)),
+    ].filter(s => s.node && !cfg.hidden.includes(s.key) && (isClassic || s.isUrgent || !CALM_HIDDEN.includes(s.key))),
     now,
+    isClassic,
   )
 
+  const slowest = ins.slow[0]
   // A newer GitHub release: `update` drafts the commands, `changelog` folds out what changed.
   const release = cfg.release && isNewer(cfg.release.version, cfg.version) ? cfg.release : undefined
 
@@ -593,6 +641,9 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         {listening(adv.isOn) && <Text color="magenta"> · {t.watches}</Text>}
         {cfg.build && <Text dimColor bold={false}> {cfg.build}</Text>}
       </Text>
+      <Button key="layout:switch" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, isClassic: !(l.isClassic ?? cfg.isClassic) }))}>
+        {`◐ ${isClassic ? t.layoutClassic : t.layoutCalm}`}
+      </Button>
       {release && (
         <Button key="update" plain hotkey="u" onPress={() => investigate(t.promptUpdate(cfg.version, release.version))}>
           {t.update}
@@ -625,6 +676,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
         </Box>
       ) : (
         // Always on top: when nothing needs a look, where the last turn's time went.
+        <Box gap={1}>
         <Text>
           {title(ti.focus, 'green')} <Text dimColor>{ti.allClear}</Text>
           {shownTurn && turnBuckets && (
@@ -638,6 +690,13 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
             </Text>
           )}
         </Text>
+        {/* With Insights hidden, `i` still reaches the slowest call from here. */}
+        {slowest && !sections.some(s => s.key === 'insights') && (
+          <Button key="investigate:slowest" plain hotkey="i" onPress={() => investigate(ti.promptSlowDone(slowest.tool, slowest.what, dur(slowest.ms)))}>
+            {t.investigate}
+          </Button>
+        )}
+        </Box>
       )}
       {runningNow}
       {/* A wrapping column measures notes one line high, a shrinking one squeezes boxes below their text. */}

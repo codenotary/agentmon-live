@@ -50,6 +50,7 @@ const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
 let statusQueued = false
 let rateQueued = false
 let isTicking = false
+let isPulsing = false
 let reconciledAt = 0
 // One base poll per process, however often the session starts.
 let isBaseWatched = false
@@ -109,6 +110,22 @@ function tick($: EngineInterface) {
     $.ui.invalidate('ui.render')
     tick($)
   })
+}
+
+// With a refresh rate the pane keeps its frame within a period; this draws the next one on each boundary,
+// the one drawPane's key counts, even when nothing writes. Like tick, it stops once nothing runs, after that last frame;
+// tool.call, turn.start and agent.spawn start it again.
+function pulse($: EngineInterface) {
+  if (isPulsing || cfg.refreshMs <= 0) return
+  isPulsing = true
+  void $.clock.now().then(now =>
+    $.clock.after(cfg.refreshMs - (now % cfg.refreshMs), async () => {
+      isPulsing = false
+      $.ui.invalidate('ui.render')
+      const [doing, list] = await Promise.all([read($, active), read($, agents)])
+      if (doing.length > 0 || list.some(a => a.status === 'running')) pulse($)
+    }),
+  )
 }
 
 // Tool calls come in bursts; redraw the status line at most twice a second.
@@ -222,6 +239,10 @@ export const register: Register = (on, options) => {
   cfg.learning = String(options.learning ?? 'on') !== 'off'
   cfg.debugLog = String(options.debugLog ?? 'on') !== 'off'
   cfg.hidden = String(options.hiddenSections ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  // `live` or anything not a positive number redraws on every change.
+  const refresh = Number(options.refreshRate ?? 'live')
+  cfg.refreshMs = Number.isFinite(refresh) && refresh > 0 ? refresh * 1000 : 0
+  cfg.isClassic = String(options.layout ?? 'calm') === 'classic'
   const basePoll = Number(options.gitPollMinutes ?? 5)
   const baseMinutes = Number.isFinite(basePoll) && basePoll > 0 ? basePoll : 0
   const isFetching = String(options.gitFetch ?? false) === 'true'
@@ -260,6 +281,7 @@ export const register: Register = (on, options) => {
       argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|learn|memory|debug]`,
     })
     cwd = e.cwd
+    pulse($)
     // After a reload mid-turn, older todos and agent results must not count as this turn's.
     turn.startedAt = await $.clock.now()
     if (cfg.debugLog) await openDebugLog($, turn.startedAt).catch(() => undefined)
@@ -390,6 +412,7 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => ({ text: `agentmon-live: the command failed (${next.error.message ?? next.error.kind})` }))
 
   on('turn.start', async ($, e, next) => {
+    pulse($)
     // A turn a Stop hook sent back (the done gate or another one) goes on as the same turn: its checks and edits still count.
     if (e.agentId === undefined && e.text === '') {
       isTurnLive = true
@@ -526,7 +549,7 @@ export const register: Register = (on, options) => {
     await Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
-      update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => tick($)),
+      update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => (tick($), pulse($))),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
       found.length > 0 &&
         update($, checks, all => [
@@ -736,6 +759,7 @@ export const register: Register = (on, options) => {
     }
     await update($, agents, list => trimAgents([...list, card]))
     tick($)
+    pulse($)
     await addLog($, { who: e.subagentType, what: card.task, result: t.started })
     await refreshStatus($)
     return r

@@ -321,7 +321,7 @@ test('open todo items keep the turn going, but a list from an earlier turn does 
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
 })
 
-test('with no recorded gap, Fable judges whether the answer covers the request', async ($, on) => {
+test('with no recorded gap, Fable judges whether the answer covers the request', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []
   engine(on)
@@ -334,7 +334,8 @@ test('with no recorded gap, Fable judges whether the answer covers the request',
   expect(prompts.length).toBe(1)
   expect(prompts[0]).toContain('Final answer:\nParser fixed.')
   expect(r.block).toContain('- Fable, a reviewing model that may be wrong, says: The README part was not done.')
-  expect(r.block).toContain('- → Update the README.')
+  // The fix is Fable's claim too, labelled as such before it reaches Claude.
+  expect(r.block).toContain('- → Fable, a reviewing model that may be wrong, says: Update the README.')
   // The usage box counts what the advisor spent: one call, its tokens in / out.
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^fable\s+calls 1\/30 · tokens 1 \/ 1$/ })).toBeTruthy()
@@ -364,6 +365,27 @@ test('a verdict that reasons first and ends in OK passes; "not OK" does not', as
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
   expect((await $.classic.Stop({ ...STOP })).block).toContain('The tests are not OK')
+})
+
+test('a verdict that leads with OK and explains after passes', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [], ['OK. Nothing is missing.', 'OK\nThe request is covered.'])
+  await start($)
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
+  expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
+})
+
+test('"OK, but …" is no pass: the gap goes back to Claude', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [], ['OK, but the docs part of the request is not answered.'])
+  await start($)
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toContain('the docs part of the request is not answered')
 })
 
 test('the old plan mode maps to gate mode', { options: { advisorMode: 'plan' } }, async ($, on) => {

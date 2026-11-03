@@ -40,7 +40,7 @@ export const VIEWS: View[] = ['git', 'shell', 'mcp']
 const MAX_FINISHED = 12
 
 // Set from the options on each load.
-export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true, debugLog: true, hidden: [] as string[], version: '', release: undefined as { version: string; notes: string } | undefined, base: undefined as BaseDrift | undefined }
+export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true, debugLog: true, hidden: [] as string[], refreshMs: 0, isClassic: false, version: '', release: undefined as { version: string; notes: string } | undefined, base: undefined as BaseDrift | undefined }
 
 // Each module declares the atoms it reads or writes itself, as the engine's scan needs; they share these first values.
 export const INIT = {
@@ -79,11 +79,11 @@ export function isLive(a: Pick<Card, 'status'>): boolean {
 // A section of the pane below Running now: `isUrgent` when something there needs the person, `at` its last activity.
 export type Ranked = { key: string; isUrgent: boolean; at: number }
 
-// Sections move up by what needs attention: urgent ones first, then those active in the last two minutes,
-// newest first, then the rest in their usual order. Ties keep the usual order, so the pane does not jitter.
+// Urgent sections move to the top. Calm keeps the rest in their usual order, so the pane does not jump as work moves;
+// classic puts those active in the last two minutes next, newest first. Ties keep the usual order.
 export const RECENT_MS = 120_000
-export function rank<T extends Ranked>(sections: T[], now: number): T[] {
-  const tier = (s: Ranked) => (s.isUrgent ? 0 : now - s.at < RECENT_MS ? 1 : 2)
+export function rank<T extends Ranked>(sections: T[], now: number, isClassic = false): T[] {
+  const tier = (s: Ranked) => (s.isUrgent ? 0 : isClassic && now - s.at < RECENT_MS ? 1 : 2)
   return sections
     .map((s, i) => ({ s, i }))
     .sort((a, b) => tier(a.s) - tier(b.s) || (tier(a.s) === 1 ? b.s.at - a.s.at : 0) || a.i - b.i)

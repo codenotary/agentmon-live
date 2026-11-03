@@ -78,12 +78,14 @@ Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn t
 
 | Key | Does |
 | --- | --- |
-| `i` | Draft a question about the top Focus item |
+| `i` | Draft a question about the top Focus item, or the slowest call |
 | `u` | Draft the update commands, when a new release is out |
 | `l` | Show the new release's changelog |
 | `x` | Put Focus items away |
-| `d` | Show everything, uncut |
+| `d` | Show long lists and texts whole |
 | `h` | Fold the history |
+| `a` | Fold out all running subagents, past four |
+| `v` | Switch between the calm and classic layout |
 | `c` | Run the done-gate check now |
 
 Commands: `/agentmon`, `advisor`, `check`, `learn`, `memory`, `bench`, `debug`, `clear`.

@@ -21,6 +21,8 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 | --- | --- | --- |
 | `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | `en` |
 | `hiddenSections` | comma-separated: `tasks`, `insights`, `skills`, `advisor`, `changes`, `usage` | `""` |
+| `refreshRate` | `live`, `5`, `15`, `30`, `60` (seconds between pane redraws) | `live` |
+| `layout` | `calm` or `classic` | `calm` |
 | `advisorModel` | any model id | `claude-fable-5-1` |
 | `advisorMode` | `all` (done gate plus Fable), `gate` (done gate, no model), `off` | `all` |
 | `advisorBudget` | most Fable calls per session, `0` for no limit | `30` |

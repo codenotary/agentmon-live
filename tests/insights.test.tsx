@@ -80,7 +80,7 @@ test('focus stays quiet for a call within its usual time', async () => {
   expect(list).toEqual([])
 })
 
-test('a turn is split into model, tool and approval time', async ($, on) => {
+test('a turn is split into model, tool and approval time', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   let asking = false
@@ -168,7 +168,7 @@ test('the same failing call three times is a loop; a long call in flight is slow
   await ui.unmount()
 })
 
-test('focus moves between project areas are counted per turn', async ($, on) => {
+test('focus moves between project areas are counted per turn', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {}, text: 'ok' }))
@@ -286,7 +286,7 @@ test('the german pane names the insights', { options: { language: 'de' } }, asyn
   await ui.unmount()
 })
 
-test('focus and insights draw on desktop too', async ($, on) => {
+test('focus and insights draw on desktop too', { options: { layout: 'classic' } }, async ($, on) => {
   const clock = mock.clock(on)
   engine(on, 90)
   on('tool.call', async () => {

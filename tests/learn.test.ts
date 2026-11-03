@@ -432,7 +432,9 @@ test('/agentmon learn gives a session key only to the newest records and a row t
   })()
   const ids = Array.from({ length: KEEP_SESSIONS + 2 }, (_, i) => `t${i}`)
   engine(on, store, [], ids)
+  let reads = 0
   on('fs.read', (_, e) => {
+    reads++
     const i = Number(e.path.match(/t(\d+)\.jsonl$/)?.[1])
     return { value: JSON.stringify({ type: 'assistant', uuid: `a${i}`, timestamp: new Date(1_700_000_000_000 + i * 1000).toISOString(), message: { content: [{ type: 'tool_use', id: 't', name: 'Bash' }] } }) }
   })
@@ -445,6 +447,11 @@ test('/agentmon learn gives a session key only to the newest records and a row t
   expect(saved.bench.length).toBe(KEEP_SESSIONS + 2)
   // The two oldest never got a session key, so none was written only to be pruned.
   expect(sets.filter(k => k.startsWith('sess:') && /:t[01]$/.test(k))).toEqual([])
+  // A second run reads no transcript again: each one has a record or a row, and the result stays.
+  reads = 0
+  await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'learn' } as never)
+  expect(reads).toBe(0)
+  expect(viewOf(store)).toEqual(saved)
 })
 
 test('a turn without a usage breakdown is still saved and keeps the MCP figures', async ($, on) => {
