@@ -10,7 +10,7 @@ export const SIZE_LIMIT = 20_000
 const KEEP_PATHS = 100
 
 // Maintained source; docs, data and binaries never count.
-const SOURCE = /\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|swift|rb|php|c|h|cc|cpp|hpp|cs|scala|sh|sql|vue|svelte|css|scss|lua|dart|exs?|zig)$/i
+export const SOURCE = /\.(tsx?|jsx?|mjs|cjs|py|go|rs|java|kt|swift|rb|php|c|h|cc|cpp|hpp|cs|scala|sh|sql|vue|svelte|css|scss|lua|dart|exs?|zig)$/i
 
 // Files nobody maintains by hand: lockfiles, generated code, vendored code, build output and fixtures.
 export const SIZE_EXCLUDE = [
@@ -40,17 +40,22 @@ export function globToRegExp(glob: string): RegExp {
 
 const MAX_WILDCARDS = 4
 
-// `<glob>  # <reason>` per line; a line without a reason is no exception, so every exception says why.
-export function parseExceptions(text: string): string[] {
+// `<glob> …  # <reason>` per line, as words; a line without a reason is dropped, so every entry says why.
+export function reasonedLines(text: string): string[][] {
   return text
     .split('\n')
     .map(l => l.trim())
     .filter(l => l && !l.startsWith('#'))
     .flatMap(l => {
-      const [glob, reason] = l.split(/\s+#\s*/, 2)
+      const [spec, reason] = l.split(/\s+#\s*/, 2)
+      const words = (spec ?? '').split(/\s+/).filter(Boolean)
       // A glob from the repo runs on every edit: past four wildcards it can backtrack for seconds.
-      return glob && reason?.trim() && (glob.match(/[*?]/g) ?? []).length <= MAX_WILDCARDS ? [glob] : []
+      return words[0] && reason?.trim() && (words[0].match(/[*?]/g) ?? []).length <= MAX_WILDCARDS ? [words] : []
     })
+}
+
+export function parseExceptions(text: string): string[] {
+  return reasonedLines(text).map(w => w[0]!)
 }
 
 // The path relative to the project, or undefined outside it.

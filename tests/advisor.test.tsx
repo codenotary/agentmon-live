@@ -18,8 +18,9 @@ const DONE = { answer: 'done', durationMs: 1000, isAborted: false, turnId: 't', 
 const STOP = { stop_hook_active: false, last_assistant_message: 'All done.' } as const
 const USAGE = { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 
-// The engine answers every test needs; copied from agentmon.test.tsx. A command containing `fail` fails.
-function engine(on: On) {
+// The engine answers every test needs; copied from agentmon.test.tsx. A command containing `fail` fails; `outputs` is what a command prints, `denied` the commands the person denies.
+// An output list answers the command's calls in turn.
+function engine(on: On, outputs: Record<string, string | string[]> = {}, denied: string[] = []) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -32,7 +33,11 @@ function engine(on: On) {
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('tool.call', (_, e) => (String((e as { command?: unknown }).command ?? '').includes('fail') ? { result: {}, text: '1 failing', isError: true } : { result: {} }))
+  on('tool.call', (_, e) => {
+    const command = String((e as { command?: unknown }).command ?? '')
+    if (denied.includes(command)) return { deny: 'denied by the user' }
+    return command.includes('fail') ? { result: {}, text: '1 failing', isError: true } : { result: {}, text: (Array.isArray(outputs[command]) ? outputs[command].shift() : outputs[command]) ?? '' }
+  })
 }
 
 // Fable answers from `answers` in turn (then OK) and records each prompt it was sent.
@@ -284,6 +289,135 @@ test('a check chained with git, or behind ||, is still recorded with its real ou
   await $.tool.call({ tool: 'Bash', command: 'npm test && git commit -am wip' })
   await clock.settle()
   expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
+})
+
+// A two-package repo with optional `.agentmon-tests` rules; `cd` moves the shell.
+function monorepo(on: On, rules?: string) {
+  let shell = '/repo'
+  on('session.cwd', () => ({ value: shell }))
+  on('fs.exists', (_, e) => ({ value: ['/repo/package.json', '/repo/packages/api/package.json', '/repo/packages/web/package.json'].includes(e.path) }))
+  on('fs.read', (_, e) => {
+    if (rules !== undefined && e.path === '/repo/.agentmon-tests') return { value: rules }
+    throw new Error('ENOENT')
+  })
+  return { cd: (dir: string) => (shell = dir) }
+}
+
+// One prompt: edit `files`, run `commands` after the edit, and return what the gate sends back. The gate sends back once per prompt.
+async function attempt($: Parameters<TestBody>[0], clock: { advance: (ms: number) => Promise<unknown>; settle: () => Promise<unknown> }, id: string, files: string[], commands: string[]) {
+  await $.turn.start({ text: 'Fix the api', turnId: id })
+  for (const file of files) await $.tool.call({ tool: 'Edit', file_path: file, old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  for (const command of commands) await $.tool.call({ tool: 'Bash', command })
+  await clock.settle()
+  return (await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block
+}
+
+const API = '/repo/packages/api/src/auth.ts'
+const WEB = '/repo/packages/web/src/app.ts'
+const UNCOVERED_API = 'packages/api: edited (auth.ts), but no test run after the edit reached it'
+
+test('in a monorepo, tests of another package leave the edited one unverified', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'cd packages/web && npm test': 'Tests:       4 passed, 4 total', 'cd packages/api && npx vitest -t login': '      Tests  1 passed | 6 skipped (7)' })
+  monorepo(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  expect(await attempt($, clock, 'm1', [API], ['cd packages/web && npm test'])).toContain(UNCOVERED_API)
+  // A focused run in the api package is enough without a declared target.
+  expect(await attempt($, clock, 'm2', [API], ['cd packages/web && npm test', 'cd packages/api && npx vitest -t login'])).toBe(undefined)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+1 run · 6 skipped · packages\/api: npx v/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a denied test run is no evidence; a config edit needs no test', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'cd packages/web && npm test': '4 passed' }, ['cd packages/api && npm test'])
+  monorepo(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  expect(await attempt($, clock, 'm1', [API], ['cd packages/web && npm test', 'cd packages/api && npm test'])).toContain(UNCOVERED_API)
+  expect(await attempt($, clock, 'm2', ['/repo/tsconfig.json', '/repo/.github/workflows/ci.yml', WEB], ['cd packages/web && npm test'])).toBe(undefined)
+})
+
+test('each test of a chained command counts, from its own directory', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  monorepo(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  expect(await attempt($, clock, 'm1', [API, WEB], ['npm --prefix packages/api test && npm --prefix packages/web test'])).toBe(undefined)
+  expect(await attempt($, clock, 'm2', [API, WEB], ['cd packages/api && npm test && cd ../web && npm test'])).toBe(undefined)
+  expect(await attempt($, clock, 'm3', [API, WEB], ['cd packages/web && npm test && npm run lint'])).toContain(UNCOVERED_API)
+})
+
+test('review findings: a later passing run elsewhere keeps a failure; a rule holds whatever the edit order', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'cd packages/api && npx vitest -t login': '1 passed' })
+  monorepo(on, 'packages/api/src/** packages/api full # auth is shared')
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(await attempt($, clock, 'm1', [API, WEB], ['cd packages/api && npm test -- fail', 'cd packages/web && npm test'])).toContain('test failed: npm test -- fail')
+  // The first edited file has no rule; the second's `full` still applies to the shared target.
+  expect(await attempt($, clock, 'm2', ['/repo/packages/api/scripts/build.ts', API], ['cd packages/api && npx vitest -t login'])).toContain('packages/api: edited (build.ts, auth.ts)')
+})
+
+test('the row of a chained command names the last test with its own folder', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  monorepo(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'cd packages/api && npm test && cd ../web && npx vitest run' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+packages\/web: npx vitest run/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a filter that selects no tests is no evidence, even when the runner exits 0', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npx vitest -t nomatch --passWithNoTests': 'No test files found, exiting with code 0' })
+  monorepo(on).cd('/repo/packages/api')
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const block = await attempt($, clock, 'm1', [API], ['npx vitest -t nomatch --passWithNoTests'])
+  expect(block).toContain('npx vitest -t nomatch --passWithNoTests ran no tests')
+  expect(block).toContain(UNCOVERED_API)
+})
+
+test('a test run that skips tests the same run did not skip before the edit is sent back', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': ['Tests:       40 passed, 40 total', 'Tests:       38 passed, 2 skipped, 40 total'] })
+  monorepo(on).cd('/repo/packages/api')
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the api', turnId: 'm1' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Edit', file_path: API, old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  const block = (await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block
+  expect(block).toContain('npm test ran 38 tests and skipped 2 after the edit, 40 and 0 before it')
+})
+
+test('a root run covers every package; a workspace run only its own', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'pnpm --filter web test': '4 passed', 'npm test': '9 passed' })
+  monorepo(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const block = await attempt($, clock, 'm1', [API, WEB], ['pnpm --filter web test'])
+  expect(block).toContain(UNCOVERED_API)
+  expect(block).not.toContain('packages/web: edited')
+  expect(await attempt($, clock, 'm2', [API, WEB], ['npm test'])).toBe(undefined)
+})
+
+test('a declared target is expected with no test run, and a full one takes no filter', { options: { advisorMode: 'gate' } }, async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'cd packages/api && npx vitest -t login': '1 passed', 'cd packages/api && npx vitest run': '7 passed' })
+  monorepo(on, 'packages/api/** packages/api full # auth is shared')
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(await attempt($, clock, 'm1', [API], [])).toContain(UNCOVERED_API)
+  expect(await attempt($, clock, 'm2', [API], ['cd packages/api && npx vitest -t login'])).toContain(UNCOVERED_API)
+  expect(await attempt($, clock, 'm3', [API], ['cd packages/api && npx vitest run'])).toBe(undefined)
 })
 
 test('claims are found in each language and negations are not claims', async () => {

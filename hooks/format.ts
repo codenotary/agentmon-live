@@ -145,7 +145,8 @@ export function failLine(answer: string): string | undefined {
   return answer.split('\n').find(l => ANSWER_FAIL.test(prose(l)))?.trim().slice(0, 200)
 }
 
-const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?`
+// `pnpm --filter web test`, `npm --prefix api test`, `yarn workspace web test` run the same script in one package.
+const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:(?:--filter|-F|--prefix|-C|--dir|-w|--workspace)(?:=|\s+)\S+\s+|workspace\s+\S+\s+)*(?:run\s+)?`
 // Each pattern must start a command; the first kind that matches wins, so `tsc` is a typecheck, not a build.
 const CHECKS: [CheckKind, RegExp][] = [
   ['typecheck', new RegExp(String.raw`^(?:tsc|${RUN}(?:typecheck|type-check)|mypy|pyright|cargo check)\b`)],
@@ -162,8 +163,8 @@ export function findCheck(command: string): { kind: CheckKind; part: string } | 
   return findChecks(command)[0]
 }
 
-// Every check a command runs, in command order, one entry per kind: `npm run lint && npm test` is lint, then test.
-export function findChecks(command: string): { kind: CheckKind; part: string }[] {
+// Every check a command runs, in command order, one entry per kind unless `isEvery`: `npm run lint && npm test` is lint, then test.
+export function findChecks(command: string, isEvery = false): { kind: CheckKind; part: string }[] {
   // The heredoc regex is quadratic on many unterminated `<<A`; a real command never needs more than this.
   const plain = command.slice(0, 20_000).replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '')
   // Quoted text turns to spaces of the same length, so a part found in `blank` is cut from `plain` at the same place.
@@ -179,7 +180,7 @@ export function findChecks(command: string): { kind: CheckKind; part: string }[]
   const found: { kind: CheckKind; part: string }[] = []
   for (const p of parts) {
     const kind = CHECKS.find(([, re]) => re.test(p.head))?.[0]
-    if (kind && !found.some(f => f.kind === kind)) found.push({ kind, part: p.part })
+    if (kind && (isEvery || !found.some(f => f.kind === kind))) found.push({ kind, part: p.part })
   }
   return found
 }
@@ -205,6 +206,99 @@ export function outcomeOf(output: string, kind: CheckKind): 'ok' | 'failed' | 'u
   if (/\b[1-9]\d*\s+(?:tests?\s+)?(?:fail(?:ed|ures?|ing)?|errors?|problems?)\b|✘|✖|error TS\d+|^error\b/im.test(out) || /\bFAIL(?:ED)?\b/.test(out)) return 'failed'
   if (PASSES.test(out)) return 'ok'
   return out.trim() === '' && (kind === 'typecheck' || kind === 'lint') ? 'ok' : 'unknown'
+}
+
+// `to` resolved against `base`, `.` and `..` folded; an absolute `to` wins.
+export function joinPath(base: string, to: string): string {
+  const out: string[] = []
+  for (const seg of (to.startsWith('/') ? to : `${base}/${to}`).split('/')) {
+    if (seg === '..') out.pop()
+    else if (seg && seg !== '.') out.push(seg)
+  }
+  return `/${out.join('/')}`
+}
+
+const PATH_FLAG = /^(?:--prefix|--dir|--cwd|-C)$/
+// The package flags that take a name, per manager: cargo's `--workspace` and pnpm's `-w` (the root) take none; `-w` is watch mode to vitest.
+const PKG_FLAG: Record<string, RegExp> = { npm: /^(?:-w|--workspace)$/, pnpm: /^(?:--filter|-F)$/, bun: /^--filter$/, cargo: /^(?:-p|--package)$/ }
+// A folder known only at run time: `~`, `$VAR`, a command substitution.
+export const UNKNOWN_DIR = '?'
+const FOCUS_FLAG = /^(?:-t|--testNamePattern|--test-name-pattern|--grep|-g|-k|-run|--only|--exact)$/
+
+export type TestScope = { dir: string; pkg?: string; isFocused: boolean }
+
+// Where the test part of `command` runs from `shellDir`: a `cd`, `--prefix`, workspace, path argument or name filter narrows it.
+// `from` is where to look for `part`, so a repeated `npm test` takes the `cd` before its own place.
+export function testScope(command: string, part: string, shellDir: string, from = 0): TestScope {
+  // shortcut: whitespace tokens and plain paths only, a runner's own config (`projects`, `testMatch`) is not read; upgrade when a project's runs are misplaced.
+  let dir = shellDir
+  const go = (to: string) => (dir = dir === UNKNOWN_DIR || /^~|[$`]/.test(to) ? UNKNOWN_DIR : joinPath(dir, to))
+  const at = Math.max(0, command.indexOf(part, from))
+  for (const m of command.slice(0, at).matchAll(/(?:^|&&|;|\n|\()\s*(?:cd|pushd)\s+([^\s;&|)]+)/g)) go(m[1]!.replace(/^['"]|['"]$/g, ''))
+  const words = part.split(/\s+/).map(w => w.replace(/^['"]|['"]$/g, ''))
+  const pkgFlag = PKG_FLAG[words[0] ?? '']
+  let pkg: string | undefined
+  let path: string | undefined
+  let isFocused = false
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i]!
+    const eq = word.startsWith('-') ? word.indexOf('=') : -1
+    const flag = eq > 0 ? word.slice(0, eq) : word
+    const value = () => (eq > 0 ? word.slice(eq + 1) : (words[++i] ?? ''))
+    if (PATH_FLAG.test(flag)) go(value())
+    // `@acme/web` and `./packages/web` both name the package `web`.
+    else if (pkgFlag?.test(flag) || (words[0] === 'yarn' && flag === 'workspace' && i === 1)) pkg = value().replace(/\/+$/, '').replace(/^.*\//, '')
+    else if (FOCUS_FLAG.test(flag)) {
+      value()
+      isFocused = true
+    } else if (!flag.startsWith('-') && path === undefined && /\/|^\.|\.\w+$|::/.test(flag)) path = word
+  }
+  if (path) {
+    const isFile = /\.\w+(?:::.*)?$/.test(path) && !/\.\.\.$/.test(path)
+    const clean = path.replace(/::.*$/, '').replace(/\/?\.\.\.$/, '')
+    go(isFile ? clean.replace(/\/?[^/]*$/, '') || '.' : clean || '.')
+    if (isFile) isFocused = true
+  }
+  return pkg === undefined ? { dir, isFocused } : { dir, pkg, isFocused }
+}
+
+const COUNT_FIRST = /(\d+)\s+(?:tests?\s+)?(passed|passing|pass|failed|failing|fail|skipped|pending|ignored|todo)\b/gi
+// node's runner: `# pass 3`, `ℹ skipped 1`.
+const WORD_FIRST = /^\s*(?:#|ℹ)\s*(pass|fail|skipped|todo)\s+(\d+)\s*$/i
+// cargo prints a line per test binary, doc tests last; a workspace's lines can run past any tail.
+const CARGO_RESULT = /^test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored/gm
+const NO_TESTS = /No test files found|No tests found|no tests? (?:ran|to run)|\[no test files\]|collected 0 items|Ran 0 tests|^\s*0 passing\b/i
+
+// How many tests a run executed and skipped, from the runner's summary (jest, vitest, node, bun, mocha, pytest, cargo, go).
+// undefined when the output holds no summary; `ran: 0` when the runner says it found nothing to run, whatever its exit.
+export function testCounts(output: string): { ran: number; skipped: number } | undefined {
+  let ran = 0
+  let skipped = 0
+  let isSeen = false
+  let isNone = false
+  let isGoRun = false
+  for (const m of output.matchAll(CARGO_RESULT)) {
+    isSeen = true
+    ran += Number(m[1]) + Number(m[2])
+    skipped += Number(m[3])
+  }
+  for (const line of output.slice(-20_000).split('\n').slice(-40)) {
+    // Suites and files are not tests: jest's `Test Suites: 2 passed`, vitest's `Test Files  1 passed`.
+    if (/^\s*Test (?:Suites|Files)\b|^test result:/.test(line)) continue
+    if (NO_TESTS.test(line)) isNone = true
+    else if (/^ok\s+\S+\s/.test(line)) isGoRun = true
+    const tally = (word: string, n: number) => {
+      isSeen = true
+      if (/^(?:skipped|pending|ignored|todo)$/i.test(word)) skipped += n
+      else ran += n
+    }
+    const w = line.match(WORD_FIRST)
+    if (w) tally(w[1]!, Number(w[2]))
+    else for (const m of line.matchAll(COUNT_FIRST)) tally(m[2]!, Number(m[1]))
+  }
+  // `go test` prints no counts: a package that ran says `ok`.
+  if (isSeen) return { ran, skipped }
+  return isNone && !isGoRun ? { ran: 0, skipped: 0 } : undefined
 }
 
 

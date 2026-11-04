@@ -71,7 +71,7 @@ export type SessionRecord = {
   errs?: Record<string, number>
 }
 
-export type GapKind = 'failed' | 'stale' | 'claim' | 'todos' | 'agent' | 'fable'
+export type GapKind = 'failed' | 'stale' | 'claim' | 'todos' | 'agent' | 'fable' | 'uncovered' | 'empty' | 'dropped'
 
 // What one session's work came to, for `/agentmon bench`: `mod` when AgentMon Live ran in it, `live` when recorded as it ran (not read back from a transcript).
 // Turn counts are per prompt: a turn the done gate sent back is the same prompt. `turnMs` holds the durations of prompts that used tools.
@@ -172,7 +172,8 @@ export type Call = { id?: string; at: number; who: string; view: View; what: str
 export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
 // The last run of one kind of check: `unknown` when its exit status could not be read (a pipe, a denial).
-export type Check = { kind: CheckKind; command: string; who: string; at: number; result: 'running' | 'ok' | 'failed' | 'unknown' }
+// A test run also says where it ran (`dir`, relative to the project, absent at its root) and, when the summary said, how many tests ran and were skipped.
+export type Check = { kind: CheckKind; command: string; who: string; at: number; result: 'running' | 'ok' | 'failed' | 'unknown'; dir?: string; ran?: number; skipped?: number }
 
 // Files the session read and edited successfully; `editedAt` is the last successful edit, to tell stale checks.
 export type Files = { read: string[]; edited: string[]; editedAt: number }
