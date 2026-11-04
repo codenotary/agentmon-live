@@ -19,7 +19,7 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 
 | Option | Values | Default |
 | --- | --- | --- |
-| `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | `en` |
+| `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | the terminal's (`LC_ALL`, `LC_MESSAGES`, `LANG`), else `en` |
 | `hiddenSections` | comma-separated: `tasks`, `insights`, `skills`, `advisor`, `changes`, `usage` | `""` |
 | `refreshRate` | `live`, `5`, `15`, `30`, `60` (seconds between pane redraws) | `live` |
 | `layout` | `calm` or `classic` | `calm` |
@@ -35,4 +35,4 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 
 The Focus box, Running now and the history always show. They cannot be hidden.
 
-The mod reads its options when it loads. After the edit, ask the user to run `/reload-plugins`, or to start a new session. The user can also change the same options in `/config`.
+The mod reads its options at each prompt and after this edit, so no reload is needed. Only `debugLog`, `gitPollMinutes` and `gitFetch` wait for a new session.

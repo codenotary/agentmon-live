@@ -46,7 +46,7 @@ Captures land in `tests/pane-snaps/<scenario>/`: `<name>.txt` (whole screen), `<
 | Step | Does |
 | --- | --- |
 | `allow <tool rules>` | Tools the session may use without asking, e.g. `Bash(npm test:*) Read` |
-| `option <name> <value>` | A mod option for the run; the done gate is off unless a scenario sets `option advisorMode all` |
+| `option <name> <value>` | A mod option for the run, passed in a file named by `AGENTMON_SETTINGS`; the done gate is off unless a scenario sets `option advisorMode all` |
 | `prompt <text>`, `cmd /<command>` | Types the line and presses Enter |
 | `keys <tmux keys>` | Sends keys, e.g. `Escape` |
 | `wait idle [secs]` | Until the turn is over |

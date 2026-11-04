@@ -2,6 +2,7 @@ import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { globToRegExp, parseExceptions, relPath } from '../hooks/sizeguard'
+import { settingsWith } from './options-helper'
 
 type On = Parameters<TestBody>[1]
 
@@ -16,7 +17,7 @@ const PANE = {
 const KB = 1000
 
 // A project at /repo whose files have the sizes in `sizes`; an edit sets the size in `after`, even one that reports failure.
-function engine(on: On, sizes: Record<string, number>, after: Record<string, number>, exceptions?: string, fails = false) {
+function engine(on: On, sizes: Record<string, number>, after: Record<string, number>, exceptions?: string, fails = false, options: Record<string, unknown> = {}) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -24,7 +25,9 @@ function engine(on: On, sizes: Record<string, number>, after: Record<string, num
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('ui.status', () => ({ value: undefined }))
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('env.get', () => ({ value: undefined }))
   on('fs.read', (_, e) => {
+    if (e.path.endsWith('/settings.json')) return { value: settingsWith(options) }
     if (exceptions !== undefined && e.path === '/repo/.agentmon-size') return { value: exceptions }
     throw new Error('ENOENT')
   })
@@ -134,9 +137,10 @@ test('a project exception with a reason silences its file; one without a reason 
   await ui.unmount()
 })
 
-test('sizeLimit 0 turns the guide off', { options: { sizeLimit: 0 } }, async ($, on) => {
+test('sizeLimit 0 turns the guide off', async ($, on) => {
+
   const clock = mock.clock(on)
-  engine(on, {}, { '/repo/src/new.ts': 90 * KB })
+  engine(on, {}, { '/repo/src/new.ts': 90 * KB }, undefined, false, { sizeLimit: 0 })
   await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'Write', file_path: '/repo/src/new.ts', content: '' })
   await clock.settle()
@@ -145,9 +149,10 @@ test('sizeLimit 0 turns the guide off', { options: { sizeLimit: 0 } }, async ($,
   await ui.unmount()
 })
 
-test('sizeExclude adds its own patterns', { options: { sizeExclude: 'src/gen/**, **/*.pb.ts' } }, async ($, on) => {
+test('sizeExclude adds its own patterns', async ($, on) => {
+
   const clock = mock.clock(on)
-  engine(on, {}, { '/repo/src/gen/api.ts': 90 * KB, '/repo/src/x.pb.ts': 90 * KB, '/repo/src/kept.ts': 90 * KB })
+  engine(on, {}, { '/repo/src/gen/api.ts': 90 * KB, '/repo/src/x.pb.ts': 90 * KB, '/repo/src/kept.ts': 90 * KB }, undefined, false, { sizeExclude: 'src/gen/**, **/*.pb.ts' })
   await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
   for (const file_path of ['/repo/src/gen/api.ts', '/repo/src/x.pb.ts', '/repo/src/kept.ts']) await $.tool.call({ tool: 'Write', file_path, content: '' })
   await clock.settle()

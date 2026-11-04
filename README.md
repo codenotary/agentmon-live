@@ -40,9 +40,11 @@ h: history   d: details
 - **It learns your project.** It remembers flaky tools, recurring errors, compaction points, how long turns usually run, heavy habits and what the done gate keeps catching across sessions, and checks your CLAUDE.md and memory files for drift.
 - **Proof, not vibes.** `/agentmon bench` compares your sessions with and without the mod.
 
-Speaks English, German, French, Spanish, Chinese and Japanese.
+Speaks English, German, French, Spanish, Chinese and Japanese, and follows your terminal's language (`LC_ALL`, `LC_MESSAGES`, `LANG`).
 
 ## Install
+
+Installing asks no questions, so it works on a small screen too. Everything starts on its defaults.
 
 Requires Claude Code 2.1.308 or later. In a Claude Code session:
 
@@ -65,16 +67,15 @@ Or paste this into a Claude Code session:
 
 ```
 Install the Claude Code plugin agentmon-live from the marketplace codenotary/agentmon-live
-(claude plugin install agentmon-live --marketplace codenotary/agentmon-live). Then ask me which
-language I want (en, de, fr, es, zh, ja) and which advisor mode (all, gate, off), and set
-those options for the plugin in my user settings. Tell me to restart Claude Code when done.
+(claude plugin install agentmon-live --marketplace codenotary/agentmon-live). Tell me to restart
+Claude Code when done.
 ```
 
 </details>
 
 ## Make it yours
 
-Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn the done gate off"*. Then run `/reload-plugins`. Or set the options in `/config`.
+Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn the done gate off"*. It takes effect at once, with no reload. Or edit `pluginConfigs` in `~/.claude/settings.json` yourself; that applies at your next prompt. The options are not in `/config`. See the [guide](docs/guide.md) for all of them.
 
 | Key | Does |
 | --- | --- |
