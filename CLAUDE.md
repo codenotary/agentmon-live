@@ -8,6 +8,7 @@ Claude Code mod (plugin): a live pane beside the chat, a done gate on Stop, lear
 claude plugin validate .
 claude plugin test .
 npx -p typescript tsc --noEmit -p .
+node --test 'tests/web/*.test.mjs'
 ```
 
 `tsc` has one known error in `tests/advisor.test.tsx` (`{ isAnswered: false; reason: "aborted" }` in the unanswered-Fable test); anything else is new.
@@ -18,6 +19,7 @@ npx -p typescript tsc --noEmit -p .
 - `hooks/clock.ts`: the turn clock (where a turn's time went). `hooks/release.ts`: build, release check, base-branch watch. `hooks/done.ts`: the per-turn state (`Turn`), the done gate's material and checks (`classic.Stop` calls it).
 - `hooks/options.ts`: reads the options from `settings.json` at session start, each prompt and after Claude edits a `settings.json`. No `userConfig` in the manifest on purpose: it opens a dialog on install.
 - `hooks/render.tsx`: the pane.
+- `hooks/web.ts`: the web view's publisher (`toSnapshot`, the post loop, `openBrowser`). `server/web.mjs`: its Node server, run detached so it outlives a session. `server/app.html`: the page, one file, no build step.
 - `hooks/insights.ts`: Focus rules and thresholds.
 - `hooks/learn.ts` (pure rules, `parseTranscript`), `hooks/learning.ts` (store, `/agentmon learn|memory|bench`), `hooks/bench.ts` (self benchmark: per-prompt numbers, transcript parse, report).
 - `hooks/gate.ts`, `hooks/advisor.ts`: done-gate facts and the Fable call.
@@ -25,7 +27,7 @@ npx -p typescript tsc --noEmit -p .
 - `hooks/i18n.ts` (English), `hooks/lang/<code>.ts` (de, fr, es, zh, ja), `hooks/learn-strings.ts` (learning and bench text, all six).
 - `skills/agentmon-config/SKILL.md`: tells Claude how to change the options from chat; keep its table in step with `applyOptions` in `hooks/options.ts`.
 - `types/index.d.ts`: state contract. `SessionRecord`, `Bench`, `BenchRow`, `Learned` live here.
-- `tests/*.test.ts(x)`: one file per part; transcript fixtures in `tests/fixtures/`.
+- `tests/*.test.ts(x)`: one file per part; transcript fixtures in `tests/fixtures/`. `tests/web/*.test.mjs`: the server, run with `node --test`.
 
 ## Rules the loader and the code rely on
 

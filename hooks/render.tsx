@@ -9,6 +9,7 @@ import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
+import { openBrowser } from './web'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -70,7 +71,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 // Order, as the review asks: needs attention, running now, changes and verification, usage, then the folding history.
 async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
-  const { Box, Button, Text } = $.ui.resolve(e)
+  const { Box, Button, Link, Text } = $.ui.resolve(e)
   const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt, reviewed] = await Promise.all([
     read($, main),
     read($, tools),
@@ -661,6 +662,13 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       <Button key="layout:switch" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, isClassic: !(l.isClassic ?? cfg.isClassic) }))}>
         {`◐ ${isClassic ? t.layoutClassic : t.layoutCalm}`}
       </Button>
+      {cfg.web && cfg.webUrl && (
+        <Button key="web:open" plain hotkey="o" onPress={() => openBrowser($).then(isOpen => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(cfg.webUrl ?? ''))))}>
+          {t.web.open}
+        </Button>
+      )}
+      {/* Narrower, the address wraps the header row; `o` still opens it. */}
+      {cfg.web && cfg.webUrl && cols >= 130 && <Link href={cfg.webUrl}>{cfg.webUrl}</Link>}
       {release && (
         <Button key="update" plain hotkey="u" onPress={() => investigate(t.promptUpdate(cfg.version, release.version))}>
           {t.update}

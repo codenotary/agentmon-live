@@ -32,7 +32,10 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 | `debugLog` | `on` or `off` | `on` |
 | `gitPollMinutes` | minutes between base-branch checks, `0` for off | `5` |
 | `gitFetch` | `true` runs `git fetch` for the base before each check | `false` |
+| `web` | `on` or `off` (the local web view) | `on` |
+| `webPort` | first port to try, 1024 to 65535 | `47311` |
+| `webOpenOnStart` | `true` opens the browser once per session | `false` |
 
 The Focus box, Running now and the history always show. They cannot be hidden.
 
-The mod reads its options at each prompt and after this edit, so no reload is needed. Only `debugLog`, `gitPollMinutes` and `gitFetch` wait for a new session.
+The mod reads its options at each prompt and after this edit, so no reload is needed. Only `debugLog`, `gitPollMinutes`, `gitFetch`, `web`, `webPort` and `webOpenOnStart` wait for a new session.

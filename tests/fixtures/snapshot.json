@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "session": { "id": "fixture", "cwd": "/home/dev/github/agent-radar", "branch": "browser-screen" },
+  "now": 1793803000000,
+  "lang": "en",
+  "labels": {
+    "page": { "disconnected": "Disconnected from the session server. Trying again…", "noSessions": "No session is running. Start Claude Code and this page fills in.", "update": "This session runs a different AgentMon Live version. Update it to see everything here.", "cache": "cache", "tokensIn": "in", "tokensOut": "out", "context": "Context", "quota": "7-day quota", "cost": "Session cost", "turns": "Turns", "focus": "Focus", "running": "Running now", "turnClock": "Where each turn went", "toolCalls": "Tool calls", "when": "When", "who": "Who", "what": "What", "result": "Result", "changes": "Changes and verification", "edited": "Edited", "read": "Read", "subagents": "Subagents", "insights": "Insights", "slow": "Slowest calls", "big": "Largest results", "tasks": "Tasks", "log": "Session log", "search": "Search the log", "learning": "Across sessions", "sessions": "Sessions", "calls": "Calls", "errors": "Errors", "none": "Nothing yet." },
+    "status": { "running": "running", "waiting": "waiting", "done": "done", "error": "error", "cancelled": "cancelled" },
+    "check": { "test": "tests", "lint": "lint", "typecheck": "types", "build": "build" },
+    "cat": { "git": "git", "shell": "shell", "edit": "edit" },
+    "result": { "ok": "ok", "failed": "failed", "unknown": "unknown", "running": "running" },
+    "buckets": { "model": "model", "shell": "shell", "edit": "edit", "read": "read files", "you": "waiting on you", "idle": "between steps", "agents": "agents" }
+  },
+  "main": { "model": "claude-opus-5-5", "effort": "high", "turnAt": 1793802900000, "turnLive": true },
+  "focus": [
+    { "key": "check:test:1", "tag": "failed", "text": "tests npm test", "isUrgent": true },
+    { "key": "ctx", "tag": "context", "text": "Context is 62% full. /compact before the next large task.", "isUrgent": false }
+  ],
+  "usage": { "ctxPct": 62, "rate": [{ "kind": "five_hour", "pct": 12 }, { "kind": "seven_day", "pct": 77 }], "usd": 8.42 },
+  "turns": [
+    { "startedAt": 1793800100000, "wallMs": 42000, "buckets": { "model": 21000, "read": 12000, "shell": 6000, "idle": 3000 } },
+    { "startedAt": 1793800300000, "wallMs": 118000, "buckets": { "model": 58000, "shell": 40000, "edit": 15000, "idle": 5000 } },
+    { "startedAt": 1793800700000, "wallMs": 305000, "buckets": { "model": 90000, "agents": 150000, "you": 45000, "shell": 12000, "idle": 8000 } },
+    { "startedAt": 1793801500000, "wallMs": 76000, "buckets": { "model": 40000, "edit": 22000, "read": 9000, "idle": 5000 } },
+    { "startedAt": 1793802900000, "wallMs": 100000, "buckets": { "model": 60000, "shell": 40000 }, "isLive": true }
+  ],
+  "turnCount": 4,
+  "active": [{ "id": "a1", "who": "main", "tool": "Bash", "what": "npm test", "startedAt": 1793802990000 }],
+  "calls": [
+    { "at": 1793802950000, "who": "main", "view": "shell", "what": "npm test", "result": "failed", "error": "1 failing" },
+    { "at": 1793802800000, "who": "main", "view": "git", "what": "git status", "result": "ok" },
+    { "at": 1793802700000, "who": "Explore", "view": "mcp", "what": "mcp__codegraph__codegraph_search a very long argument that has to wrap on a narrow phone screen without a horizontal page scroll", "result": "ok" },
+    { "at": 1793802990000, "who": "main", "view": "shell", "what": "npm run build", "result": "running" }
+  ],
+  "agents": [
+    { "id": "ag1", "type": "Explore", "model": "haiku", "effort": "", "task": "Find the session atoms", "status": "done", "files": 3, "tools": 9, "input": 1000, "output": 200, "startedAt": 1793801000000, "endedAt": 1793801100000 },
+    { "id": "ag2", "type": "tester", "model": "sonnet", "effort": "", "task": "Run the server tests", "status": "running", "files": 0, "tools": 2, "input": 400, "output": 50, "startedAt": 1793802900000 }
+  ],
+  "checks": [
+    { "kind": "test", "command": "npm test", "who": "main", "at": 1793802950000, "result": "failed" },
+    { "kind": "typecheck", "command": "tsc --noEmit", "who": "main", "at": 1793802000000, "result": "ok" }
+  ],
+  "files": { "read": ["/home/dev/github/agent-radar/hooks/render.tsx", "/home/dev/github/agent-radar/hooks/state.ts"], "edited": ["/home/dev/github/agent-radar/hooks/web.ts", "/home/dev/github/agent-radar/server/web.mjs"], "editedAt": 1793802900000 },
+  "log": [
+    { "at": 1793801000000, "who": "Explore", "what": "Find the session atoms", "result": "started" },
+    { "at": 1793801100000, "who": "Explore", "what": "Find the session atoms", "result": "done" },
+    { "at": 1793802900000, "who": "tester", "what": "Run the server tests", "result": "started" },
+    { "at": 1793802950000, "who": "main", "what": "<img src=x onerror=alert(1)> stays plain text", "result": "failed" }
+  ],
+  "tasks": [
+    { "id": "1", "subject": "Write the server", "status": "completed" },
+    { "id": "2", "subject": "Draw the page", "status": "in_progress" },
+    { "id": "3", "subject": "Release 0.24.0", "status": "pending" }
+  ],
+  "insights": {
+    "slow": [{ "tool": "Bash", "what": "npm test", "who": "main", "ms": 48000, "at": 1793802950000 }],
+    "big": [{ "tool": "Read", "what": "CHANGELOG.md", "tokens": 42000, "at": 1793801000000 }],
+    "tokens": { "mainIn": 420000, "mainOut": 18000, "mainCached": 380000, "agentsIn": 9000, "agentsOut": 1200 },
+    "cacheRead": 380000,
+    "cacheTotal": 420000
+  },
+  "learned": {
+    "sessions": 12,
+    "bench": [
+      { "id": "b1", "at": 1793700000000, "turns": 9, "calls": 120, "errors": 3, "compactions": 0, "usd": 4.1, "mod": true, "live": true, "editTurns": 4, "verified": 3, "churn": 0, "outTokens": 9000, "turnMs": [], "blocks": 0, "acted": 0, "passed": 0, "fable": 0 }
+    ]
+  }
+}

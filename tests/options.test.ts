@@ -33,3 +33,17 @@ test('a set language beats the terminal; an unknown one falls back to it, then t
   applyOptions({}, undefined)
   expect(cfg.lang).toBe('en')
 })
+
+test('the web options default on, on the usual port, with no tab opened', () => {
+  applyOptions({}, undefined)
+  expect([cfg.web, cfg.webPort, cfg.webOpenOnStart]).toEqual([true, 47311, false])
+  applyOptions({ web: 'off', webPort: 50000, webOpenOnStart: true }, undefined)
+  expect([cfg.web, cfg.webPort, cfg.webOpenOnStart]).toEqual([false, 50000, true])
+})
+
+test('a webPort outside the unprivileged range falls back to the default', () => {
+  for (const webPort of [80, 70000, 'x', 1.5]) {
+    applyOptions({ webPort }, undefined)
+    expect(cfg.webPort).toBe(47311)
+  }
+})

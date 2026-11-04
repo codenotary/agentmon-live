@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentMon Live</title>
+<style>
+/* Tokens copied from agentmon-teams frontend/design-system/src/index.css; keep them in step. */
+:root {
+  --color-page: 247 249 252;
+  --color-surface-0: 255 255 255;
+  --color-surface-1: 251 252 254;
+  --color-surface-2: 240 243 248;
+  --color-surface-3: 233 238 245;
+  --color-header: 255 255 255;
+  --color-border: 233 238 245;
+  --color-border-subtle: 240 243 248;
+  --color-border-input: 217 224 236;
+  --color-text-primary: 15 23 41;
+  --color-text-secondary: 74 85 104;
+  --color-text-tertiary: 107 118 136;
+  --color-text-faint: 138 148 166;
+  --color-text-heading: 43 47 54;
+  --color-accent: 245 147 0;
+  --color-accent-deep: 184 75 31;
+  --color-accent-muted: #fdf1e2;
+  --color-notice: 253 246 238;
+  --color-notice-border: 242 211 182;
+  --color-info: 243 248 253;
+  --color-info-border: 217 229 242;
+  --color-info-ink: 74 127 181;
+  --color-success: 22 163 74;
+  --color-warning: 217 119 6;
+  --color-error: 220 38 38;
+  --color-error-soft: 253 246 244;
+  --color-error-border: 246 207 200;
+  --color-ramp-1: #b84b1f;
+  --color-ramp-2: #ea7317;
+  --color-ramp-3: #ef8f2e;
+  --color-ramp-4: #fbbf24;
+  --color-ramp-5: #fde08a;
+  --color-ramp-other: #cbd5e1;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-page: 11 14 20;
+    --color-surface-0: 17 21 32;
+    --color-surface-1: 22 27 39;
+    --color-surface-2: 28 35 51;
+    --color-surface-3: 35 43 62;
+    --color-header: 8 10 16;
+    --color-border: 42 50 71;
+    --color-border-subtle: 30 37 54;
+    --color-border-input: 42 50 71;
+    --color-text-primary: 232 236 244;
+    --color-text-secondary: 139 149 170;
+    --color-text-tertiary: 91 101 128;
+    --color-text-faint: 91 101 128;
+    --color-text-heading: 232 236 244;
+    --color-accent-deep: 253 208 138;
+    --color-accent-muted: rgba(245, 147, 0, .16);
+    --color-notice: 30 37 54;
+    --color-notice-border: 52 62 86;
+    --color-info: 22 32 48;
+    --color-info-border: 44 60 84;
+    --color-info-ink: 125 168 214;
+    --color-success: 34 197 94;
+    --color-warning: 245 158 11;
+    --color-error: 239 68 68;
+    --color-error-soft: 44 24 26;
+    --color-error-border: 88 44 46;
+    color-scheme: dark;
+  }
+}
+@font-face { font-family: "DM Sans"; font-weight: 400; font-display: swap; src: url(/fonts/dm-sans-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "DM Sans"; font-weight: 700; font-display: swap; src: url(/fonts/dm-sans-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: Manrope; font-weight: 700; font-display: swap; src: url(/fonts/manrope-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(/fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2"); }
+* { box-sizing: border-box; border-color: rgb(var(--color-border)); }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: rgb(var(--color-page)); color: rgb(var(--color-text-primary)); font: 400 14px/1.45 "DM Sans", system-ui, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+h1, h2, p { margin: 0; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid rgb(var(--color-accent)); outline-offset: 1px; }
+.mono { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+.num { font-variant-numeric: tabular-nums; }
+.quiet { color: rgb(var(--color-text-secondary)); }
+.nowrap { white-space: nowrap; overflow-wrap: normal; }
+.head { background: rgb(var(--color-header)); border-bottom: 1px solid rgb(var(--color-border)); }
+.head-in, main { max-width: 1200px; margin: 0 auto; padding-inline: 24px; }
+.head-in { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding-block: 14px; }
+.word { font: 700 16px Manrope, "DM Sans", sans-serif; color: rgb(var(--color-text-heading)); }
+.model { color: rgb(var(--color-accent-deep)); font-weight: 700; font-size: 13px; }
+.where { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.picker { margin-left: auto; height: 32px; padding: 0 8px; max-width: 100%; border: 1px solid rgb(var(--color-border-input)); border-radius: 8px; background: rgb(var(--color-surface-0)); font-size: 13px; }
+main { display: flex; flex-direction: column; gap: 16px; padding-block: 20px 40px; }
+.strip { padding: 10px 14px; border: 1px solid rgb(var(--color-info-border)); border-radius: 12px; background: rgb(var(--color-info)); color: rgb(var(--color-info-ink)); font-size: 13px; }
+.card { min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px; border: 1px solid rgb(var(--color-border)); border-radius: 14px; background: rgb(var(--color-surface-0)); }
+.card h2 { font: 700 16px Manrope, "DM Sans", sans-serif; color: rgb(var(--color-text-heading)); }
+.label { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--color-text-faint)); }
+.focus { background: rgb(var(--color-notice)); border-color: rgb(var(--color-notice-border)); }
+.focus.urgent { background: rgb(var(--color-error-soft)); border-color: rgb(var(--color-error-border)); }
+.focus ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.focus li { display: flex; gap: 10px; align-items: baseline; overflow-wrap: anywhere; min-width: 0; }
+.pill { flex: none; display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; background: rgb(var(--color-surface-2)); color: rgb(var(--color-text-secondary)); }
+.pill.good { background: rgb(var(--color-success) / .1); color: rgb(var(--color-success)); }
+.pill.warn { background: rgb(var(--color-warning) / .1); color: rgb(var(--color-warning)); }
+.pill.bad { background: rgb(var(--color-error) / .1); color: rgb(var(--color-error)); }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.tile { padding: 16px 20px; border: 1px solid rgb(var(--color-border)); border-radius: 12px; background: rgb(var(--color-surface-0)); }
+.tile b { display: block; margin-top: 4px; font: 700 24px/1.2 Manrope, "DM Sans", sans-serif; font-variant-numeric: tabular-nums; color: rgb(var(--color-text-primary)); }
+.cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.turn { display: grid; grid-template-columns: 56px minmax(0, 1fr) 56px; gap: 10px; align-items: center; font-size: 12px; }
+.turns { display: flex; flex-direction: column; gap: 6px; }
+.bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: rgb(var(--color-surface-2)); }
+.bar i { display: block; height: 100%; min-width: 1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: rgb(var(--color-text-secondary)); }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+thead { background: rgb(var(--color-surface-1)); border-bottom: 1px solid rgb(var(--color-border)); }
+th { padding: 0; text-align: left; }
+th button { width: 100%; padding: 10px 12px; border: 0; background: none; cursor: pointer; text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--color-text-faint)); white-space: nowrap; }
+th span { display: block; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--color-text-faint)); white-space: nowrap; }
+td { padding: 8px 12px; border-top: 1px solid rgb(var(--color-border-subtle)); vertical-align: top; overflow-wrap: anywhere; }
+tbody tr:hover { background: rgb(var(--color-surface-1)); }
+.list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.list li { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; min-width: 0; overflow-wrap: anywhere; }
+.list li > :first-child { min-width: 0; }
+.box { display: flex; flex-direction: column; gap: 6px; }
+.search { width: 100%; height: 36px; padding: 0 12px; border: 1px solid rgb(var(--color-border-input)); border-radius: 8px; background: rgb(var(--color-surface-0)); }
+.log { max-height: 420px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.log div { display: grid; grid-template-columns: 96px 120px minmax(0, 1fr) auto; gap: 10px; padding: 3px 0; overflow-wrap: anywhere; }
+.empty { color: rgb(var(--color-text-secondary)); font-size: 13px; }
+[hidden] { display: none !important; }
+@media (max-width: 720px) {
+  .head-in, main { padding-inline: 16px; }
+  .picker { margin-left: 0; width: 100%; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cols { grid-template-columns: minmax(0, 1fr); }
+  .log div { grid-template-columns: 96px minmax(0, 1fr); }
+  .log div > :nth-child(n + 3) { grid-column: 2; }
+}
+</style>
+</head>
+<body>
+<header class="head"><div class="head-in">
+  <span class="word">AgentMon Live</span>
+  <span class="model" id="model"></span>
+  <span class="where quiet" id="where"></span>
+  <select class="picker" id="picker" hidden></select>
+</div></header>
+<main>
+  <div class="strip" id="down" role="status" hidden></div>
+  <div class="strip" id="old" role="status" hidden></div>
+  <p class="empty" id="none" hidden></p>
+  <div id="root" hidden></div>
+</main>
+<script>
+'use strict'
+// shortcut: with no session there are no labels, so this text is English; ship the six tables in the page if people ask.
+const ENGLISH = { disconnected: 'Disconnected from the session server. Trying again…', noSessions: 'No session is running. Start Claude Code and this page fills in.' }
+const RAMP = ['--color-ramp-1', '--color-ramp-2', '--color-ramp-3', '--color-ramp-4', '--color-ramp-5']
+const TURNS_SHOWN = 14
+const PICK_KEY = 'agentmon-live-session'
+const $ = id => document.getElementById(id)
+const sessions = new Map()
+let picked = load()
+let isDown = false
+let sort = { key: 'at', dir: -1 }
+let query = ''
+let pickerKey = ''
+
+function load() {
+  try { return localStorage.getItem(PICK_KEY) } catch { return null }
+}
+function save(id) {
+  try { localStorage.setItem(PICK_KEY, id) } catch { /* A private window keeps the choice for this page only. */ }
+}
+
+// Everything on this page comes from tool calls and log lines, so text only ever goes in through textContent.
+function el(tag, props, ...kids) {
+  const node = document.createElement(tag)
+  for (const [k, v] of Object.entries(props ?? {})) {
+    if (k === 'class') node.className = v
+    else if (k === 'text') node.textContent = v
+    else if (k === 'style') node.style.cssText = v
+    else if (k.startsWith('on')) node.addEventListener(k.slice(2), v)
+    else node.setAttribute(k, v)
+  }
+  for (const kid of kids.flat()) if (kid) node.append(kid)
+  return node
+}
+
+function dur(ms) {
+  const s = Math.round((ms ?? 0) / 1000)
+  if (s < 60) return `${s} s`
+  if (s < 3600) return `${Math.floor(s / 60)} m ${s % 60} s`
+  return `${Math.floor(s / 3600)} h ${Math.floor(s / 60) % 60} m`
+}
+const time = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const kilo = n => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n ?? 0))
+const short = path => path.split('/').slice(-3).join('/')
+const tone = result => (/^(ok|done|completed)$/i.test(result) ? 'good' : /fail|error/i.test(result) ? 'bad' : /run|wait|unknown/i.test(result) ? 'warn' : '')
+
+// `raw` is a check's result word or a call's, which is already in the session's language.
+function resultOf(raw, l) {
+  const words = l.result ?? {}
+  const key = raw in words ? raw : Object.keys(words).find(k => words[k] === raw)
+  return { text: words[key] ?? raw, cls: { ok: 'good', failed: 'bad', running: 'warn', unknown: 'warn' }[key] ?? '' }
+}
+const resultPill = (raw, l) => { const r = resultOf(raw, l); return pill(r.text, r.cls) }
+
+const card = (title, ...body) => el('section', { class: 'card' }, el('h2', { text: title }), ...body)
+const none = text => el('p', { class: 'empty', text })
+const pill = (text, cls = '') => el('span', { class: `pill ${cls}`, text })
+
+function focusCard(s, p) {
+  if (s.focus.length === 0) return null
+  const urgent = s.focus.some(f => f.isUrgent)
+  return el('section', { class: `card focus${urgent ? ' urgent' : ''}` },
+    el('h2', { text: p.focus }),
+    el('ul', null, s.focus.map(f => el('li', null, pill(f.tag, f.isUrgent ? 'bad' : 'warn'), el('span', { text: f.text })))))
+}
+
+function runningCard(s, p) {
+  if (s.active.length === 0) return null
+  return card(p.running, el('ul', { class: 'list' }, s.active.map(a => el('li', null,
+    el('span', null, el('b', { text: a.who }), ' ', el('span', { class: 'mono', text: `${a.tool} ${a.what}` })),
+    el('span', { class: 'num quiet nowrap', text: dur(s.now - a.startedAt) })))))
+}
+
+function tiles(s, p) {
+  const quota = s.usage.rate.find(r => r.kind === 'seven_day')
+  const tile = (label, value) => el('div', { class: 'tile' }, el('span', { class: 'label', text: label }), el('b', { text: value }))
+  return el('div', { class: 'tiles' },
+    tile(p.context, s.usage.ctxPct === undefined ? '–' : `${s.usage.ctxPct}%`),
+    tile(p.quota, quota ? `${quota.pct}%` : '–'),
+    tile(p.cost, `$${s.usage.usd.toFixed(2)}`),
+    tile(p.turns, String(s.turnCount)))
+}
+
+function turnClock(s, l, p) {
+  const shown = s.turns.slice(-TURNS_SHOWN)
+  if (shown.length === 0) return card(p.turnClock, none(p.none))
+  // Largest buckets take the ramp in order and the rest share the grey tail, as the dashboard's charts do.
+  const totals = {}
+  for (const t of shown) for (const [k, v] of Object.entries(t.buckets)) totals[k] = (totals[k] ?? 0) + v
+  const ranked = Object.entries(totals).sort((a, b) => b[1] - a[1]).map(([k]) => k)
+  const colour = k => { const i = ranked.indexOf(k); return i < RAMP.length ? `var(${RAMP[i]})` : 'var(--color-ramp-other)' }
+  const name = k => l.buckets?.[k] ?? k
+  const longest = Math.max(1, ...shown.map(t => t.wallMs))
+  return card(p.turnClock,
+    el('div', { class: 'turns' }, shown.map(t => {
+      const used = Object.values(t.buckets).reduce((a, b) => a + b, 0) || 1
+      const parts = ranked.filter(k => t.buckets[k] > 0)
+      const title = parts.map(k => `${name(k)} ${dur(t.buckets[k])}`).join(' · ')
+      return el('div', { class: 'turn' },
+        el('span', { class: 'quiet num nowrap', title: t.isLive ? p.running : '', text: t.isLive ? '●' : new Date(t.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }),
+        el('div', { class: 'bar', title, role: 'img', 'aria-label': title, style: `width:${Math.max(2, (t.wallMs / longest) * 100)}%` },
+          parts.map(k => el('i', { style: `width:${(t.buckets[k] / used) * 100}%;background:${colour(k)}` }))),
+        el('span', { class: 'num quiet', text: dur(t.wallMs) }))
+    })),
+    el('div', { class: 'legend' }, ranked.slice(0, RAMP.length).map(k => el('span', null, el('i', { style: `background:${colour(k)}` }), name(k))),
+      ranked.length > RAMP.length ? el('span', null, el('i', { style: 'background:var(--color-ramp-other)' }), l.cat?.other ?? 'other') : null))
+}
+
+function callTable(s, l, p) {
+  if (s.calls.length === 0) return card(p.toolCalls, none(p.none))
+  const cols = [['at', p.when], ['who', p.who], ['what', p.what], ['result', p.result]]
+  const rows = [...s.calls].sort((a, b) => (a[sort.key] > b[sort.key] ? 1 : a[sort.key] < b[sort.key] ? -1 : 0) * sort.dir)
+  return card(p.toolCalls, el('div', { class: 'scroll' }, el('table', null,
+    el('thead', null, el('tr', null, cols.map(([key, label]) =>
+      el('th', { 'aria-sort': sort.key === key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none' },
+        el('button', { type: 'button', id: `sort-${key}`, text: label + (sort.key === key ? (sort.dir > 0 ? ' ↑' : ' ↓') : ''), onclick: () => {
+          sort = { key, dir: sort.key === key ? -sort.dir : 1 }
+          draw()
+        } }))))),
+    el('tbody', null, rows.map(c => el('tr', null,
+      el('td', { class: 'num quiet nowrap', text: time(c.at) }),
+      el('td', { class: 'nowrap', text: c.who }),
+      el('td', { class: 'mono', text: c.what }),
+      el('td', { title: c.error ?? '' }, resultPill(c.result, l))))))))
+}
+
+function changes(s, l, p) {
+  const checks = s.checks.map(c => el('li', null, el('span', null, el('b', { text: l.check?.[c.kind] ?? c.kind }), ' ', el('span', { class: 'mono quiet', text: c.command })), resultPill(c.result, l)))
+  const files = (label, list) => (list.length === 0 ? null : el('div', { class: 'box' },
+    el('span', { class: 'label', text: `${label} · ${list.length}` }),
+    el('ul', { class: 'list' }, list.slice(-8).reverse().map(f => el('li', { class: 'mono', title: f, text: short(f) })))))
+  const body = [checks.length ? el('ul', { class: 'list' }, checks) : null, files(p.edited, s.files.edited), files(p.read, s.files.read)].filter(Boolean)
+  return card(p.changes, ...(body.length ? body : [none(p.none)]))
+}
+
+function subagents(s, l, p) {
+  if (s.agents.length === 0) return card(p.subagents, none(p.none))
+  return card(p.subagents, el('ul', { class: 'list' }, [...s.agents].reverse().map(a => el('li', null,
+    el('span', null, el('b', { text: a.type }), ' ', el('span', { class: 'quiet', text: a.task })),
+    pill(a.tests === 'FAIL' ? 'FAIL' : (l.status?.[a.status] ?? a.status), a.tests === 'FAIL' ? 'bad' : tone(a.status))))))
+}
+
+function insights(s, p) {
+  const { slow, big, tokens, cacheRead, cacheTotal } = s.insights
+  const box = (label, rows) => (rows.length === 0 ? null : el('div', { class: 'box' }, el('span', { class: 'label', text: label }), el('ul', { class: 'list' }, rows)))
+  const body = [
+    box(p.slow, slow.slice(0, 5).map(c => el('li', null, el('span', { class: 'mono', text: `${c.tool} ${c.what}` }), el('span', { class: 'num quiet', text: dur(c.ms) })))),
+    box(p.big, big.slice(0, 5).map(c => el('li', null, el('span', { class: 'mono', text: `${c.tool} ${c.what}` }), el('span', { class: 'num quiet', text: kilo(c.tokens) })))),
+    cacheTotal > 0 ? el('p', { class: 'quiet', text: `${p.cache} ${Math.round((cacheRead / cacheTotal) * 100)}% · ${p.tokensIn} ${kilo(tokens.mainIn)} · ${p.tokensOut} ${kilo(tokens.mainOut)}` }) : null,
+  ].filter(Boolean)
+  return card(p.insights, ...(body.length ? body : [none(p.none)]))
+}
+
+function taskCard(s, l, p) {
+  if (s.tasks.length === 0) return null
+  const word = { pending: 'waiting', in_progress: 'running', completed: 'done' }
+  return card(p.tasks, el('ul', { class: 'list' }, s.tasks.map(t => el('li', null, el('span', { text: t.subject }),
+    pill(l.status?.[word[t.status]] ?? t.status, t.status === 'completed' ? 'good' : t.status === 'in_progress' ? 'warn' : '')))))
+}
+
+function logCard(s, p) {
+  const q = query.toLowerCase()
+  const rows = [...s.log].reverse().filter(x => !q || `${x.who} ${x.what} ${x.result}`.toLowerCase().includes(q))
+  const list = el('div', { class: 'log mono' }, rows.map(x => el('div', null,
+    el('span', { class: 'quiet nowrap', text: time(x.at) }), el('span', { text: x.who }), el('span', { text: x.what }), el('span', { class: 'quiet', text: x.result }))))
+  const box = el('input', { class: 'search', type: 'search', 'aria-label': p.search, placeholder: p.search, id: 'q' })
+  box.value = query
+  box.addEventListener('input', () => {
+    query = box.value
+    draw()
+  })
+  return card(p.log, box, rows.length ? list : none(p.none))
+}
+
+function learning(s, p) {
+  if (s.learned.sessions === 0 && s.learned.bench.length === 0) return null
+  const rows = [...s.learned.bench].reverse()
+  return card(p.learning,
+    el('p', { class: 'quiet', text: `${p.sessions}: ${s.learned.sessions}` }),
+    rows.length === 0 ? null : el('div', { class: 'scroll' }, el('table', null,
+      el('thead', null, el('tr', null, [p.when, p.turns, p.calls, p.errors, p.cost].map(h => el('th', null, el('span', { text: h }))))),
+      el('tbody', null, rows.map(b => el('tr', null,
+        el('td', { class: 'quiet nowrap', text: new Date(b.at).toLocaleDateString() }),
+        el('td', { text: String(b.turns) }), el('td', { text: String(b.calls) }), el('td', { text: String(b.errors) }),
+        el('td', { text: b.usd === undefined ? '–' : `$${b.usd.toFixed(2)}` })))))))
+}
+
+function current() {
+  return sessions.get(picked) ?? [...sessions.values()].at(-1)
+}
+
+function draw() {
+  const s = current()
+  const p = s?.labels?.page ?? ENGLISH
+  $('down').hidden = !isDown
+  $('down').textContent = p.disconnected
+  $('none').hidden = !!s || isDown
+  $('none').textContent = p.noSessions
+  $('root').hidden = !s
+  const picker = $('picker')
+  picker.hidden = sessions.size < 2
+  // Rebuilt only when the list changes: replacing options closes a dropdown the person has open.
+  const choices = [...sessions.entries()].map(([id, x]) => [id, `${short(x.session?.cwd ?? id)}${x.session?.branch ? ` · ${x.session.branch}` : ''}`])
+  const choicesKey = JSON.stringify(choices)
+  if (choicesKey !== pickerKey) {
+    pickerKey = choicesKey
+    picker.replaceChildren(...choices.map(([id, text]) => el('option', { value: id, text })))
+  }
+  if (!s) {
+    $('model').textContent = ''
+    $('where').textContent = ''
+    $('old').hidden = true
+    return
+  }
+  picker.value = s.session?.id ?? ''
+  document.documentElement.lang = s.lang ?? 'en'
+  // A snapshot of another shape is not guessed at: the page says so and draws nothing from it.
+  $('old').hidden = s.v === 1
+  $('old').textContent = p.update ?? ''
+  if (s.v !== 1) {
+    $('root').hidden = true
+    return
+  }
+  const l = s.labels
+  $('model').textContent = `${s.main.model}${s.main.effort ? ` (${s.main.effort})` : ''}`
+  $('where').textContent = `${s.session.cwd}${s.session.branch ? ` · ${s.session.branch}` : ''}`
+  const scroll = document.querySelector('.log')?.scrollTop
+  // Each snapshot redraws the page; keyboard focus and the search caret must survive that.
+  const focused = document.activeElement?.id
+  $('root').replaceChildren(el('div', { class: 'col' },
+    focusCard(s, p),
+    runningCard(s, p),
+    tiles(s, p),
+    el('div', { class: 'cols' },
+      el('div', { class: 'col' }, turnClock(s, l, p), callTable(s, l, p)),
+      el('div', { class: 'col' }, changes(s, l, p), taskCard(s, l, p), subagents(s, l, p), insights(s, p))),
+    logCard(s, p),
+    learning(s, p)))
+  if (scroll) document.querySelector('.log').scrollTop = scroll
+  if (focused && focused !== 'picker') {
+    $(focused)?.focus()
+    if (focused === 'q') $('q').setSelectionRange(query.length, query.length)
+  }
+}
+
+$('picker').addEventListener('change', e => {
+  picked = e.target.value
+  save(picked)
+  draw()
+})
+
+const events = new EventSource('/events')
+events.addEventListener('open', () => {
+  isDown = false
+  draw()
+})
+events.addEventListener('error', () => {
+  isDown = true
+  draw()
+})
+events.addEventListener('snapshot', e => {
+  const { id, snapshot } = JSON.parse(e.data)
+  const isNew = !sessions.has(id)
+  sessions.set(id, { ...snapshot, session: { ...snapshot.session, id } })
+  // A redraw clears selected text, and a live turn sends one twice a second; another session's snapshot changes nothing on screen.
+  if (isNew || (current()?.session?.id === id && getSelection().isCollapsed)) draw()
+})
+events.addEventListener('removed', e => {
+  sessions.delete(JSON.parse(e.data).id)
+  draw()
+})
+draw()
+</script>
+</body>
+</html>

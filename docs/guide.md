@@ -30,6 +30,7 @@ Languages: English (default), German, French, Spanish, Chinese and Japanese.
 | `/agentmon check` | Runs the done gate's check now, without sending anything |
 | `/agentmon git`, `shell`, `mcp` | Shows that detail tab |
 | `/agentmon details` | Shows cut-off texts whole (`d` in the pane) |
+| `/agentmon open` | Opens the web view in your browser (`o` in the pane; see Web view) |
 | `/agentmon learn [dir]` | Learns from this project's past transcripts (or the `.jsonl` files in `dir`) |
 | `/agentmon memory` | Checks the memory and instruction files now and lists what it found |
 | `/agentmon bench` | Compares this project's sessions with and without the mod, and the last 7 days |
@@ -57,6 +58,19 @@ Installing asks nothing. Ask Claude in chat ("hide the usage box", "switch Agent
 | `debugLog` | `on` writes each session's events to a debug log (below); `off` writes none | `on` |
 | `gitPollMinutes` | minutes between checks of the base branch (below); `0` turns the check off | `5` |
 | `gitFetch` | `true` runs `git fetch` for the base branch before each check; `false` compares against your last fetch | `false` |
+| `web` | `on` runs the local web view (below); `off` starts no process and shows no button | `on` |
+| `webPort` | first port to try, 1024 to 65535; a port something else holds moves it up by one, 20 tries at most | `47311` |
+| `webOpenOnStart` | `true` opens the browser once per session at its start | `false` |
+
+### Web view
+
+The same session in a browser, with the room a terminal lacks: Focus, running calls, usage tiles, where each turn went as a chart, a sortable table of tool calls, changes and verification, tasks, subagents, insights, a searchable session log, and what the project's past sessions left. Open it with `o`, `/agentmon open`, or the link in the pane's header. It follows your language and your system's light or dark setting.
+
+Every running session on the machine shares one server, and the page has a picker when more than one is running. The server is a small Node program inside the plugin. It starts with the first session and stops one minute after the last one leaves. It needs `node` on your `PATH`: without it the pane works as usual, there is no button, and the debug log says why.
+
+The page is read-only: nothing flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. It has no login, so on a machine shared with other people, they can read your session's commands, paths and costs from the local port. Secrets are masked first, as in the pane. Set `web` to `off` on a shared machine.
+
+`web` and `webPort` take effect at the next session start. Where no browser can open, as over SSH, `o` and `/agentmon open` give the address to open yourself.
 
 ### Debug log
 

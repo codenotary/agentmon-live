@@ -225,6 +225,34 @@ export type TestLine = { before?: string; after?: string }
 export type TestEdit = { path: string; removed: number; skips: number; at: number; changed?: number; lines?: TestLine[] }
 export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: number; skipped: number; ranNow: number; skippedNow: number }[]; isGreen: boolean }
 
+// One turn on the web view's clock; `isLive` while it still runs.
+export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean }
+
+export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean }
+
+// What a session posts to the web view's server. The page draws from this alone; change `v` when a field changes meaning.
+export type WebSnapshot = {
+  v: 1
+  session: { id: string; cwd: string; branch?: string }
+  now: number
+  lang: string
+  labels: Record<string, unknown>
+  main: Main
+  focus: WebFocus[]
+  usage: { ctxPct?: number; rate: { kind: string; pct: number }[]; usd: number }
+  turns: WebTurn[]
+  turnCount: number
+  active: Active[]
+  calls: Call[]
+  agents: Card[]
+  checks: Check[]
+  files: Files
+  log: LogLine[]
+  tasks: Task[]
+  insights: Pick<Insights, 'slow' | 'big' | 'tokens' | 'cacheRead' | 'cacheTotal'>
+  learned: { sessions: number; bench: BenchRow[] }
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'agentmon-live': {

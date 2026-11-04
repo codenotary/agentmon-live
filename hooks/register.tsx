@@ -21,6 +21,7 @@ import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadOptions } from './options'
+import { openBrowser, startWeb, stopWeb } from './web'
 import type { View } from '../types'
 
 
@@ -267,7 +268,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'agentmon',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|learn|memory|debug]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|open|learn|memory|debug]`,
     })
     cwd = e.cwd
     turn.root = cwd
@@ -323,6 +324,7 @@ export const register: Register = on => {
         isBaseWatched = true
         void watchBase($, cwd, cfg.baseMinutes, cfg.isFetching).catch(() => undefined)
       }
+      void startWeb($, cwd).catch(() => undefined)
       // Learning is extra: an engine without a store or session id leaves the rest working.
       await startLearning($, cwd).catch(() => undefined)
       const kept = (await $.session.id().then(id => $.store.get(`active:${id}`)).catch(() => undefined)) as { at?: unknown; tokens?: unknown } | undefined
@@ -336,6 +338,12 @@ export const register: Register = on => {
   }).catch(($, e, next) => failOpen($, 'session.start', next.error, () => next(e)))
 
   // Plan-window readings, kept for their pace; a new `resetsAt` is a new window.
+  on('session.end', async ($, e, next) => {
+    const r = await next(e)
+    await stopWeb($, e.sessionId).catch(() => undefined)
+    return r
+  }).catch(($, e, next) => failOpen($, 'session.end', next.error, () => next(e)))
+
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('rateLimits')) {
       const at = await $.clock.now()
@@ -366,6 +374,10 @@ export const register: Register = on => {
       }
       $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
       return { text: t.checking }
+    }
+    if (arg === 'open') {
+      if (!cfg.web || !cfg.webUrl) return { text: cfg.web ? t.web.failed : t.web.off }
+      return { text: (await openBrowser($)) ? t.web.opened(cfg.webUrl) : t.web.noBrowser(cfg.webUrl) }
     }
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }

@@ -31,6 +31,8 @@ h: history   d: details
 
 [![AgentMon Live demo: the done gate catches a failing test before Claude stops](docs/demo.png)](https://asciinema.org/a/1270436)
 
+![AgentMon Live web view: Focus, usage tiles, where each turn went, tool calls, changes and verification](docs/web-view.png)
+
 ## Why you want it
 
 - **No more "all tests pass" when they don't.** Before Claude stops, the done gate checks what really happened: failed or stale tests, test runs that ran no tests, tests deleted or skipped after an edit (when the task edited tests itself, a review item beside the green run instead), edited packages no test reached, open todos, failing subagents. Anything unfinished goes back to Claude once. Fable, a second model that never writes code, checks that every part of your request got an answer.
@@ -38,6 +40,7 @@ h: history   d: details
 - **It tells you when to step in.** Focus raises what needs you: a waiting approval, a failure loop (the same call, or the same error behind different calls), context near compaction, a stuck subagent, a cold prompt cache, a base branch that changed the files you are editing. Press `i` and it drafts the follow-up question for you.
 - **Spend less.** See where time and tokens go, which MCP servers you load but never use, and when `/clear` or `/compact` would save you money.
 - **It learns your project.** It remembers flaky tools, recurring errors, compaction points, how long turns usually run, heavy habits and what the done gate keeps catching across sessions, and checks your CLAUDE.md and memory files for drift.
+- **Room to read it all.** Press `o` for the same session in your browser: where each turn went as a chart, sortable tool calls, a searchable log, and every running session in one tab. Local only, read-only.
 - **Proof, not vibes.** `/agentmon bench` compares your sessions with and without the mod.
 
 Speaks English, German, French, Spanish, Chinese and Japanese, and follows your terminal's language (`LC_ALL`, `LC_MESSAGES`, `LANG`).
@@ -87,9 +90,10 @@ Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn t
 | `h` | Fold the history |
 | `a` | Fold out all running subagents, past four |
 | `v` | Switch between the calm and classic layout |
+| `o` | Open the web view in your browser |
 | `c` | Run the done-gate check now |
 
-Commands: `/agentmon`, `advisor`, `check`, `learn`, `memory`, `bench`, `debug`, `clear`.
+Commands: `/agentmon`, `advisor`, `check`, `open`, `learn`, `memory`, `bench`, `debug`, `clear`.
 
 ## More
 
