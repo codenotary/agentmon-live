@@ -20,7 +20,7 @@ let cwd = ''
 let memQueued = false
 const warned = new Set<string>()
 
-async function configDir($: EngineInterface): Promise<{ conf: string; home: string }> {
+export async function configDir($: EngineInterface): Promise<{ conf: string; home: string }> {
   const home = (await $.env.get('HOME')) ?? ''
   return { conf: (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${home}/.claude`, home }
 }

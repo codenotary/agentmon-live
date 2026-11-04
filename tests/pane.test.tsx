@@ -2,6 +2,7 @@ import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { LANGUAGES } from '../hooks/i18n'
+import { settingsWith, withOptions } from './options-helper'
 
 // The kit declares the hook-adding `on` without exporting its type.
 type On = Parameters<TestBody>[1]
@@ -27,7 +28,9 @@ function engine(on: On) {
   on('ui.status', () => ({ value: undefined }))
 }
 
-test('hiddenSections drops those boxes', { options: { hiddenSections: ' usage, skills' } }, async ($, on) => {
+test('hiddenSections drops those boxes', async ($, on) => {
+
+  withOptions(on, { hiddenSections: ' usage, skills' })
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {} }))
@@ -164,4 +167,34 @@ test('a failed release check shows nothing', async ($, on) => {
   expect(fetched).toBe(true)
   expect(await ui.find({ type: 'Button', text: /^update/ })).toBe(undefined)
   await ui.unmount()
+})
+
+test('an edited settings.json applies at the next prompt, and at once when Claude edits it', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  let settings = settingsWith({ layout: 'classic' })
+  on('env.get', () => ({ value: undefined }))
+  on('fs.read', (_, e) => {
+    if (e.path.endsWith('/settings.json')) return { value: settings }
+    throw new Error('ENOENT')
+  })
+  on('tool.call', () => ({ result: {} }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  const showsUsage = async () => {
+    await clock.settle()
+    const ui = await $.ui.mount(PANE)
+    const found = await ui.find({ type: 'Text', text: /USAGE/ })
+    await ui.unmount()
+    return found !== undefined
+  }
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(await showsUsage()).toBe(true)
+
+  settings = settingsWith({ layout: 'classic', hiddenSections: 'usage' })
+  await $.turn.start({ text: 'next', turnId: 't1' })
+  expect(await showsUsage()).toBe(false)
+
+  settings = settingsWith({ layout: 'classic' })
+  await $.tool.call({ tool: 'Edit', file_path: '/home/me/.claude/settings.json', old_string: 'a', new_string: 'b' })
+  expect(await showsUsage()).toBe(true)
 })

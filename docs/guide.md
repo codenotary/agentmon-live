@@ -40,11 +40,11 @@ The pane opens by itself at session start when the terminal is wide enough.
 
 ## Options
 
-Set in `/config`, under the plugin, or ask Claude in chat ("hide the usage box", "switch AgentMon to German"). The bundled `agentmon-config` skill tells Claude where the options live; run `/reload-plugins` after it edits them.
+Installing asks nothing. Ask Claude in chat ("hide the usage box", "switch AgentMon to German"), or edit `pluginConfigs` in `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`). The bundled `agentmon-config` skill tells Claude where the options live. An edit by Claude applies at once, your own at the next prompt; `debugLog`, `gitPollMinutes` and `gitFetch` apply at the next session. The options do not show in `/config`, and project, `--settings` and managed settings are not read. `language` not set follows the terminal: `LC_ALL`, then `LC_MESSAGES`, then `LANG`; a locale the mod has no language for gives English.
 
 | Option | Values | Default |
 | --- | --- | --- |
-| `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | `en` |
+| `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | the terminal's, else `en` |
 | `advisorModel` | any model id | `claude-fable-5-1` |
 | `advisorMode` | `all` (done gate with Fable's coverage check), `gate` (done gate from recorded facts only, no model), `off`; `plan` is read as `gate` | `all` |
 | `advisorBudget` | most Fable calls per session; `0` for no limit | `30` |

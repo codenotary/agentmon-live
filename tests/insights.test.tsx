@@ -3,6 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { areaOf, cells, dur, focusList, isCorrection, isNewTask, liveBuckets, peakEnd, sparkline } from '../hooks/insights'
 import { EMPTY_INSIGHTS, shapeInsights } from '../hooks/state'
+import { withOptions } from './options-helper'
 
 type On = Parameters<TestBody>[1]
 
@@ -80,7 +81,9 @@ test('focus stays quiet for a call within its usual time', async () => {
   expect(list).toEqual([])
 })
 
-test('a turn is split into model, tool and approval time', { options: { layout: 'classic' } }, async ($, on) => {
+test('a turn is split into model, tool and approval time', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on)
   let asking = false
@@ -168,7 +171,9 @@ test('the same failing call three times is a loop; a long call in flight is slow
   await ui.unmount()
 })
 
-test('focus moves between project areas are counted per turn', { options: { layout: 'classic' } }, async ($, on) => {
+test('focus moves between project areas are counted per turn', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {}, text: 'ok' }))
@@ -274,7 +279,9 @@ test('peak hours are weekdays 05:00 to 11:00 Pacific, and show only with plan wi
   expect(peak({ seven_day: [{ at: now, pct: 30 }] }).map(x => x.text)).toEqual([expect.stringMatching(/^peak hours until .+ · limits may be used up faster during this time$/)])
 })
 
-test('the german pane names the insights', { options: { language: 'de' } }, async ($, on) => {
+test('the german pane names the insights', async ($, on) => {
+
+  withOptions(on, { language: 'de' })
   const clock = mock.clock(on)
   engine(on, 85)
   on('tool.call', () => ({ result: {} }))
@@ -286,7 +293,9 @@ test('the german pane names the insights', { options: { language: 'de' } }, asyn
   await ui.unmount()
 })
 
-test('focus and insights draw on desktop too', { options: { layout: 'classic' } }, async ($, on) => {
+test('focus and insights draw on desktop too', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on, 90)
   on('tool.call', async () => {

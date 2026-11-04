@@ -4,6 +4,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import { overlap, parseCounts, repoRoot } from '../hooks/git'
 import { focusList } from '../hooks/insights'
 import { EMPTY_INSIGHTS } from '../hooks/state'
+import { settingsWith } from './options-helper'
 
 type On = Parameters<TestBody>[1]
 
@@ -16,7 +17,7 @@ const PANE = {
 } as const
 
 // A repo at /r with no origin/HEAD, whose origin/main is 3 commits ahead and changed src/a.ts and src/b.ts; `runs` gets every git call.
-function engine(on: On, runs: string[]) {
+function engine(on: On, runs: string[], options: Record<string, unknown> = {}) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -25,7 +26,8 @@ function engine(on: On, runs: string[]) {
   on('ui.status', () => ({ value: undefined }))
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
   on('env.get', () => ({ value: undefined }))
-  on('fs.read', () => {
+  on('fs.read', (_, e) => {
+    if (e.path.endsWith('/settings.json')) return { value: settingsWith(options) }
     throw new Error('ENOENT')
   })
   on('tool.call', () => ({ result: {} }))
@@ -86,10 +88,11 @@ test('the base check falls back to origin/main, flags an edited file the base ch
   expect(runs.some(c => c.startsWith('git fetch'))).toBe(false)
 })
 
-test('gitFetch fetches the base branch first', { options: { gitFetch: true } }, async ($, on) => {
+test('gitFetch fetches the base branch first', async ($, on) => {
+
   const clock = mock.clock(on)
   const runs: string[] = []
-  engine(on, runs)
+  engine(on, runs, { gitFetch: true })
   await $.session.start({ cwd: '/r', surface: 'terminal', isInteractive: true })
   await clock.settle()
   expect(runs).toContain('git fetch --quiet --no-tags origin refs/heads/main')

@@ -19,6 +19,7 @@ import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf,
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
+import { applyOptions, loadOptions } from './options'
 import type { View } from '../types'
 
 
@@ -227,25 +228,9 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
 }
 
 // What the main loop did this turn, so Fable judges the work and not only the answer.
-export const register: Register = (on, options) => {
-  const t = (cfg.t = LANGUAGES[String(options.language)] ?? LANGUAGES.en!)
-  cfg.lang = String(options.language) in LANGUAGES ? String(options.language) : 'en'
-  cfg.advisorModel = String(options.advisorModel || 'claude-fable-5-1')
-  // `plan` was the plan-only mode, gone with the plan check; its nearest is the gate without a model.
-  cfg.advisorMode = String(options.advisorMode || 'all').replace(/^plan$/, 'gate')
-  const budget = Number(options.advisorBudget ?? 30)
-  cfg.advisorBudget = Number.isFinite(budget) && budget >= 0 ? budget : 30
-  configureSize(options.sizeLimit, options.sizeExclude)
-  cfg.learning = String(options.learning ?? 'on') !== 'off'
-  cfg.debugLog = String(options.debugLog ?? 'on') !== 'off'
-  cfg.hidden = String(options.hiddenSections ?? '').split(',').map(s => s.trim()).filter(Boolean)
-  // `live` or anything not a positive number redraws on every change.
-  const refresh = Number(options.refreshRate ?? 'live')
-  cfg.refreshMs = Number.isFinite(refresh) && refresh > 0 ? refresh * 1000 : 0
-  cfg.isClassic = String(options.layout ?? 'calm') === 'classic'
-  const basePoll = Number(options.gitPollMinutes ?? 5)
-  const baseMinutes = Number.isFinite(basePoll) && basePoll > 0 ? basePoll : 0
-  const isFetching = String(options.gitFetch ?? false) === 'true'
+export const register: Register = on => {
+  applyOptions({}, undefined)
+  let t = cfg.t
   // Module variables reset on reload; the atoms above keep the shown state.
   const effortByCall = new Map<string, string>()
   const filesByAgent = new Map<string, Set<string>>()
@@ -275,6 +260,8 @@ export const register: Register = (on, options) => {
   const askedCalls = new Set<string>()
 
   on('session.start', async ($, e, next) => {
+    await loadOptions($).catch(() => undefined)
+    t = cfg.t
     await $.command.register({
       name: 'agentmon',
       description: t.commandDescription,
@@ -288,7 +275,10 @@ export const register: Register = (on, options) => {
     if (cfg.debugLog) await openDebugLog($, turn.startedAt).catch(() => undefined)
     // The project's own size exceptions, each with a reason.
     void $.fs.read(`${cwd}/.agentmon-size`).then(
-      text => configureSize(options.sizeLimit, options.sizeExclude, parseExceptions(text)),
+      text => {
+        cfg.sizeExceptions = parseExceptions(text)
+        configureSize(cfg.sizeLimit, cfg.sizeExclude, cfg.sizeExceptions)
+      },
       () => undefined,
     )
     // The project's required test targets; none when the file is missing.
@@ -299,7 +289,7 @@ export const register: Register = (on, options) => {
     )
     const [model, live] = await Promise.all([$.session.model(), $.agent.list().catch(() => undefined)])
     await update($, main, m => ({ ...m, model }))
-    void debug($, 'session.start', { model, language: cfg.lang, advisorMode: cfg.advisorMode, advisorBudget: cfg.advisorBudget, learning: cfg.learning, gitPollMinutes: baseMinutes, gitFetch: isFetching })
+    void debug($, 'session.start', { model, language: cfg.lang, advisorMode: cfg.advisorMode, advisorBudget: cfg.advisorBudget, learning: cfg.learning, gitPollMinutes: cfg.baseMinutes, gitFetch: cfg.isFetching })
     // A turn under way when the module reloaded goes on: its clock and gate restart here, what it gathered before is gone. Older state lacks fields.
     if ((await read($, main)).turnLive) {
       isTurnLive = true
@@ -327,9 +317,9 @@ export const register: Register = (on, options) => {
       await refreshStatus($)
       // The network need not hold up learning.
       void checkRelease($).catch(() => undefined)
-      if (baseMinutes > 0 && !isBaseWatched) {
+      if (cfg.baseMinutes > 0 && !isBaseWatched) {
         isBaseWatched = true
-        void watchBase($, cwd, baseMinutes, isFetching).catch(() => undefined)
+        void watchBase($, cwd, cfg.baseMinutes, cfg.isFetching).catch(() => undefined)
       }
       // Learning is extra: an engine without a store or session id leaves the rest working.
       await startLearning($, cwd).catch(() => undefined)
@@ -419,6 +409,11 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => ({ text: `agentmon-live: the command failed (${next.error.message ?? next.error.kind})` }))
 
   on('turn.start', async ($, e, next) => {
+    // `/reload-plugins` skips an unchanged module, so an edit to the settings arrives here.
+    if (e.agentId === undefined) {
+      await loadOptions($).catch(() => undefined)
+      t = cfg.t
+    }
     pulse($)
     // A turn a Stop hook sent back (the done gate or another one) goes on as the same turn: its checks and edits still count.
     if (e.agentId === undefined && e.text === '') {
@@ -650,6 +645,10 @@ export const register: Register = (on, options) => {
       const resultTokens = e.agentId === undefined && !failed ? estTokens(String(r.text ?? '')) : 0
       if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), String(r.text ?? ''), r.isError ? 0 : estTokens(String(r.text ?? '')))
       if (touched && cat === 'edit' && isMemoryPath(touched)) queueMemoryCheck($)
+      if (touched && cat === 'edit' && touched.endsWith('/settings.json')) {
+        await loadOptions($).catch(() => undefined)
+        t = cfg.t
+      }
       const workPath = e.agentId === undefined && sameTurn && r.deny === undefined ? pathOf(e) : undefined
       const area = workPath === undefined ? undefined : areaOf(workPath, cwd)
       // The history's calls-per-minute rate drops this call after a minute; an idle pane draws nothing on its own.
@@ -834,7 +833,7 @@ export const register: Register = (on, options) => {
       await update($, main, v => ({ ...v, turnLive: false }))
       void debug($, 'turn.complete', { ms: e.durationMs, tools: turn.tools, edited: turn.edited.size })
       lastAnswer = e.answer
-      if (baseMinutes > 0) $.clock.after(0, () => refreshBase($, cwd, false))
+      if (cfg.baseMinutes > 0) $.clock.after(0, () => refreshBase($, cwd, false))
       // Memory files change outside Edit and Write too: Bash, an editor, a git checkout.
       queueMemoryCheck($)
     }

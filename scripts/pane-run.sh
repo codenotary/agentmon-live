@@ -113,7 +113,7 @@ done < <(grep -E '^write ' "$scenario" || true)
 
 allowed=$(grep -E '^allow ' "$scenario" | cut -d' ' -f2- | tr '\n' ' ' || true)
 # Mod options: Fable stays off unless the scenario asks (`option advisorMode all`), so runs need no Fable calls.
-settings=$(python3 -I -c '
+python3 -I -c '
 import json, sys
 opts = {"advisorMode": "off"}
 for line in open(sys.argv[1], encoding="utf-8"):
@@ -122,13 +122,13 @@ for line in open(sys.argv[1], encoding="utf-8"):
         opts[key] = value.strip()
 conf = {"options": opts}
 print(json.dumps({"pluginConfigs": {"agentmon-live": conf, "agentmon-live@inline": conf}}))
-' "$scenario")
+' "$scenario" >"$project/.git/agentmon-settings.json"
 mkdir -p "$out"
 rm -f "$out"/*.txt "$out"/*.ansi
 
 # Only this repo's mod: the person's own mod folders stay out.
 tmux new-session -d -s "$session" -x "$width" -y "$height" -c "$project" \
-  env -u CLAUDE_CODE_PLUGIN_DIRS claude --plugin-dir "$repo" --settings "$settings" --model haiku --permission-mode acceptEdits ${allowed:+--allowedTools "$allowed"}
+  env -u CLAUDE_CODE_PLUGIN_DIRS AGENTMON_SETTINGS="$project/.git/agentmon-settings.json" claude --plugin-dir "$repo" --model haiku --permission-mode acceptEdits ${allowed:+--allowedTools "$allowed"}
 sleep 3
 wait_idle 60
 

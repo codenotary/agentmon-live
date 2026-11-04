@@ -5,6 +5,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import { ago, findCheck, hidesExit, outcomeOf, resetTime, smoothBar, spinner } from '../hooks/format'
 import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/format'
 import { rank } from '../hooks/state'
+import { withOptions } from './options-helper'
 
 // The kit declares the hook-adding `on` without exporting its type.
 type On = Parameters<TestBody>[1]
@@ -125,7 +126,9 @@ test('a /model switch shows in the title before the next prompt', async ($, on) 
   await ui.unmount()
 })
 
-test('pane counts failed calls and compactions', { options: { layout: 'classic' } }, async ($, on) => {
+test('pane counts failed calls and compactions', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -147,7 +150,9 @@ test('pane counts failed calls and compactions', { options: { layout: 'classic' 
   await ui.unmount()
 })
 
-test('german option localizes the pane', { options: { language: 'de' } }, async ($, on) => {
+test('german option localizes the pane', async ($, on) => {
+
+  withOptions(on, { language: 'de' })
   const clock = mock.clock(on)
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -314,7 +319,9 @@ test('an advisor answer that arrives after a clear is dropped', async ($, on) =>
   await ui.unmount()
 })
 
-test('a call waiting for approval needs attention until it runs', { options: { layout: 'classic' } }, async ($, on) => {
+test('a call waiting for approval needs attention until it runs', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on)
   // Only the check this test raises asks; a test has no person to answer a dialog.
@@ -449,7 +456,9 @@ test('checks show their outcome and go stale after an edit', async ($, on) => {
   await ui.unmount()
 })
 
-test('a call shows in its tab while it runs', { options: { layout: 'classic' } }, async ($, on) => {
+test('a call shows in its tab while it runs', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', async () => {
@@ -473,7 +482,9 @@ test('a call shows in its tab while it runs', { options: { layout: 'classic' } }
   await ui.unmount()
 })
 
-test('usage says unavailable rather than zero, and shows rate limits', { options: { layout: 'classic' } }, async ($, on) => {
+test('usage says unavailable rather than zero, and shows rate limits', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   mock.clock(on)
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -511,7 +522,9 @@ test('history folds and details unfold long text', async ($, on) => {
   await ui.unmount()
 })
 
-test('a narrow pane still draws every section', { options: { layout: 'classic' } }, async ($, on) => {
+test('a narrow pane still draws every section', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
@@ -586,7 +599,9 @@ test('a long trail is trimmed from its oldest lines, never from the request', as
   expect(done.length).toBeLessThan(13500)
 })
 
-test('the advisor budget holds', { options: { advisorBudget: 3 } }, async ($, on) => {
+test('the advisor budget holds', async ($, on) => {
+
+  withOptions(on, { advisorBudget: 3 })
   const clock = mock.clock(on)
   const prompts: string[] = []
   engine(on)
@@ -672,7 +687,8 @@ test('an advisor answer that arrives after a reload is dropped', async ($, on) =
 })
 
 for (const language of ['fr', 'es', 'zh', 'ja'] as const) {
-  test(`${language} option draws the pane`, { options: { language } }, async ($, on) => {
+  test(`${language} option draws the pane`, async ($, on) => {
+    withOptions(on, { language })
     on('command.register', () => ({ value: { command: 'agentmon' } }))
     on('ui.open', () => ({ value: { isPlaced: true } }))
     on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -812,7 +828,9 @@ test('a dropped advisor answer still counts its tokens, and a reload keeps unava
   await ui.unmount()
 })
 
-test('loaded skills show who loaded them and how often', { options: { layout: 'classic' } }, async ($, on) => {
+test('loaded skills show who loaded them and how often', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on)
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
@@ -886,7 +904,9 @@ test('the header names the loaded version and commit', async ($, on) => {
   await ui.unmount()
 })
 
-test('classic: a few subagents get cards side by side; many get one line each', { options: { layout: 'classic' } }, async ($, on) => {
+test('classic: a few subagents get cards side by side; many get one line each', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   mock.clock(on)
   engine(on)
   let n = 0
@@ -927,7 +947,9 @@ test('only the main loop keeps the task list; todo ids never meet task ids; an u
   await ui.unmount()
 })
 
-test('two Skill calls at once each name their own caller', { options: { layout: 'classic' } }, async ($, on) => {
+test('two Skill calls at once each name their own caller', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on)
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
@@ -976,7 +998,9 @@ test('a compound command gets a row per check; a failure blames the last one', a
   await ui.unmount()
 })
 
-test('clear empties the task list and the skills', { options: { layout: 'classic' } }, async ($, on) => {
+test('clear empties the task list and the skills', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {} }))
@@ -1183,7 +1207,9 @@ test('a subagent that runs again drops its old FAIL', async ($, on) => {
   await ui.unmount()
 })
 
-test('a refresh rate keeps the frame until the period ends while work runs; a key or an idle pane redraws at once', { options: { refreshRate: '5' } }, async ($, on) => {
+test('a refresh rate keeps the frame until the period ends while work runs; a key or an idle pane redraws at once', async ($, on) => {
+
+  withOptions(on, { refreshRate: '5' })
   const clock = mock.clock(on)
   engine(on)
   on('tool.call', () => ({ result: {} }))
@@ -1273,7 +1299,9 @@ test('calm leaves out insights, skills and usage, details or not; the header swi
   await ui.unmount()
 })
 
-test('a refresh rate stops when nothing runs, after drawing the final state', { options: { refreshRate: '5' } }, async ($, on) => {
+test('a refresh rate stops when nothing runs, after drawing the final state', async ($, on) => {
+
+  withOptions(on, { refreshRate: '5' })
   const clock = mock.clock(on)
   engine(on)
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))

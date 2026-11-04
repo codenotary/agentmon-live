@@ -2,6 +2,7 @@ import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { claimOf } from '../hooks/gate'
+import { settingsWith, withOptions } from './options-helper'
 
 // The kit declares the hook-adding `on` without exporting its type.
 type On = Parameters<TestBody>[1]
@@ -246,7 +247,9 @@ test('a check that ran before the last code edit is stale; a doc edit after it i
   expect((await $.classic.Stop({ ...STOP })).block).toContain('test ran before the last edit: npm test')
 })
 
-test('an answer that says the tests pass with no check after the last edit is sent back', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('an answer that says the tests pass with no check after the last edit is sent back', async ($, on) => {
+
+  withOptions(on, { advisorMode: 'gate' })
   const clock = mock.clock(on)
   engine(on)
   await start($)
@@ -266,7 +269,9 @@ test('an answer that says the tests pass with no check after the last edit is se
   expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
 })
 
-test('a check that still fails does not back a claim, even when it failed at the prompt too', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('a check that still fails does not back a claim, even when it failed at the prompt too', async ($, on) => {
+
+  withOptions(on, { advisorMode: 'gate' })
   const clock = mock.clock(on)
   engine(on)
   await start($)
@@ -291,12 +296,14 @@ test('a check chained with git, or behind ||, is still recorded with its real ou
   expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
 })
 
-// A two-package repo with optional `.agentmon-tests` rules; `cd` moves the shell.
+// A two-package repo in gate mode with optional `.agentmon-tests` rules; `cd` moves the shell.
 function monorepo(on: On, rules?: string) {
   let shell = '/repo'
   on('session.cwd', () => ({ value: shell }))
   on('fs.exists', (_, e) => ({ value: ['/repo/package.json', '/repo/packages/api/package.json', '/repo/packages/web/package.json'].includes(e.path) }))
+  on('env.get', () => ({ value: undefined }))
   on('fs.read', (_, e) => {
+    if (e.path.endsWith('/settings.json')) return { value: settingsWith({ advisorMode: 'gate' }) }
     if (rules !== undefined && e.path === '/repo/.agentmon-tests') return { value: rules }
     throw new Error('ENOENT')
   })
@@ -317,7 +324,8 @@ const API = '/repo/packages/api/src/auth.ts'
 const WEB = '/repo/packages/web/src/app.ts'
 const UNCOVERED_API = 'packages/api: edited (auth.ts), but no test run after the edit reached it'
 
-test('in a monorepo, tests of another package leave the edited one unverified', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('in a monorepo, tests of another package leave the edited one unverified', async ($, on) => {
+
   const clock = mock.clock(on)
   engine(on, { 'cd packages/web && npm test': 'Tests:       4 passed, 4 total', 'cd packages/api && npx vitest -t login': '      Tests  1 passed | 6 skipped (7)' })
   monorepo(on)
@@ -330,7 +338,8 @@ test('in a monorepo, tests of another package leave the edited one unverified', 
   await ui.unmount()
 })
 
-test('a denied test run is no evidence; a config edit needs no test', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('a denied test run is no evidence; a config edit needs no test', async ($, on) => {
+
   const clock = mock.clock(on)
   engine(on, { 'cd packages/web && npm test': '4 passed' }, ['cd packages/api && npm test'])
   monorepo(on)
@@ -339,7 +348,8 @@ test('a denied test run is no evidence; a config edit needs no test', { options:
   expect(await attempt($, clock, 'm2', ['/repo/tsconfig.json', '/repo/.github/workflows/ci.yml', WEB], ['cd packages/web && npm test'])).toBe(undefined)
 })
 
-test('each test of a chained command counts, from its own directory', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('each test of a chained command counts, from its own directory', async ($, on) => {
+
   const clock = mock.clock(on)
   engine(on)
   monorepo(on)
@@ -349,7 +359,8 @@ test('each test of a chained command counts, from its own directory', { options:
   expect(await attempt($, clock, 'm3', [API, WEB], ['cd packages/web && npm test && npm run lint'])).toContain(UNCOVERED_API)
 })
 
-test('review findings: a later passing run elsewhere keeps a failure; a rule holds whatever the edit order', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('review findings: a later passing run elsewhere keeps a failure; a rule holds whatever the edit order', async ($, on) => {
+
   const clock = mock.clock(on)
   engine(on, { 'cd packages/api && npx vitest -t login': '1 passed' })
   monorepo(on, 'packages/api/src/** packages/api full # auth is shared')
@@ -372,7 +383,8 @@ test('the row of a chained command names the last test with its own folder', asy
   await ui.unmount()
 })
 
-test('a filter that selects no tests is no evidence, even when the runner exits 0', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('a filter that selects no tests is no evidence, even when the runner exits 0', async ($, on) => {
+
   const clock = mock.clock(on)
   engine(on, { 'npx vitest -t nomatch --passWithNoTests': 'No test files found, exiting with code 0' })
   monorepo(on).cd('/repo/packages/api')
@@ -382,7 +394,8 @@ test('a filter that selects no tests is no evidence, even when the runner exits 
   expect(block).toContain(UNCOVERED_API)
 })
 
-test('a test run that skips tests the same run did not skip before the edit is sent back', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('a test run that skips tests the same run did not skip before the edit is sent back', async ($, on) => {
+
   const clock = mock.clock(on)
   engine(on, { 'npm test': ['Tests:       40 passed, 40 total', 'Tests:       38 passed, 2 skipped, 40 total'] })
   monorepo(on).cd('/repo/packages/api')
@@ -398,7 +411,8 @@ test('a test run that skips tests the same run did not skip before the edit is s
   expect(block).toContain('npm test ran 38 tests and skipped 2 after the edit, 40 and 0 before it')
 })
 
-test('a root run covers every package; a workspace run only its own', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('a root run covers every package; a workspace run only its own', async ($, on) => {
+
   const clock = mock.clock(on)
   engine(on, { 'pnpm --filter web test': '4 passed', 'npm test': '9 passed' })
   monorepo(on)
@@ -409,7 +423,8 @@ test('a root run covers every package; a workspace run only its own', { options:
   expect(await attempt($, clock, 'm2', [API, WEB], ['npm test'])).toBe(undefined)
 })
 
-test('a declared target is expected with no test run, and a full one takes no filter', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('a declared target is expected with no test run, and a full one takes no filter', async ($, on) => {
+
   const clock = mock.clock(on)
   engine(on, { 'cd packages/api && npx vitest -t login': '1 passed', 'cd packages/api && npx vitest run': '7 passed' })
   monorepo(on, 'packages/api/** packages/api full # auth is shared')
@@ -455,7 +470,9 @@ test('open todo items keep the turn going, but a list from an earlier turn does 
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
 })
 
-test('with no recorded gap, Fable judges whether the answer covers the request', { options: { layout: 'classic' } }, async ($, on) => {
+test('with no recorded gap, Fable judges whether the answer covers the request', async ($, on) => {
+
+  withOptions(on, { layout: 'classic' })
   const clock = mock.clock(on)
   const prompts: string[] = []
   engine(on)
@@ -476,7 +493,9 @@ test('with no recorded gap, Fable judges whether the answer covers the request',
   await ui.unmount()
 })
 
-test('gate mode checks the facts and never calls a model', { options: { advisorMode: 'gate' } }, async ($, on) => {
+test('gate mode checks the facts and never calls a model', async ($, on) => {
+
+  withOptions(on, { advisorMode: 'gate' })
   const clock = mock.clock(on)
   const prompts: string[] = []
   engine(on)
@@ -522,7 +541,9 @@ test('"OK, but …" is no pass: the gap goes back to Claude', async ($, on) => {
   expect((await $.classic.Stop({ ...STOP })).block).toContain('the docs part of the request is not answered')
 })
 
-test('the old plan mode maps to gate mode', { options: { advisorMode: 'plan' } }, async ($, on) => {
+test('the old plan mode maps to gate mode', async ($, on) => {
+
+  withOptions(on, { advisorMode: 'plan' })
   const clock = mock.clock(on)
   const prompts: string[] = []
   engine(on)
@@ -535,7 +556,9 @@ test('the old plan mode maps to gate mode', { options: { advisorMode: 'plan' } }
   expect(prompts.length).toBe(0)
 })
 
-test('off lets Claude stop with gaps left', { options: { advisorMode: 'off' } }, async ($, on) => {
+test('off lets Claude stop with gaps left', async ($, on) => {
+
+  withOptions(on, { advisorMode: 'off' })
   const clock = mock.clock(on)
   engine(on)
   fable(on, [])
