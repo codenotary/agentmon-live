@@ -44,4 +44,4 @@ After a change in `web/`, also run `node scripts/web-shot.mjs <out dir>` (setup 
 
 ## Release
 
-Bump `version` in both `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` (the marketplace reads the latter). Commit subject ends with the version, e.g. `Self benchmark: /agentmon bench (0.13.0)`.
+A PR gets its new version when it merges, not per commit. At merge, bump `version` in both `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` (the marketplace reads the latter). Commits on a branch leave the version alone and name no version in their subject.

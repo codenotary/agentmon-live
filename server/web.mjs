@@ -16,6 +16,7 @@ const FONTS = [
   'manrope-latin-700-normal.woff2',
   'jetbrains-mono-latin-400-normal.woff2',
 ]
+// shortcut: a reload during a server takeover can leave a blank tab, add a load-error retry if people hit it.
 const ASSETS = {
   '/app.js': 'text/javascript; charset=utf-8',
   '/vendor.js': 'text/javascript; charset=utf-8',

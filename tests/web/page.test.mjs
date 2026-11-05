@@ -10,7 +10,7 @@ import { agentNames, countWord, pushPoint, resultOf, rowUsd, sessionNames, state
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, spanOf, ticksOf, xOf } from '../../web/src/waterfall.ts'
-import { sourceHash } from '../../web/source-hash.mjs'
+import { BUILT, builtHash, sourceHash } from '../../web/source-hash.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const page = readFileSync(join(ROOT, 'server/app.html'), 'utf8')
@@ -277,10 +277,15 @@ test('the built page is current with its source', () => {
   assert.equal(stamp, sourceHash(), 'run: cd web && npm run build')
 })
 
+test('the built files are the set one build made', () => {
+  const stamp = /<meta name="agentmon-built" content="([0-9a-f]{64})">/.exec(page)?.[1]
+  assert.equal(stamp, builtHash(), 'run: cd web && npm run build')
+})
+
 test('the page loads nothing from another origin and stays small', () => {
-  assert.doesNotMatch(page, /<(script|link|img)\b[^>]*\b(src|href)="(https?:)?\/\//)
+  for (const file of ['app.html', 'app.js', 'vendor.js']) assert.doesNotMatch(readFileSync(join(ROOT, 'server', file), 'utf8'), /<(script|link|img)\b[^>]*\b(src|href)="(https?:)?\/\/|@import\s+url\(/, file)
   assert.doesNotMatch(readFileSync(join(ROOT, 'server/app.css'), 'utf8'), /@import\s+url\(|url\((https?:)?\/\//)
-  for (const file of ['/app.js', '/vendor.js', '/app.css']) assert.ok(page.includes(`"${file}"`), file)
+  for (const file of BUILT) assert.ok(page.includes(`"/${file}"`), file)
   const total = ['app.html', 'app.js', 'vendor.js', 'app.css'].reduce((n, f) => n + statSync(join(ROOT, 'server', f)).size, 0)
   assert.ok(total < 800 * 1024, `${total} bytes`)
 })
