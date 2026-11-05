@@ -77,9 +77,10 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     lang: 'de',
     isPaneOpen: true,
     build: '1.2.3 · abc1234',
-    testReview: { files: [], dropped: [], isGreen: false },
+    testReview: { files: [{ path: '/r/a.test.ts', removed: 0, skips: 0, at: 1, changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] }], dropped: [], isGreen: true },
     trace: [],
   })
+  expect(snap.testReview?.files[0]).toMatchObject({ changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] })
   expect(snap.v).toBe(1)
   expect(snap.usage).toEqual({ ctxPct: 19, rate: [{ kind: 'seven_day', pct: 77 }], usd: 2 })
   expect(snap.turnCount).toBe(3)

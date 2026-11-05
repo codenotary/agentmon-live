@@ -44,10 +44,18 @@ function TestEdits({ s, l }: { s: WebSnapshot; l: Labels }) {
       <span className="eyebrow">{l.page.testEdits}</span>
       <ul className="mt-1 flex flex-col gap-1 text-xs">
         {review.files.map(f => (
-          <li key={f.path} className="flex items-center gap-2" title={f.path}>
-            <span className="min-w-0 truncate font-mono">{name(f.path)}</span>
-            {f.removed > 0 ? <Pill text={`${l.page.assertsRemoved}: ${f.removed}`} tone="warn" /> : null}
-            {f.skips > 0 ? <Pill text={`${l.page.skipsAdded}: ${f.skips}`} tone="warn" /> : null}
+          <li key={f.path} className="flex flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2" title={f.path}>
+              <span className="min-w-0 truncate font-mono">{name(f.path)}</span>
+              {f.removed > 0 ? <Pill text={`${l.page.assertsRemoved}: ${f.removed}`} tone="warn" /> : null}
+              {(f.changed ?? 0) > 0 ? <Pill text={`${l.page.assertsChanged}: ${f.changed}`} tone="warn" /> : null}
+              {f.skips > 0 ? <Pill text={`${l.page.skipsAdded}: ${f.skips}`} tone="warn" /> : null}
+            </div>
+            {f.lines?.length ? (
+              <div className="font-mono break-words text-[11px] text-ink-3" data-testid="test-lines">
+                {f.lines.flatMap((x, i) => [x.before !== undefined ? <div key={`${i}-`}>{`- ${x.before}`}</div> : null, x.after !== undefined ? <div key={`${i}+`}>{`+ ${x.after}`}</div> : null])}
+              </div>
+            ) : null}
           </li>
         ))}
         {review.isGreen ? review.dropped.map(line => <li key={line} className="text-warn">{line}</li>) : null}
