@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { WebSnapshot } from '../../types/index'
 import { alertOf, type FeedEvent } from './events.ts'
 import type { Page } from './labels.ts'
+import { setCollapsed } from './store.ts'
 
 export type Section = { id: string; label: string; icon: LucideIcon; count?: number; alert?: 'bad' | 'warn' }
 
@@ -26,6 +27,7 @@ const CLICK_HOLD_MS = 1200
 const domId = (id: string) => `section-${id}`
 
 export function jumpTo(id: string): void {
+  setCollapsed(id, false)
   location.hash = domId(id)
   document.getElementById(domId(id))?.scrollIntoView()
 }
@@ -79,7 +81,7 @@ export function Nav({ sections, label }: { sections: Section[]; label: string })
   return (
     <nav ref={nav} className="side-nav" aria-label={label} data-testid="nav">
       {sections.map(({ id, label: name, icon: Icon, count, alert }) => (
-        <a key={id} href={`#${domId(id)}`} className="nav-item" aria-current={active === id ? 'location' : undefined} onClick={() => pick(id)}>
+        <a key={id} href={`#${domId(id)}`} className="nav-item" aria-current={active === id ? 'location' : undefined} onClick={() => { setCollapsed(id, false); pick(id) }}>
           <Icon size={16} className="flex-none" aria-hidden />
           <span className="truncate">{name}</span>
           {count ? <span className={`nav-count ${alert ?? ''}`}>{count}</span> : null}

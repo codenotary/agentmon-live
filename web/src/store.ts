@@ -3,10 +3,11 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Call, WebSnapshot } from '../../types/index'
 import { nextEvents, type FeedEvent } from './events.ts'
 import { DEFAULT_VIEW, type FlowView } from './flow.ts'
-import { pushPoint } from './format.ts'
+import { parseIds, pushPoint } from './format.ts'
 
 const PICK_KEY = 'agentmon-live-session'
 const THEME_KEY = 'agentmon-live-theme'
+const COLLAPSED_KEY = 'agentmon-live-collapsed'
 const HISTORY_POINTS = 600
 const KEEP_EVENTS = 100
 const THEME_FADE_MS = 200
@@ -31,6 +32,8 @@ export type State = {
   flowView: FlowView
   // Agent rows folded open: the flow chart's lane labels open them too.
   openAgents: ReadonlySet<string>
+  // The page's sections folded by this viewer.
+  collapsed: ReadonlySet<string>
   theme: Theme
   call: Detail | null
   isPaletteOpen: boolean
@@ -64,6 +67,7 @@ let state: State = {
   whoFilter: null,
   flowView: DEFAULT_VIEW,
   openAgents: new Set(),
+  collapsed: new Set(parseIds(load(COLLAPSED_KEY))),
   theme: savedTheme === 'dark' || savedTheme === 'auto' ? savedTheme : 'light',
   call: null,
   isPaletteOpen: false,
@@ -87,6 +91,15 @@ export function pick(id: string): void {
   // A section's link in the address belongs to the session being left.
   history.replaceState(null, '', location.pathname + location.search)
   set({ picked: id, whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set() })
+}
+
+export function setCollapsed(id: string, isCollapsed: boolean): void {
+  if (state.collapsed.has(id) === isCollapsed) return
+  const collapsed = new Set(state.collapsed)
+  if (isCollapsed) collapsed.add(id)
+  else collapsed.delete(id)
+  save(COLLAPSED_KEY, JSON.stringify([...collapsed]))
+  set({ collapsed })
 }
 
 export function setTheme(theme: Theme): void {

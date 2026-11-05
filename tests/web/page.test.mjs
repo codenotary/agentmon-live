@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
-import { agentNames, countWord, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
+import { agentNames, countWord, parseIds, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, spanOf, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
@@ -71,6 +71,14 @@ test('a subagent goes by its description; a shared prefix drops, a long name kee
   assert.equal(whoOf({ who: 'general-purpose', agentId: 'a' }, names), 'policy.go')
   assert.equal(whoOf({ who: 'general-purpose', agentId: 'gone' }, names), 'general-purpose')
   assert.equal(whoOf({ who: 'main session' }, names), 'main session')
+})
+
+test('kept section ids survive whatever the browser holds', () => {
+  assert.deepEqual(parseIds('["log","files"]'), ['log', 'files'])
+  assert.deepEqual(parseIds(null), [])
+  assert.deepEqual(parseIds('not json'), [])
+  assert.deepEqual(parseIds('{"a":1}'), [])
+  assert.deepEqual(parseIds('["log",1,null]'), ['log'])
 })
 
 test('one word for one call', () => {

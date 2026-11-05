@@ -102,6 +102,23 @@ await page.locator('.flow-label', { hasText: 'Run the server tests' }).click()
 if (!await page.$('#calls .chip[aria-pressed=true]:has-text("Run the server tests")')) problems.push('flow: a lane name did not filter Tool calls')
 await page.locator('#calls .chip', { hasText: 'Run the server tests' }).click()
 
+// Every rail item is a section with a heading that folds it; the fold survives a reload, and the rail or a link opens it again.
+const heads = await page.locator('.section-head').count()
+if (heads !== (await links()).length) problems.push(`sections: ${heads} headings for ${(await links()).length} rail items`)
+await page.click('#section-files .section-head')
+if (await page.locator('#files').isVisible()) problems.push('sections: the heading did not fold Files')
+await page.reload()
+await page.waitForSelector('#section-files .section-head')
+if (await page.locator('#files').isVisible()) problems.push('sections: the fold did not survive a reload')
+await page.screenshot({ path: join(out, 'web-folded.png'), fullPage: true })
+await page.click('.nav-item[href="#section-files"]')
+if (!await page.locator('#files').isVisible()) problems.push('sections: the rail did not open Files')
+await page.click('#section-log .section-head')
+await page.locator('body').click({ position: { x: 5, y: 5 } })
+await page.keyboard.press('/')
+await page.waitForTimeout(50)
+if (await page.evaluate(() => document.activeElement?.id) !== 'q') problems.push('sections: / did not open the log and reach its search')
+
 // A second session turns the working directory into a switch, and picking it shows that session.
 const other = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/snapshot.json'), 'utf8'))
 other.session.cwd = '/home/dev/other-project'

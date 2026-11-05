@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
+import { connect } from 'node:net'
 import { cpSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -88,6 +89,36 @@ test('the page\'s files come from a fixed list, with a policy that lets them run
   }
   assert.equal((await call(47500, '/web.mjs')).status, 404)
   assert.equal((await call(47500, '/app.html')).status, 404)
+})
+
+test('a client that stops reading is dropped, one that reads stays', async () => {
+  startServer(47501)
+  await waitUp(47501)
+  const stuck = connect(47501, '127.0.0.1')
+  stuck.write('GET /events HTTP/1.1\r\nHost: 127.0.0.1:47501\r\n\r\n')
+  stuck.pause()
+  let isReaderClosed = false
+  let last = ''
+  const reader = request({ host: '127.0.0.1', port: 47501, path: '/events' }, res => {
+    res.on('data', d => (last = String(d).slice(-40)))
+    res.on('close', () => (isReaderClosed = true))
+  })
+  reader.on('error', () => undefined)
+  reader.end()
+  await new Promise(done => setTimeout(done, 100))
+  // Past what the kernel's socket buffers hold, and past the server's limit.
+  const big = { fill: 'x'.repeat(900_000) }
+  for (let i = 0; i < 40; i += 1) assert.equal((await post(47501, 'big', { ...big, i })).status, 204)
+  const closed = new Promise(done => stuck.on('close', () => done(true)))
+  stuck.on('error', () => undefined)
+  stuck.resume()
+  const isStuckClosed = await Promise.race([closed, new Promise(done => setTimeout(() => done(false), 3000))])
+  stuck.destroy()
+  assert.equal(isStuckClosed, true)
+  assert.equal(isReaderClosed, false)
+  await new Promise(done => setTimeout(done, 100))
+  assert.match(last, /"i":39/)
+  reader.destroy()
 })
 
 test('fonts come from a fixed list, nothing else on disk', async () => {

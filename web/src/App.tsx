@@ -1,5 +1,6 @@
+import { ChevronRight } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 
 import type { WebSnapshot } from '../../types/index'
 
@@ -7,7 +8,7 @@ import { CallDetail } from './CallDetail.tsx'
 import type { FeedEvent } from './events.ts'
 import { titleFor } from './format.ts'
 import { labelsOf, pageOf, type Labels, type Page } from './labels.ts'
-import { Nav, sectionsOf } from './Nav.tsx'
+import { Nav, sectionsOf, type Section } from './Nav.tsx'
 import { Palette } from './Palette.tsx'
 import { Calls } from './panels/Calls.tsx'
 import { Events } from './panels/Events.tsx'
@@ -19,7 +20,7 @@ import { Flow } from './panels/Flow.tsx'
 import { Checks, Files, Insights, Running, Tasks } from './panels/Side.tsx'
 import { TurnClock } from './panels/TurnClock.tsx'
 import { Waterfall } from './panels/Waterfall.tsx'
-import { currentOf, set, useStore, type Trend } from './store.ts'
+import { currentOf, set, setCollapsed, useStore, type Trend } from './store.ts'
 import { TopBar } from './TopBar.tsx'
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
@@ -75,6 +76,24 @@ function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; 
   }
 }
 
+// A heading that folds what a rail item leads to. Folded stays mounted: a typed filter or a chosen sort is still there on opening. The count stays in sight, so a folded section can still say it needs you.
+function PageSection({ x, isCollapsed, children }: { x: Section; isCollapsed: boolean; children: ReactNode }) {
+  const { id, label, icon: Icon, count, alert } = x
+  return (
+    <div id={`section-${id}`} className="section">
+      <h2>
+        <button type="button" className="section-head" aria-expanded={!isCollapsed} onClick={() => setCollapsed(id, !isCollapsed)}>
+          <ChevronRight size={14} className={`chevron ${isCollapsed ? '' : 'open'}`} aria-hidden />
+          <Icon size={14} aria-hidden />
+          {label}
+          {count ? <span className={`nav-count !ml-0 ${alert ?? ''}`}>{count}</span> : null}
+        </button>
+      </h2>
+      <div className={isCollapsed ? 'hidden' : 'flex min-w-0 flex-col gap-4'}>{children}</div>
+    </div>
+  )
+}
+
 export function App() {
   const st = useStore()
   const s = currentOf(st)
@@ -89,7 +108,10 @@ export function App() {
   useEffect(() => {
     if (sections.length === 0 || !isFirstDraw.current) return
     isFirstDraw.current = false
-    if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView()
+    if (location.hash) {
+      setCollapsed(location.hash.replace('#section-', ''), false)
+      document.getElementById(location.hash.slice(1))?.scrollIntoView()
+    }
   }, [sections.length])
 
   useEffect(() => {
@@ -110,7 +132,9 @@ export function App() {
       } else if (!isTyping(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key === '/') {
           e.preventDefault()
-          document.getElementById('q')?.focus()
+          setCollapsed('log', false)
+          // After the opened section has drawn: a hidden field takes no focus.
+          setTimeout(() => document.getElementById('q')?.focus())
         }
       }
     }
@@ -127,7 +151,7 @@ export function App() {
         {st.isDown ? <div className="panel !border-bad bg-bad-soft px-3.5 py-2.5 text-[13px] text-bad" role="status">{p.disconnected}</div> : null}
         {s && !isCurrent ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status">{p.update}</div> : null}
         {!s && !st.isDown ? <Standby text={p.noSessions} /> : null}
-        {s && l ? <motion.div key={s.session.id} className="flex min-w-0 flex-col gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }}>{sections.map(x => <div key={x.id} id={`section-${x.id}`} className="section"><Part view={x.id} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></div>)}</motion.div> : null}
+        {s && l ? <motion.div key={s.session.id} className="flex min-w-0 flex-col gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }}>{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><Part view={x.id} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PageSection>)}</motion.div> : null}
       </main>
       </div>
       <Palette s={s} p={p} sections={sections} />

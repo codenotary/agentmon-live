@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
 const MAX_BODY = 1024 * 1024
+const MAX_BACKLOG = 8 * 1024 * 1024
 const PORT_TRIES = 20
 const FONTS = [
   'dm-sans-latin-400-normal.woff2',
@@ -73,7 +74,11 @@ function serve(port, fixture) {
 
   const send = (res, event, data) => res.write(`event: ${event}\ndata: ${data}\n\n`)
   const broadcast = (event, data) => {
-    for (const res of clients) send(res, event, data)
+    for (const res of clients) {
+      // A tab that stopped reading would make this queue grow without end. Dropped, its EventSource reconnects once it wakes and gets every session again.
+      if (res.writableLength > MAX_BACKLOG) res.destroy()
+      else send(res, event, data)
+    }
   }
   const packed = (id, json) => `{"id":${JSON.stringify(id)},"snapshot":${json}}`
   const drop = id => {

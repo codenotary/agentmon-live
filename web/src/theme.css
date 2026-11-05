@@ -229,7 +229,9 @@ button.wf-row:hover { background: var(--surface-2); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* One page of sections in the rail's order. */
-.section { display: flex; flex-direction: column; gap: 16px; min-width: 0; scroll-margin-top: 63px; }
+.section-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 0; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); cursor: pointer; transition: color .15s; }
+.section-head:hover { color: var(--ink); }
+.section { display: flex; flex-direction: column; gap: 8px; min-width: 0; scroll-margin-top: 63px; }
 
 /* The navigation: a strip across the top on small screens, a rail to the right of the page on large ones. */
 .side-nav { position: sticky; top: 0; z-index: 20; display: flex; gap: 2px; padding: 8px 32px 8px 16px; overflow-x: auto; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); border-bottom: 1px solid var(--line); background: var(--surface-1); scrollbar-width: none; }
