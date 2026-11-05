@@ -1,13 +1,15 @@
-import { atom, read } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
 import type { Check, Task } from '../types'
 import { PROMPT_CHURN_EDITS } from './bench'
 import { addNote, consult } from './advisor'
-import { coverageGaps, doneGaps, isDoc, isWithin, testCfg } from './gate'
+import { coverageGaps, doneGaps, droppedRuns, isDoc, isWithin, reaches, testCfg } from './gate'
 import type { Target, TestRun } from './gate'
 import { relPath, SOURCE } from './sizeguard'
-import { mask } from './format'
+import { mergeEdit } from './testreview'
+import type { Weakening } from './testreview'
+import { mask, UNKNOWN_DIR } from './format'
 import { notePrompt } from './learning'
 import { cfg, INIT, isLive } from './state'
 
@@ -15,6 +17,7 @@ const agents = atom({ plugin: 'agentmon-live', key: 'agents' } as const, INIT.ag
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
 const files = atom({ plugin: 'agentmon-live', key: 'files' } as const, INIT.files)
 const tasks = atom({ plugin: 'agentmon-live', key: 'tasks' } as const, INIT.tasks)
+const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const, INIT.testReview)
 
 // A finished turn with fewer main-loop tool calls, no edit and no subagent is too small to be worth a Fable call.
 export const MIN_TOOLS_FOR_DONE_CHECK = 3
@@ -24,7 +27,7 @@ const REQUEST_ROOM = 2000
 
 // `before` holds the checks as they stood at the prompt; `codeEditAt` and `lastCodeEditAt` are the turn's first and last edit of a file that is not a doc.
 // `docs` are the doc files the main loop read this turn; `edits` counts the edits per code file; `tests` every test run; `root` the project.
-export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number; tests: TestRun[]; root: string }
+export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number; tests: TestRun[]; root: string; testEdits: Set<string> }
 
 // A new prompt, or `/agentmon clear` mid-turn: everything the turn gathered goes, the prompt and its start stay.
 export function resetTurn(turn: Turn, before: Check[]) {
@@ -35,9 +38,34 @@ export function resetTurn(turn: Turn, before: Check[]) {
   turn.edits = new Map()
   turn.docs = new Set()
   turn.tests = []
+  turn.testEdits = new Set()
   turn.before = before
   turn.codeEditAt = undefined
   turn.lastCodeEditAt = undefined
+}
+
+// What a person should look at beside the passing result. It outlasts the turn until they put it away; a new edit waits for a new run.
+export async function noteTestEdit($: EngineInterface, turn: Turn, path: string, found: Weakening, at: number) {
+  turn.testEdits.add(path)
+  await update($, testReview, r => ({ ...r, files: mergeEdit(r.files, path, found, at), isGreen: false }))
+}
+
+const isTestEdited = (turn: Turn) => turn.testEdits.size > 0
+const projectRoot = (turn: Turn) => turn.root.replace(/\/+$/, '') || '/'
+
+// shortcut: a run in an edited test's package, or in a folder not known, counts, and one stands for all of them; upgrade when edits in two packages mislead.
+export async function noteTestRun($: EngineInterface, turn: Turn) {
+  const dropped = isTestEdited(turn) ? droppedRuns(turn.tests, turn.lastCodeEditAt) : []
+  const root = projectRoot(turn)
+  const dirs = await Promise.all((await read($, testReview)).files.map(f => packageRoot($, f.path.slice(0, f.path.lastIndexOf('/')) || '/', root)))
+  await update($, testReview, r => {
+    const last = turn.tests.filter(run => run.result !== 'running' && (run.dir === UNKNOWN_DIR || dirs.some(dir => reaches(run, dir)))).at(-1)
+    return {
+      ...r,
+      dropped: [...new Map([...r.dropped, ...dropped].map(d => [JSON.stringify(d), d])).values()],
+      isGreen: last === undefined ? r.isGreen : last.result === 'ok' && r.files.every(f => last.at >= f.at),
+    }
+  })
 }
 
 const MANIFESTS = ['package.json', 'pyproject.toml', 'Cargo.toml', 'go.mod']
@@ -56,7 +84,7 @@ async function packageRoot($: EngineInterface, dir: string, root: string): Promi
 
 // Where each file edited this turn must be tested: the first `.agentmon-tests` rule its path matches, else a source file's nearest package root.
 export async function targetsOf($: EngineInterface, turn: Turn): Promise<Target[]> {
-  const root = turn.root.replace(/\/+$/, '') || '/'
+  const root = projectRoot(turn)
   const byDir = new Map<string, Target>()
   for (const path of turn.edited) {
     const rel = relPath(path, root)
@@ -104,7 +132,7 @@ export async function openGaps($: EngineInterface, turn: Turn, answer: string): 
   const t = cfg.t
   const [checked, planned, list] = await Promise.all([read($, checks), read($, tasks), read($, agents)])
   const targets = await targetsOf($, turn)
-  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer, runs: turn.tests, targets })
+  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer, runs: turn.tests, targets, isTestEdited: isTestEdited(turn) })
   if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines, judged: true }
   const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-8000)).slice(-4000)}` : ''}`)
   // Fable read untrusted tool output; what it says goes to Claude as a claim, never as a fact.
@@ -118,7 +146,7 @@ export async function benchPrompt($: EngineInterface, turn: Turn, blockAt: numbe
   const after = checked.filter(c => c.at >= (turn.lastCodeEditAt ?? Infinity) && c.result !== 'running')
   notePrompt({
     edit: turn.lastCodeEditAt !== undefined,
-    verified: after.length > 0 && after.every(c => c.result === 'ok') && coverageGaps(cfg.t, turn.tests, targets, turn.lastCodeEditAt, turn.before.some(b => b.kind === 'test' && b.result === 'failed')).length === 0,
+    verified: after.length > 0 && after.every(c => c.result === 'ok') && coverageGaps(cfg.t, turn.tests, targets, turn.lastCodeEditAt, { isOldFail: turn.before.some(b => b.kind === 'test' && b.result === 'failed'), isTestEdited: isTestEdited(turn) }).length === 0,
     churn: [...turn.edits.values()].some(n => n >= PROMPT_CHURN_EDITS),
     ms: turn.tools > 0 ? now - turn.startedAt : 0,
     block: blockAt !== undefined,

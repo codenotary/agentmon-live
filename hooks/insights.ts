@@ -1,4 +1,6 @@
-import type { Active, Card, Insights, TurnTime } from '../types'
+import type { Active, Card, Insights, TurnTime, TestReview } from '../types'
+import { needsReview, reviewLines, reviewText } from './testreview'
+import { fenced } from './lang/fenced'
 import { clockTime, decimal, isHigh, kilo, limitName, modelName, pad, shortPath } from './format'
 import type { BaseDrift } from './git'
 import { overlap } from './git'
@@ -187,6 +189,7 @@ export function bucketName(k: string): string {
 export type Insight = { key: string; score: number; tag: string; color: string; text: string; prompt?: string }
 
 export type FocusInput = {
+  testReview?: TestReview
   ins: Insights
   doing: readonly Active[]
   agents: readonly Card[]
@@ -203,9 +206,15 @@ export type FocusInput = {
 }
 
 // Everything worth a look, most important first. Pure: the pane draws it, the tests read it.
-export function focusList({ ins, doing, agents, percent, window, tokens, now, learned = [], base, edited = [] }: FocusInput): Insight[] {
+export function focusList({ ins, doing, agents, percent, window, tokens, now, learned = [], base, edited = [], testReview }: FocusInput): Insight[] {
   const t = cfg.t.ins
   const out: Insight[] = [...learned]
+
+  // A green run after the tests themselves changed: some updates are right, so a person looks; it sends nothing back.
+  if (testReview && needsReview(testReview)) {
+    const what = reviewText(cfg.t, testReview)
+    out.push({ key: `testReview:${what}`, score: 72, tag: t.tag.tests, color: 'yellow', text: t.testReview(what), prompt: t.promptTestReview(fenced([what, reviewLines(testReview)].filter(Boolean).join('\n'))) })
+  }
 
   // A call running far past what it usually takes.
   for (const a of doing) {

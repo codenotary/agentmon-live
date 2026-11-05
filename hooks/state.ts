@@ -51,6 +51,7 @@ export const INIT = {
   advisor: { isOn: true, calls: 0, notes: [], epoch: 0, state: 'idle' as const },
   stats: { errors: {}, compactions: 0, streak: 0 },
   calls: [],
+  testReview: { files: [], dropped: [], isGreen: false },
   view: 'git' as View,
   active: [],
   checks: [],

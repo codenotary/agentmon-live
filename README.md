@@ -33,7 +33,7 @@ h: history   d: details
 
 ## Why you want it
 
-- **No more "all tests pass" when they don't.** Before Claude stops, the done gate checks what really happened: failed or stale tests, test runs that ran no tests, tests deleted or skipped after an edit, edited packages no test reached, open todos, failing subagents. Anything unfinished goes back to Claude once. Fable, a second model that never writes code, checks that every part of your request got an answer.
+- **No more "all tests pass" when they don't.** Before Claude stops, the done gate checks what really happened: failed or stale tests, test runs that ran no tests, tests deleted or skipped after an edit (when the task edited tests itself, a review item beside the green run instead), edited packages no test reached, open todos, failing subagents. Anything unfinished goes back to Claude once. Fable, a second model that never writes code, checks that every part of your request got an answer.
 - **One glance, not a scroll.** Running tool calls, subagents, edited files and the last test, lint and build results sit in one pane.
 - **It tells you when to step in.** Focus raises what needs you: a waiting approval, a failure loop (the same call, or the same error behind different calls), context near compaction, a stuck subagent, a cold prompt cache, a base branch that changed the files you are editing. Press `i` and it drafts the follow-up question for you.
 - **Spend less.** See where time and tokens go, which MCP servers you load but never use, and when `/clear` or `/compact` would save you money.
