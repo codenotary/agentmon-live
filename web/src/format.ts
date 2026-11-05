@@ -51,7 +51,8 @@ export const rowUsd = (row: { id: string; usd?: number; totalUsd?: number }, s: 
 export type SessionState = 'waiting' | 'active' | 'idle'
 export function stateOf(s: { main: { turnLive?: unknown }; active: readonly { isAsking?: boolean }[]; agents: readonly { status: string }[] }): SessionState {
   if (s.active.some(a => a.isAsking) || s.agents.some(a => a.status === 'waiting')) return 'waiting'
-  return s.main.turnLive || s.active.length > 0 ? 'active' : 'idle'
+  // A background agent works on after the main turn has ended.
+  return s.main.turnLive || s.active.length > 0 || s.agents.some(a => a.status === 'running') ? 'active' : 'idle'
 }
 
 // One name per session for the switch; two sessions in one folder and branch get the start of their id to tell them apart.

@@ -31,7 +31,7 @@ h: history   d: details
 
 [![AgentMon Live demo: the done gate catches a failing test before Claude stops](docs/demo.png)](https://asciinema.org/a/1270436)
 
-![AgentMon Live web view: gauges, turn waterfall, events and a navigation rail on the right](docs/web-view.png)
+![AgentMon Live web view: gauges, agent flow, turn waterfall, events, tool calls and a subagent table in collapsible sections, with a navigation rail on the right](docs/web-view.png)
 
 The web view needs `node` on your `PATH`, which Claude Code does not include. Everything else works without it.
 
@@ -42,7 +42,7 @@ The web view needs `node` on your `PATH`, which Claude Code does not include. Ev
 - **It tells you when to step in.** Focus raises what needs you: a waiting approval, a failure loop (the same call, or the same error behind different calls), context near compaction, a stuck subagent, a cold prompt cache, a base branch that changed the files you are editing. Press `i` and it drafts the follow-up question for you.
 - **Spend less.** See where time and tokens go, which MCP servers you load but never use, and when `/clear` or `/compact` would save you money.
 - **It learns your project.** It remembers flaky tools, recurring errors, compaction points, how long turns usually run, heavy habits and what the done gate keeps catching across sessions, and checks your CLAUDE.md and memory files for drift.
-- **Room to read it all.** Press `o` for the same session in your browser: where each turn went as a chart, sortable tool calls, a searchable log, and every running session in one tab, with an `i` on each widget that explains it. Local only, read-only.
+- **Room to read it all.** Press `o` for the same session in your browser: an agent flow chart of who started whom, a waterfall for the time you pick on it, a subagent table with health dots that puts the worst first, every tool call sortable and filterable, a searchable log, and every running session in one tab. Each section folds, and each widget has an `i` that explains it. Local only, read-only.
 - **Proof, not vibes.** `/agentmon bench` compares your sessions with and without the mod.
 
 Speaks English, German, French, Spanish, Chinese and Japanese, and follows your terminal's language (`LC_ALL`, `LC_MESSAGES`, `LANG`).

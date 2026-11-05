@@ -19,7 +19,9 @@ export const GROUP_OVER = 8
 export const LEVEL_TONE: Record<Level, Tone> = { 0: 'good', 1: 'warn', 2: 'bad' }
 export const isRunning = (a: Pick<Card, 'status'>) => a.status === 'running' || a.status === 'waiting'
 export const isFailed = (a: Pick<Card, 'status' | 'tests'>) => a.status === 'error' || a.tests === 'FAIL'
-export const elapsedOf = (a: Pick<Card, 'startedAt' | 'endedAt'>, now: number) => (a.endedAt ?? now) - a.startedAt
+// An agent the engine dropped has a final status and no `endedAt`: its time stops at its last sign of life, not at now.
+export const endOf = (a: Pick<Card, 'status' | 'startedAt' | 'endedAt' | 'lastAt'>, now: number) => a.endedAt ?? (isRunning(a) ? now : (a.lastAt ?? a.startedAt))
+export const elapsedOf = (a: Pick<Card, 'status' | 'startedAt' | 'endedAt' | 'lastAt'>, now: number) => endOf(a, now) - a.startedAt
 export const tokensOf = (a: Pick<Card, 'input' | 'output'>) => a.input + a.output
 
 export function medianOf(list: readonly number[]): number {
@@ -115,7 +117,7 @@ export function groupLines(lines: readonly AgentLine[], now: number): Item[] {
       worst: worstOf(pips),
       totals: totalsOf(cards),
       from: Math.min(...cards.map(a => a.startedAt)),
-      to: Math.max(...cards.map(a => a.endedAt ?? now)),
+      to: Math.max(...cards.map(a => endOf(a, now))),
       calls: cards.reduce((n, a) => n + a.tools, 0),
       errors: cards.reduce((n, a) => n + (a.errors ?? 0), 0),
       files: cards.reduce((n, a) => n + a.files, 0),

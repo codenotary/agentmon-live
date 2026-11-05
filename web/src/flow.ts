@@ -1,6 +1,6 @@
 import type { Card, Check, TraceCall, WebTurn } from '../../types/index'
 
-import { GROUP_OVER, isRunning } from './agents.ts'
+import { endOf, GROUP_OVER, isRunning } from './agents.ts'
 import { agentNames, prefixOf } from './format.ts'
 
 export type FlowInput = { trace?: TraceCall[]; agents: Card[]; active: readonly { id: string; isAsking?: boolean }[]; turns: WebTurn[]; checks?: Check[] }
@@ -42,7 +42,7 @@ export function flowOf(d: FlowInput, mainName: string, now: number, opts: FlowOp
   const laneOf = new Map<string, string>()
   for (const a of [...shown].sort((x, y) => x.startedAt - y.startedAt)) {
     const group = groupOf(a)
-    const to = a.endedAt ?? now
+    const to = endOf(a, now)
     if (group === undefined) {
       lanes.push({ id: a.id, name: names.get(a.id)?.short ?? a.type, full: names.get(a.id)?.full ?? a.type, dot: dotOf(a), from: a.startedAt, to, isMain: false, isGroup: false, isRunning: isRunning(a), agentId: a.id })
       laneOf.set(a.id, a.id)
@@ -137,7 +137,7 @@ export function wholeOf(d: FlowInput, now: number): Span {
 // Live, the edge is now; at rest, the last thing that happened, so a fresh page opens on activity and not on an empty stretch.
 export function edgeOf(d: FlowInput, now: number, isLive: boolean): number {
   if (isLive) return now
-  const ends = [...(d.trace ?? []).map(c => c.at + (c.ms ?? 0)), ...d.agents.map(a => a.endedAt ?? now), ...d.turns.map(t => t.startedAt + t.wallMs)]
+  const ends = [...(d.trace ?? []).map(c => c.at + (c.ms ?? 0)), ...d.agents.map(a => endOf(a, now)), ...d.turns.map(t => t.startedAt + t.wallMs)]
   return ends.length ? Math.min(now, Math.max(...ends)) : now
 }
 

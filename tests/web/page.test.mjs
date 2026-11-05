@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
+import { elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
 import { agentNames, countWord, parseIds, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
@@ -148,6 +148,18 @@ test('the dots rate an agent against the session', () => {
   assert.equal(medianOf([]), 0)
   assert.equal(medianOf([1, 3, 2]), 2)
   assert.equal(medianOf([1, 2]), 1.5)
+})
+
+test('an agent the engine dropped stops counting, everywhere it is drawn', () => {
+  const dropped = agent('gone', { status: 'cancelled', startedAt: 10, endedAt: undefined, lastAt: 40 })
+  assert.equal(endOf(dropped, 1000), 40)
+  assert.equal(elapsedOf(dropped, 1000), 30)
+  assert.equal(elapsedOf({ ...dropped, lastAt: undefined }, 1000), 0)
+  assert.equal(endOf(agent('live', { status: 'running', startedAt: 10, endedAt: undefined }), 1000), 1000)
+  assert.equal(endOf(agent('done', { status: 'done', startedAt: 10, endedAt: 20 }), 1000), 20)
+  assert.equal(flowOf(flowInput({ agents: [dropped] }), MAIN, 1000, OPEN).lanes[1].to, 40)
+  const [head] = rowsOf({ ...empty, agents: [dropped] }, { from: 0, to: 1000 }, MAIN, 1000)
+  assert.deepEqual([head.to, head.ms, head.state], [40, 30, 'ok'])
 })
 
 test('a last call that failed counts against the agent', () => {
@@ -335,4 +347,5 @@ test('a session is idle, active, or waiting for you, and waiting wins', () => {
   assert.equal(at({ turnLive: {} }, [{ isAsking: true }], []), 'waiting')
   assert.equal(at({}, [], [{ status: 'waiting' }]), 'waiting')
   assert.equal(at({}, [], [{ status: 'done' }]), 'idle')
+  assert.equal(at({}, [], [{ status: 'running' }]), 'active')
 })

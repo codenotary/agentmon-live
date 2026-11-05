@@ -3,7 +3,7 @@ import { motion } from 'motion/react'
 import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 
 import type { Card, WebSnapshot } from '../../../types/index'
-import { elapsedOf, groupLines, isFailed, isRunning, LEVEL_TONE, linesOf, sortLines, tokensOf, totalsOf, type AgentLine, type Pips, type Sort, type SortKey } from '../agents.ts'
+import { elapsedOf, endOf, groupLines, isFailed, isRunning, LEVEL_TONE, linesOf, sortLines, tokensOf, totalsOf, type AgentLine, type Pips, type Sort, type SortKey } from '../agents.ts'
 import { agentNames, dur, hhmm, kilo, time, type AgentName } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { jumpTo } from '../Nav.tsx'
@@ -43,7 +43,7 @@ function showCalls(name: string | undefined, onlyFailures: boolean): void {
 
 function Detail({ a, s, l, name, now }: { a: Card; s: WebSnapshot; l: Labels; name: AgentName | undefined; now: number }) {
   const p = l.page
-  const end = a.endedAt ?? now
+  const end = endOf(a, now)
   const span = { from: a.startedAt, to: end }
   const rows = rowsOf({ trace: (s.trace ?? []).filter(c => c.agentId === a.id), agents: [], active: s.active }, span, l.main, now)
   const turn = s.turns.findLast(t => t.startedAt <= a.startedAt)

@@ -1,5 +1,6 @@
 import type { Active, Card, TraceCall, WebTurn } from '../../types/index'
 
+import { endOf, isRunning } from './agents.ts'
 import { agentNames } from './format.ts'
 import type { Detail } from './store.ts'
 
@@ -55,7 +56,7 @@ export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, ma
     return { key: c.id, name: c.tool, what: c.what, depth, from: c.at, to: end, ...(c.ms === undefined ? {} : { ms: c.ms }), state, isAgent: false, isSlowest: false, call: c }
   }
   const names = agentNames(d.agents)
-  const agents = d.agents.filter(a => a.startedAt <= to && (a.endedAt ?? now) >= from)
+  const agents = d.agents.filter(a => a.startedAt <= to && endOf(a, now) >= from)
   const nested = new Map<string, TraceCall[]>(agents.map(a => [a.id, []]))
   const blocks: { at: number; rows: Row[] }[] = []
   for (const c of d.trace ?? []) {
@@ -65,13 +66,13 @@ export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, ma
       continue
     }
     // Parallel agents of one type all fit the type and time, so those only serve a session of an older version.
-    const owner = c.agentId !== undefined ? agents.find(a => a.id === c.agentId) : agents.filter(a => a.type === c.who && a.startedAt <= c.at && (a.endedAt ?? now) >= c.at).at(-1)
+    const owner = c.agentId !== undefined ? agents.find(a => a.id === c.agentId) : agents.filter(a => a.type === c.who && a.startedAt <= c.at && endOf(a, now) >= c.at).at(-1)
     if (owner) nested.get(owner.id)?.push(c)
     else blocks.push({ at: c.at, rows: [callRow(c, 1)] })
   }
   for (const a of agents) {
-    const end = a.endedAt ?? now
-    const head: Row = { key: `agent:${a.id}`, name: names.get(a.id)?.short ?? a.type, full: names.get(a.id)?.full, what: a.type, depth: 0, from: a.startedAt, to: end, ms: end - a.startedAt, state: a.status === 'error' ? 'failed' : a.endedAt === undefined ? 'running' : 'ok', isAgent: true, isSlowest: false }
+    const end = endOf(a, now)
+    const head: Row = { key: `agent:${a.id}`, name: names.get(a.id)?.short ?? a.type, full: names.get(a.id)?.full, what: a.type, depth: 0, from: a.startedAt, to: end, ms: end - a.startedAt, state: a.status === 'error' ? 'failed' : isRunning(a) ? 'running' : 'ok', isAgent: true, isSlowest: false }
     blocks.push({ at: a.startedAt, rows: [head, ...(nested.get(a.id) ?? []).map(c => callRow(c, 1))] })
   }
   const rows = blocks.sort((a, b) => a.at - b.at).flatMap(b => b.rows)
