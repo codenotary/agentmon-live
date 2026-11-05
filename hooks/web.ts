@@ -134,7 +134,7 @@ async function ensureServer($: EngineInterface): Promise<void> {
   cfg.webUrl = `http://127.0.0.1:${port}/`
 }
 
-// The flag keeps a pane the person hid closed when a module reload or `/clear` runs session.start again.
+// The flag keeps a pane the person hid closed when a module reload runs session.start again.
 export async function setPane($: EngineInterface, isOpen: boolean): Promise<void> {
   await update($, layout, l => ({ ...l, isPaneHidden: !isOpen }))
   if (isOpen) await $.ui.open({ id: PANE, title: 'AgentMon Live' })

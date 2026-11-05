@@ -2,13 +2,14 @@ import type { Labels } from './labels.ts'
 
 export function dur(ms: number | undefined): string {
   const s = Math.max(0, Math.round((ms ?? 0) / 1000))
-  if (s < 60) return `${s} s`
-  if (s < 3600) return `${Math.floor(s / 60)} m ${s % 60} s`
-  return `${Math.floor(s / 3600)} h ${Math.floor(s / 60) % 60} m`
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  return `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`
 }
-export const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-export const hhmm = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-export const kilo = (n: number | undefined) => (n === undefined ? '0' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n))
+export const time = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+export const hhmm = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+export const day = (at: number) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+export const kilo = (n: number | undefined) => (n === undefined ? '0' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 100_000 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
 export const short = (path: string) => path.split('/').slice(-3).join('/')
 
 export type Tone = 'good' | 'warn' | 'bad' | ''

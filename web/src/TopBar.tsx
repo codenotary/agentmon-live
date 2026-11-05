@@ -1,5 +1,5 @@
 import * as Select from '@radix-ui/react-select'
-import { ChevronDown, Command, Monitor, Moon, PanelRightClose, PanelRightOpen, Sun } from 'lucide-react'
+import { ChevronDown, Command, Monitor, Moon, PanelRightClose, PanelRightOpen, Sun, X } from 'lucide-react'
 
 import type { WebSnapshot } from '../../types/index'
 import { short } from './format.ts'
@@ -9,14 +9,6 @@ import { pick, requestPane, set, setTheme, useStore, type Theme } from './store.
 const NEXT: Record<Theme, Theme> = { auto: 'dark', dark: 'light', light: 'auto' }
 
 export const sessionName = (id: string, s: WebSnapshot) => `${short(s.session.cwd ?? id)}${s.session.branch ? ` · ${s.session.branch}` : ''}`
-
-function Mark() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-5 text-signal-bright" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M2 12h4l2.5-7 4 14 3-9 1.5 2h5" />
-    </svg>
-  )
-}
 
 function SessionPicker({ s }: { s: WebSnapshot }) {
   const { sessions } = useStore()
@@ -47,19 +39,19 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
   // Only a current snapshot is sure to hold these.
   const live = s?.v === 1 ? s : undefined
   const isLive = !!live && (!!live.main.turnLive || live.active.length > 0)
-  const state = st.isDown ? { text: '✖', cls: 'text-bad', dot: 'var(--bad)' } : isLive ? { text: p.live, cls: 'text-signal', dot: 'var(--signal-bright)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
+  const state = st.isDown ? { text: <X size={12} aria-label={p.disconnected} />, cls: 'text-bad', dot: 'var(--bad)' } : isLive ? { text: p.live, cls: 'text-signal', dot: 'var(--signal-bright)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
   const themeLabel = { auto: p.themeAuto, dark: p.themeDark, light: p.themeLight }[st.theme]
   const ThemeIcon = { auto: Monitor, dark: Moon, light: Sun }[st.theme]
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-page/80 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[1720px] flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-2.5 sm:px-6">
-        <span className="flex items-center gap-2 font-display text-[15px] font-bold"><Mark />AgentMon Live</span>
+    <header className="z-30 border-b border-line bg-header lg:sticky lg:top-0">
+      <div className="mx-auto flex max-w-[1720px] flex-wrap items-center gap-x-4 lg:flex-nowrap gap-y-1.5 px-4 py-2.5 sm:px-6">
+        <span className="font-display text-[15px] font-extrabold whitespace-nowrap">AgentMon Live</span>
         <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold tracking-[.09em] uppercase ${state.cls}`} role="status">
           <i className={`size-1.5 rounded-full ${isLive && !st.isDown ? 'rec' : ''}`} style={{ background: state.dot }} aria-hidden />
           {state.text}
         </span>
         {live ? <span className="text-[13px] font-bold text-signal">{live.main.model}{live.main.effort ? ` (${live.main.effort})` : ''}</span> : null}
-        {s ? <span className="min-w-0 font-mono text-xs text-ink-2 [overflow-wrap:anywhere]">{s.session.cwd}{s.session.branch ? ` · ${s.session.branch}` : ''}</span> : null}
+        {s ? <span className="min-w-0 font-mono text-xs text-ink-2 [overflow-wrap:anywhere] lg:truncate">{s.session.cwd}{s.session.branch ? ` · ${s.session.branch}` : ''}</span> : null}
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {s ? <SessionPicker s={s} /> : null}
           {live?.isPaneOpen === undefined ? null : (

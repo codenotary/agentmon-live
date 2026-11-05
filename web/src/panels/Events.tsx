@@ -10,7 +10,7 @@ export function Events({ list, p }: { list: readonly FeedEvent[]; p: Page }) {
   const open = list.filter(e => e.clearedAt === undefined)
   const isUrgent = open.some(e => e.isUrgent)
   return (
-    <Panel id="events" title={p.events} icon={Activity} className={isUrgent ? '!border-bad' : ''} aside={open.length ? <span className={`font-mono text-xs tabular-nums ${isUrgent ? 'text-bad' : 'text-warn'}`}>{open.length}</span> : undefined}>
+    <Panel id="events" title={p.events} help={p.helpEvents} icon={Activity} className={isUrgent ? '!border-bad' : ''} aside={open.length ? <span className={`font-mono text-xs tabular-nums ${isUrgent ? 'text-bad' : 'text-warn'}`}>{open.length}</span> : undefined}>
       {list.length === 0 ? <Empty text={p.none} /> : (
         <ol className="flex max-h-[420px] flex-col overflow-auto" data-testid="events">
           {list.map(e => {

@@ -47,18 +47,18 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   )
 
   return (
-    <Panel id="calls" title={p.toolCalls} icon={Terminal} aside={s.calls.length ? filters : undefined}>
+    <Panel id="calls" title={p.toolCalls} help={p.helpCalls} icon={Terminal} aside={s.calls.length ? filters : undefined}>
       {s.calls.length === 0 ? <Empty text={p.none} /> : rows.length === 0 ? <Empty text={p.noMatch} /> : (
         <div className="max-h-[440px] overflow-auto">
           <table className="w-full border-collapse text-[13px] tabular-nums">
-            <thead className="sticky top-0 z-10 bg-surface">
+            <thead className="sticky top-0 z-10 bg-surface-1">
               {table.getHeaderGroups().map(group => (
                 <tr key={group.id}>
                   {group.headers.map(h => {
                     const dir = h.column.getIsSorted()
                     return (
                       <th key={h.id} className={`p-0 text-left ${h.id === 'who' ? 'max-sm:hidden' : ''}`} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'}>
-                        <button type="button" id={`sort-${h.id}`} className="eyebrow flex w-full cursor-pointer items-center gap-1 px-2.5 py-2 hover:text-ink" onClick={h.column.getToggleSortingHandler()}>
+                        <button type="button" id={`sort-${h.id}`} className="eyebrow flex w-full cursor-pointer items-center gap-1 px-[18px] py-2.5 hover:text-ink max-sm:px-2.5" onClick={h.column.getToggleSortingHandler()}>
                           {flexRender(h.column.columnDef.header, h.getContext())}
                           {dir === 'asc' ? <ArrowUp size={11} aria-hidden /> : dir === 'desc' ? <ArrowDown size={11} aria-hidden /> : null}
                         </button>
@@ -70,8 +70,8 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
             </thead>
             <tbody>
               {table.getRowModel().rows.map(row => (
-                <tr key={row.id} className="row-in cursor-pointer border-t border-line-soft hover:bg-surface-2" tabIndex={0} aria-label={`${p.details}: ${row.original.what}`} onClick={() => set({ call: row.original })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); set({ call: row.original }) } }}>
-                  {row.getVisibleCells().map(cell => <td key={cell.id} className={`px-2.5 py-1.5 align-top ${cell.column.id === 'who' ? 'max-sm:hidden' : ''}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
+                <tr key={row.id} className="row-in cursor-pointer border-t border-line-soft hover:bg-surface-1" tabIndex={0} aria-label={`${p.details}: ${row.original.what}`} onClick={() => set({ call: row.original })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); set({ call: row.original }) } }}>
+                  {row.getVisibleCells().map(cell => <td key={cell.id} className={`px-[18px] py-[11px] align-top max-sm:px-2.5 ${cell.column.id === 'who' ? 'max-sm:hidden' : ''}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
                 </tr>
               ))}
             </tbody>

@@ -29,7 +29,7 @@ export function CallDetail({ l }: { l: Labels | undefined }) {
             {call.ms === undefined ? null : <span className="text-ink-3 tabular-nums">{dur(call.ms)}</span>}
           </div>
           <span className="eyebrow">{p.what}</span>
-          <pre className="mt-1 mb-3 rounded-lg bg-page p-3 font-mono text-xs break-words whitespace-pre-wrap">{call.what}</pre>
+          <pre className="mt-1 mb-3 rounded-lg bg-surface-1 p-3 font-mono text-xs break-words whitespace-pre-wrap">{call.what}</pre>
           {call.error ? (
             <>
               <span className="eyebrow">{p.error}</span>

@@ -26,7 +26,6 @@ export type State = {
   theme: Theme
   call: Detail | null
   isPaletteOpen: boolean
-  view: string
 }
 
 function load(key: string): string | null {
@@ -44,8 +43,6 @@ function save(key: string, value: string): void {
   }
 }
 
-export const viewOf = (hash: string) => hash.replace(/^#\/?/, '')
-
 const savedTheme = load(THEME_KEY)
 let state: State = {
   sessions: new Map(),
@@ -56,10 +53,9 @@ let state: State = {
   isDown: false,
   downAt: 0,
   onlyFailures: false,
-  theme: savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : 'auto',
+  theme: savedTheme === 'dark' || savedTheme === 'auto' ? savedTheme : 'light',
   call: null,
   isPaletteOpen: false,
-  view: viewOf(location.hash),
 }
 const listeners = new Set<() => void>()
 const subscribe = (fn: () => void) => {
@@ -78,12 +74,6 @@ export const currentOf = (st: State): WebSnapshot | undefined => (st.picked ? st
 export function pick(id: string): void {
   save(PICK_KEY, id)
   set({ picked: id })
-}
-
-// The URL holds the view, so links and the back button work; the store changes now for a caller that needs the view on screen.
-export function goTo(view: string): void {
-  location.hash = `#/${view}`
-  set({ view })
 }
 
 export function setTheme(theme: Theme): void {
@@ -131,7 +121,6 @@ export function requestPane(id: string, isOpen: boolean): void {
 }
 
 export function connect(): void {
-  window.addEventListener('hashchange', () => set({ view: viewOf(location.hash) }))
   const events = new EventSource('/events')
   let build: string | undefined
   // A newer server took over: this tab still runs the old page.

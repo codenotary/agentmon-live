@@ -14,7 +14,7 @@ export function Running({ s, p }: { s: WebSnapshot; p: Page }) {
   const now = useClock(s)
   if (s.active.length === 0) return null
   return (
-    <Panel id="running" title={p.running} icon={Cpu}>
+    <Panel id="running" title={p.running} help={p.helpRunning} icon={Cpu}>
       <ul className="flex flex-col gap-2 text-[13px]">
         <AnimatePresence initial={false}>
           {s.active.map(a => (
@@ -37,18 +37,18 @@ const KINDS = ['test', 'typecheck', 'lint', 'build'] as const
 export function Checks({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   return (
-    <Panel id="verification" title={p.verification} icon={ShieldCheck}>
+    <Panel id="verification" title={p.verification} help={p.helpVerification} icon={ShieldCheck}>
       <div className="grid grid-cols-2 gap-2">
         {KINDS.map(kind => {
           const c = s.checks.find(x => x.kind === kind)
           const r = c ? resultOf(c.result, l) : undefined
           const counts = c?.ran === undefined ? '' : ` · ${c.ran}${c.skipped ? ` (−${c.skipped})` : ''}`
           return (
-            <div key={kind} className="min-w-0 rounded-lg border border-line-soft bg-page/60 p-2.5" title={c ? `${c.command}${c.dir ? ` (${c.dir})` : ''}` : undefined}>
+            <div key={kind} className="min-w-0 rounded-lg border border-line-soft bg-surface-1 p-2.5" title={c ? `${c.command}${c.dir ? ` (${c.dir})` : ''}` : undefined}>
               <div className="flex items-center gap-2">
-                <i className={`size-2 flex-none rounded-full ${r?.tone === 'bad' || r?.tone === 'good' ? 'lit' : ''} ${c?.result === 'running' ? 'rec' : ''}`} style={{ background: r ? toneVar(r.tone) : 'var(--surface-3)', color: r ? toneVar(r.tone) : undefined }} aria-hidden />
+                <i className={`size-2 flex-none rounded-full ${c?.result === 'running' ? 'rec' : ''}`} style={{ background: r ? toneVar(r.tone) : 'var(--surface-3)', color: r ? toneVar(r.tone) : undefined }} aria-hidden />
                 <b className="text-[13px]">{l.check[kind] ?? kind}</b>
-                <span className="ml-auto truncate text-[11px] text-ink-3">{r ? `${r.text}${counts}` : '–'}</span>
+                <span className="ml-auto truncate text-[11px] text-ink-3">{r ? `${r.text}${counts}` : '—'}</span>
               </div>
               {c ? <div className="mt-1 truncate font-mono text-[11px] text-ink-3">{time(c.at)} {c.command}</div> : null}
             </div>
@@ -64,7 +64,7 @@ export function Tasks({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const done = s.tasks.filter(t => t.status === 'completed').length
   return (
-    <Panel id="tasks" title={p.tasks} icon={ListChecks} aside={<span className="text-xs text-ink-3 tabular-nums">{done}/{s.tasks.length}</span>}>
+    <Panel id="tasks" title={p.tasks} help={p.helpTasks} icon={ListChecks} aside={<span className="text-xs text-ink-3 tabular-nums">{done}/{s.tasks.length}</span>}>
       <div className="mb-3 h-1 overflow-hidden rounded-full bg-surface-2">
         <div className="h-full rounded-full bg-signal-bright transition-[width] duration-500" style={{ width: `${(done / s.tasks.length) * 100}%` }} />
       </div>
@@ -84,12 +84,12 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const now = useClock(s)
   return (
-    <Panel id="agents" title={p.subagents} icon={Bot}>
+    <Panel id="agents" title={p.subagents} help={p.helpAgents} icon={Bot}>
       {s.agents.length === 0 ? <Empty text={p.none} /> : (
         <ul className="flex flex-col gap-2">
           <AnimatePresence initial={false}>
             {[...s.agents].reverse().map(a => (
-              <motion.li key={a.id} {...ROW} className="rounded-lg border border-line-soft bg-page/60 p-2.5 text-[13px]">
+              <motion.li key={a.id} {...ROW} className="rounded-lg border border-line-soft bg-surface-1 p-2.5 text-[13px]">
                 <div className="flex items-baseline justify-between gap-2">
                   <b className="min-w-0 truncate">{a.type}</b>
                   <Pill text={a.tests === 'FAIL' ? 'FAIL' : (l.status[a.status] ?? a.status)} tone={a.tests === 'FAIL' ? 'bad' : tone(a.status)} />
@@ -120,7 +120,7 @@ function PathList({ label, list }: { label: string; list: string[] }) {
 export function Files({ s, p }: { s: WebSnapshot; p: Page }) {
   const isEmpty = s.files.edited.length === 0 && s.files.read.length === 0
   return (
-    <Panel id="files" title={p.files} icon={FileText}>
+    <Panel id="files" title={p.files} help={p.helpFiles} icon={FileText}>
       {isEmpty ? <Empty text={p.none} /> : <div className="flex flex-col gap-3"><PathList label={p.edited} list={s.files.edited} /><PathList label={p.read} list={s.files.read} /></div>}
     </Panel>
   )
@@ -151,7 +151,7 @@ export function Insights({ s, p }: { s: WebSnapshot; p: Page }) {
   const { slow, big } = s.insights
   const isEmpty = slow.length === 0 && big.length === 0
   return (
-    <Panel id="insights" title={p.insights} icon={Gauge}>
+    <Panel id="insights" title={p.insights} help={p.helpInsights} icon={Gauge}>
       {isEmpty ? <Empty text={p.none} /> : (
         <div className="flex flex-col gap-3">
           <Bars label={p.slow} rows={slow.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.what}`, value: c.ms, shown: dur(c.ms) }))} />

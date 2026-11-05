@@ -50,14 +50,14 @@ node server/web.mjs serve 47390 --fixture tests/fixtures/snapshot.json
 
 Then open `http://127.0.0.1:47390/`. With that server running, `npm run dev` in `web/` serves the page with hot reload. To watch live motion, `node scripts/web-demo.mjs` posts two changing sessions.
 
-Server tests run with `node --test 'tests/web/*.test.mjs'`, because `claude plugin test` has no Node. For screenshots in light, dark, at phone width, with the palette and with a call's details open, which also report script errors, sideways scrolling and broken navigation (rail links, back button, deep links, the `/` key):
+Server tests run with `node --test 'tests/web/*.test.mjs'`, because `claude plugin test` has no Node. For screenshots in light, dark, at phone width, with the palette and with a call's details open, which also report script errors, sideways scrolling, broken navigation (rail links, back button, deep links, the `/` key) and widgets without help:
 
 ```sh
 npm i --no-save playwright && npx playwright install chromium
 node scripts/web-shot.mjs <out dir>
 ```
 
-The design tokens in `web/src/theme.css` are copied from `frontend/design-system/src/index.css` in `agentmon-teams`. Update them by hand when that file changes. `toSnapshot` in `hooks/web.ts` is the only code that knows both the state's and the page's shapes.
+The page follows the AgentMon design system (https://claude.ai/artifact/3vpEcGbEDi73UHnbk9dCH3, synced from `frontend/design-system` in `agentmon-teams`). The tokens in `web/src/theme.css` are copied from its `tokens.json`; update them by hand when it changes. Three values differ on purpose, because the system's own README flags them as missing contrast: light success and warning, and dark tertiary text. Strings stay in six languages though the system says English only, because the mod follows the session's language. `toSnapshot` in `hooks/web.ts` is the only code that knows both the state's and the page's shapes.
 
 ### See the pane from a script
 

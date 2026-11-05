@@ -18,7 +18,7 @@ import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
-import { drawPane } from './render'
+import { drawBand, drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadOptions } from './options'
 import { openBrowser, setPane, startWeb, stopWeb } from './web'
@@ -344,6 +344,8 @@ export const register: Register = on => {
   on('session.end', async ($, e, next) => {
     const r = await next(e)
     await stopWeb($, e.sessionId).catch(() => undefined)
+    // After `/clear` no session.start follows, and a closed pane's button must come back.
+    $.ui.invalidate('ui.render')
     return r
   }).catch(($, e, next) => failOpen($, 'session.end', next.error, () => next(e)))
 
@@ -913,4 +915,12 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, drawPane)
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => drawBand($, e, await next(e))).catch(($, e, next) => failOpen($, 'ui.render', next.error, () => next(e)))
+
+  // The close mark or `ctrl+x x` hides the pane like the pane's own button, so it stays closed after a module reload.
+  on('ui.close', async ($, e, next) => {
+    const closed = await next(e)
+    if (e.id === PANE && e.origin.kind === 'person') await update($, layout, l => ({ ...l, isPaneHidden: true }))
+    return closed
+  }).catch(($, e, next) => failOpen($, 'ui.close', next.error, () => next(e)))
 }

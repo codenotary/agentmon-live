@@ -11,12 +11,12 @@ const TURNS_SHOWN = 14
 export function TurnClock({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const shown = s.turns.slice(-TURNS_SHOWN)
-  if (shown.length === 0) return <Panel id="turns" title={p.turnClock} icon={Timer}><Empty text={p.none} /></Panel>
+  if (shown.length === 0) return <Panel id="turns" title={p.turnClock} help={p.helpTurns} icon={Timer}><Empty text={p.none} /></Panel>
   const ranked = rankBuckets(shown)
   const name = (k: string) => l.buckets[k] ?? k
   const longest = Math.max(1, ...shown.map(t => t.wallMs))
   return (
-    <Panel id="turns" title={p.turnClock} icon={Timer}>
+    <Panel id="turns" title={p.turnClock} help={p.helpTurns} icon={Timer}>
       <div className="flex flex-col gap-1.5">
         {shown.map(t => {
           const used = Object.values(t.buckets).reduce((a, b) => a + b, 0) || 1

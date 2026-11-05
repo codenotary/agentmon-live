@@ -62,7 +62,7 @@ export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   ) : undefined
 
   return (
-    <Panel id="waterfall" title={p.waterfall} icon={ChartNoAxesGantt} aside={aside}>
+    <Panel id="waterfall" title={p.waterfall} help={p.helpWaterfall} icon={ChartNoAxesGantt} aside={aside}>
       {rows.length === 0 ? <Empty text={p.none} /> : (
         <>
           <div className="wf-row wf-axis" aria-hidden>

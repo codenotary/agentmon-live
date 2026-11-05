@@ -34,11 +34,11 @@ export function Log({ s, p }: { s: WebSnapshot; p: Page }) {
     </>
   )
   return (
-    <Panel id="log" title={p.log} icon={ScrollText} aside={aside}>
+    <Panel id="log" title={p.log} help={p.helpLog} icon={ScrollText} aside={aside}>
       {rows.length === 0 ? <Empty text={q ? p.noMatch : p.none} /> : (
         <div
           ref={box}
-          className="log flex max-h-[calc(100vh-170px)] flex-col gap-0.5 overflow-auto font-mono text-xs"
+          className="log flex max-h-[360px] flex-col gap-0.5 overflow-auto font-mono text-xs"
           onScroll={e => {
             const el = e.currentTarget
             const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < END_SLACK_PX

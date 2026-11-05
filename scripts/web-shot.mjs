@@ -18,11 +18,12 @@ const shots = [
   ['dark', 'dark', 1440],
   ['phone', 'dark', 390],
   ['palette', 'dark', 1440, page => page.keyboard.press('Control+k')],
-  ['drawer', 'dark', 1440, async page => { await page.click('.nav-item[href="#/calls"]'); await page.click('#calls tbody tr') }],
+  ['drawer', 'dark', 1440, page => page.click('#calls tbody tr')],
 ]
 const problems = []
 for (const [name, colorScheme, width, act] of shots) {
   const page = await browser.newPage({ colorScheme, viewport: { width, height: 900 } })
+  await page.addInitScript(theme => localStorage.setItem('agentmon-live-theme', theme), colorScheme)
   page.on('pageerror', e => problems.push(`${name}: ${e.message}`))
   page.on('console', m => m.type() === 'error' && problems.push(`${name}: ${m.text()}`))
   page.on('dialog', d => (problems.push(`${name}: a log line ran as script`), d.dismiss()))
@@ -37,30 +38,50 @@ for (const [name, colorScheme, width, act] of shots) {
   await page.close()
 }
 
-// Every rail link shows its view and marks only itself; the back button returns; a deep link and an unknown one load.
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-const PANELS = { overview: 'waterfall', calls: 'calls', verification: 'verification', agents: 'agents', files: 'files', log: 'log', learning: 'learning' }
+// Every rail link brings its own section under the header and marks only itself, in rail order down the page; the back button, a deep link and an unknown link work. No motion, so nothing waits on a smooth scroll.
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+const url = `http://127.0.0.1:${PORT}/`
+const links = () => page.$$eval('.nav-item', list => list.map(a => a.getAttribute('href')))
 const marked = () => page.$$eval('.nav-item[aria-current]', list => list.map(a => a.getAttribute('href')))
-await page.goto(`http://127.0.0.1:${PORT}/`)
+const topOf = href => page.$eval(href, el => Math.round(el.getBoundingClientRect().top))
+await page.goto(url)
 await page.waitForSelector('[data-testid=nav]')
-for (const [view, panel] of Object.entries(PANELS)) {
-  await page.click(`.nav-item[href="#/${view}"]`)
-  await page.waitForSelector(`#${panel}`, { timeout: 2000 }).catch(() => problems.push(`nav: ${view} did not show #${panel}`))
+let lastY = -1
+for (const href of await links()) {
+  await page.click(`.nav-item[href="${href}"]`)
+  await page.waitForTimeout(150)
+  const top = await topOf(href)
+  if (top !== 69) problems.push(`nav: ${href} landed at ${top}, not under the header`)
+  const y = await page.evaluate(() => scrollY)
+  if (y <= lastY) problems.push(`nav: ${href} did not move down the page (${lastY} then ${y})`)
+  lastY = y
   const at = await marked()
-  if (at.join() !== `#/${view}`) problems.push(`nav: ${view} marked ${at.join()}`)
+  if (at.join() !== href) problems.push(`nav: ${href} marked ${at.join()}`)
 }
+const [first, second] = await links()
+await page.click(`.nav-item[href="${first}"]`)
+await page.click(`.nav-item[href="${second}"]`)
 await page.goBack()
-await page.waitForSelector('#log', { timeout: 2000 }).catch(() => problems.push('nav: back did not return to the log'))
-await page.keyboard.press('Escape')
-await page.goto(`http://127.0.0.1:${PORT}/#/files`)
+await page.waitForTimeout(150)
+if (new URL(page.url()).hash !== first) problems.push('nav: back did not return')
+await page.goto(`${url}#section-log`)
 await page.reload()
-await page.waitForSelector('#files', { timeout: 2000 }).catch(() => problems.push('nav: the deep link did not load'))
-await page.goto(`http://127.0.0.1:${PORT}/#/nonsense`)
+await page.waitForSelector('#log')
+await page.waitForTimeout(150)
+if (await topOf('#section-log') !== 69) problems.push('nav: the deep link did not land')
+await page.goto(`${url}#nonsense`)
 await page.reload()
-await page.waitForSelector('#waterfall', { timeout: 2000 }).catch(() => problems.push('nav: an unknown link did not show the overview'))
-await page.click('.nav-item[href="#/calls"]')
+await page.waitForSelector('#waterfall')
 await page.keyboard.press('/')
 if (await page.evaluate(() => document.activeElement?.id) !== 'q') problems.push('nav: / did not reach the log search')
+
+// Every widget has its i, and it opens its own text.
+const widgets = await page.$$eval('main .panel', list => list.length)
+const buttons = await page.$$('.help-btn')
+if (buttons.length !== widgets) problems.push(`help: ${widgets} widgets and ${buttons.length} i buttons`)
+for (const b of buttons) await b.click()
+const texts = await page.$$eval('.help-text', list => list.length)
+if (texts !== widgets) problems.push(`help: opened ${texts} of ${widgets} texts`)
 
 await browser.close()
 server.kill()

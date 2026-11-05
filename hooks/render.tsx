@@ -5,11 +5,11 @@ import type { Card, Check, Note } from '../types'
 import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
-import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
+import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
-import { openBrowser } from './web'
+import { openBrowser, setPane } from './web'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -49,6 +49,19 @@ async function dismissFocus($: EngineInterface, keys: readonly string[]) {
   const isReview = (key: string) => key.startsWith('testReview:')
   await update($, layout, l => ({ ...l, dismissed: [...(l.dismissed ?? []), ...keys.filter(k => !isReview(k))].slice(-50) }))
   if (keys.some(isReview)) await update($, testReview, () => INIT.testReview)
+}
+
+// A pane not on screen leaves one button above the prompt to bring it back, under what other mods draw there. The engine's panes decide, not the flag: `/clear` empties the state, and a pane too wide for the terminal waits unplaced. Reading the layout redraws this on a hide.
+export async function drawBand($: EngineInterface, e: RenderInput<'AbovePrompt'>, beneath: RenderElement) {
+  const [, panes] = await Promise.all([read($, layout), $.ui.panes().catch(() => [])])
+  if (e.props.hasSurvey || panes.some(x => x.id === PANE && x.isPlaced)) return beneath
+  const { Box, Button } = $.ui.resolve(e)
+  return (
+    <Box flexDirection="column">
+      {beneath}
+      <Button key="pane:show" plain hotkey="p" onPress={() => setPane($, true)}>{`▸ AgentMon Live · ${cfg.t.paneShow}`}</Button>
+    </Box>
+  )
 }
 
 // With a refresh rate, while work runs a change redraws the pane at the next period boundary; a key press, a resize,
@@ -667,6 +680,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           {t.web.open}
         </Button>
       )}
+      <Button key="pane:hide" plain hotkey="p" onPress={() => setPane($, false)}>{`◂ ${t.paneHide}`}</Button>
       {/* Narrower, the address wraps the header row; `o` still opens it. */}
       {cfg.web && cfg.webUrl && cols >= 130 && <Link href={cfg.webUrl}>{cfg.webUrl}</Link>}
       {release && (
