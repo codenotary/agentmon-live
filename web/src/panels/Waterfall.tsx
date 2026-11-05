@@ -1,14 +1,20 @@
-import { ChartNoAxesGantt, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { ChartNoAxesGantt } from 'lucide-react'
+import { useEffect, useRef, type CSSProperties } from 'react'
 
-import type { WebSnapshot } from '../../../types/index'
-import { countWord, dur, hhmm, resultOf } from '../format.ts'
+import type { TraceCall, WebSnapshot } from '../../../types/index'
+import { countWord, dur, resultOf, stateOf } from '../format.ts'
+import { windowOf } from '../flow.ts'
 import type { Labels } from '../labels.ts'
-import { set, useClock } from '../store.ts'
+import { set, useClock, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
-import { fitSpan, followedTurn, rowsOf, spanOf, ticksOf, xOf, type Row } from '../waterfall.ts'
+import { rowsOf, ticksOf, xOf, type Row } from '../waterfall.ts'
 
 const msText = (ms: number | undefined) => (ms === undefined ? '' : ms < 1000 ? `${ms} ms` : dur(ms))
+
+export function openTrace(call: TraceCall): void {
+  const result = call.isFailed ? 'failed' : call.ms === undefined ? 'running' : 'ok'
+  set({ call: { at: call.at, who: call.who, view: call.tool, what: call.what, result, ...(call.error ? { error: call.error } : {}), ...(call.ms === undefined ? {} : { ms: call.ms }) } })
+}
 
 function Bar({ row, from, to }: { row: Row; from: number; to: number }) {
   const left = xOf(row.from, from, to)
@@ -43,7 +49,7 @@ export function WaterfallRows({ rows, span, l }: { rows: readonly Row[]; span: {
       if (!call) return <div key={row.key} className="wf-row">{inner}</div>
       const result = call.isFailed ? 'failed' : call.ms === undefined ? 'running' : 'ok'
       return (
-        <button key={row.key} type="button" className="wf-row row-in" aria-label={`${p.details}: ${call.tool} ${call.what} ${resultOf(result, l).text}`} onClick={() => set({ call: { at: call.at, who: call.who, view: call.tool, what: call.what, result, ...(call.error ? { error: call.error } : {}), ...(call.ms === undefined ? {} : { ms: call.ms }) } })}>
+        <button key={row.key} type="button" className="wf-row row-in" aria-label={`${p.details}: ${call.tool} ${call.what} ${resultOf(result, l).text}`} onClick={() => openTrace(call)}>
           {inner}
         </button>
       )
@@ -55,39 +61,21 @@ export function WaterfallRows({ rows, span, l }: { rows: readonly Row[]; span: {
 export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const now = useClock(s)
-  // Null follows the newest turn.
-  const [pickedAt, setPickedAt] = useState<number | null>(null)
+  const { flowView } = useStore()
   const box = useRef<HTMLDivElement>(null)
-  const turn = s.turns.find(t => t.startedAt === pickedAt) ?? followedTurn(s, s.turns, l.main, now)
-  const at = turn ? s.turns.indexOf(turn) : -1
-  const isFollowing = pickedAt === null
-  const turnSpan = turn ? spanOf(turn, now) : { from: 0, to: 0 }
-  const rows = turn ? rowsOf(s, turnSpan, l.main, now) : []
-  const span = fitSpan(turnSpan, rows)
-  const length = span.to - span.from
-  const ticks = ticksOf(length)
+  const isFollowing = flowView.at === null
+  const span = windowOf(flowView, s, now, stateOf(s) !== 'idle')
+  const rows = rowsOf(s, span, l.main, now)
   const failed = rows.filter(r => r.state === 'failed').length
   const calls = rows.filter(r => !r.isAgent).length
+  const length = span.to - span.from
+  const ticks = ticksOf(length)
 
   useEffect(() => {
     if (isFollowing && box.current) box.current.scrollTop = box.current.scrollHeight
   }, [isFollowing, rows.length])
 
-  const goTo = (i: number) => {
-    const next = s.turns[i]
-    if (next) setPickedAt(i === s.turns.length - 1 ? null : next.startedAt)
-  }
-  const aside = turn ? (
-    <>
-      <span className="font-mono text-[11px] text-ink-3 tabular-nums">{countWord(calls, p)}{failed ? <span className="text-bad"> · {failed} {failed === 1 ? p.error : p.errors}</span> : null} · {dur(length)}</span>
-      <div className="flex items-center gap-1">
-        <button type="button" className="icon-btn !h-[26px] !min-w-[26px] !p-0" aria-label={p.prevTurn} title={p.prevTurn} disabled={at <= 0} onClick={() => goTo(at - 1)}><ChevronLeft size={13} aria-hidden /></button>
-        <span className="min-w-11 text-center font-mono text-[11px] tabular-nums">{hhmm(turn.startedAt)}</span>
-        <button type="button" className="icon-btn !h-[26px] !min-w-[26px] !p-0" aria-label={p.nextTurn} title={p.nextTurn} disabled={isFollowing || at >= s.turns.length - 1} onClick={() => goTo(at + 1)}><ChevronRight size={13} aria-hidden /></button>
-      </div>
-      <button type="button" className="chip" aria-pressed={isFollowing} onClick={() => setPickedAt(null)}>{p.follow}</button>
-    </>
-  ) : undefined
+  const aside = <span className="font-mono text-[11px] text-ink-3 tabular-nums">{countWord(calls, p)}{failed ? <span className="text-bad"> · {failed} {failed === 1 ? p.error : p.errors}</span> : null} · {dur(length)}</span>
 
   return (
     <Panel id="waterfall" title={p.waterfall} help={p.helpWaterfall} icon={ChartNoAxesGantt} aside={aside}>

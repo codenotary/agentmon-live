@@ -14,6 +14,7 @@ import { Instruments } from './panels/Instruments.tsx'
 import { Learning } from './panels/Learning.tsx'
 import { Log } from './panels/Log.tsx'
 import { Agents } from './panels/Agents.tsx'
+import { Flow } from './panels/Flow.tsx'
 import { Checks, Files, Insights, Running, Tasks } from './panels/Side.tsx'
 import { TurnClock } from './panels/TurnClock.tsx'
 import { Waterfall } from './panels/Waterfall.tsx'
@@ -60,6 +61,7 @@ function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; 
       return (
         <>
           <Instruments s={s} p={p} trend={trend} />
+          <Flow s={s} l={l} />
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] xl:items-start">
             <div className="flex min-w-0 flex-col gap-4"><Waterfall s={s} l={l} /><TurnClock s={s} l={l} /></div>
             <div className="flex min-w-0 flex-col gap-4 max-xl:order-first">

@@ -8,7 +8,7 @@ import { agentNames, dur, hhmm, kilo, time, type AgentName } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { jumpTo } from '../Nav.tsx'
 import { copyText } from '../Palette.tsx'
-import { set, useClock } from '../store.ts'
+import { set, useClock, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill, toneVar } from '../ui/Pill.tsx'
 import { rowsOf } from '../waterfall.ts'
@@ -124,7 +124,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const now = useClock(s)
   const [sort, setSort] = useState<Sort>(null)
-  const [open, setOpenIds] = useState<ReadonlySet<string>>(new Set())
+  const { openAgents: open } = useStore()
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const lines = sortLines(linesOf(s.agents, s.trace ?? [], now), sort, now)
   const items = groupLines(lines, now)
@@ -135,7 +135,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
     const next = new Set(open)
     if (isOpen) next.add(id)
     else next.delete(id)
-    setOpenIds(next)
+    set({ openAgents: next })
   }
   const columnCount = hasCost ? 10 : 9
 

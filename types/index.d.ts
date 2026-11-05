@@ -37,6 +37,8 @@ export type Card = {
 // is in now and `since` when it last moved, so a drawing can add the time not yet booked.
 export type TurnTime = {
   startedAt: number
+  // The prompt that started it, masked and cut short.
+  prompt?: string
   wallMs: number
   buckets: Record<string, number>
   steps: number
@@ -238,7 +240,7 @@ export type TestEdit = { path: string; removed: number; skips: number; at: numbe
 export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: number; skipped: number; ranNow: number; skippedNow: number }[]; isGreen: boolean }
 
 // One turn on the web view's clock; `isLive` while it still runs.
-export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean }
+export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean; prompt?: string }
 
 export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean }
 

@@ -8,7 +8,8 @@ import { groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../.
 import { nextEvents } from '../../web/src/events.ts'
 import { agentNames, countWord, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
-import { fitSpan, followedTurn, rowsOf, spanOf, ticksOf, xOf } from '../../web/src/waterfall.ts'
+import { clampView, DEFAULT_VIEW, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
+import { rowsOf, spanOf, ticksOf, xOf } from '../../web/src/waterfall.ts'
 import { sourceHash } from '../../web/source-hash.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -119,21 +120,6 @@ test('the axis takes round steps, and at most five ticks', () => {
   for (const ms of [1, 999, 61_000, 5_000_000, 90_000_000]) assert.ok(ticksOf(ms).at.length <= 5, String(ms))
 })
 
-test('the axis takes in a subagent that outlives its turn', () => {
-  assert.deepEqual(fitSpan({ from: 100, to: 200 }, [{ from: 90, to: 150 }, { from: 120, to: 400 }]), { from: 90, to: 400 })
-  assert.deepEqual(fitSpan({ from: 100, to: 200 }, []), { from: 100, to: 200 })
-})
-
-test('following stays on the newest turn with calls until a new one has its first', () => {
-  const old = { startedAt: 0, wallMs: 10, buckets: {} }
-  const fresh = { startedAt: 100, wallMs: 1, buckets: {}, isLive: true }
-  const quiet = { ...empty, trace: [call('x', MAIN, 5, { ms: 1 })] }
-  assert.equal(followedTurn(quiet, [old, fresh], MAIN, 101), old)
-  assert.equal(followedTurn({ ...empty, trace: [call('y', MAIN, 100)] }, [old, fresh], MAIN, 101), fresh)
-  assert.equal(followedTurn(empty, [old, fresh], MAIN, 101), fresh)
-  assert.equal(followedTurn(empty, [], MAIN, 101), undefined)
-})
-
 const agent = (id, more = {}) => ({ id, type: 't', task: id, model: 'm', effort: '', status: 'done', files: 0, tools: 1, input: 100, output: 0, startedAt: 0, endedAt: 100, ...more })
 
 test('the dots rate an agent against the session', () => {
@@ -184,6 +170,58 @@ test('more than eight with one prefix fold into a row, eight stay apart', () => 
 test('the totals count what the table shows', () => {
   const totals = totalsOf([agent('a', { usd: 0.5, output: 10 }), agent('b', { status: 'running' }), agent('c', { status: 'error' }), agent('d', { tests: 'FAIL' })])
   assert.deepEqual(totals, { count: 4, running: 1, failed: 2, tokens: 410, usd: 0.5 })
+})
+
+const flowInput = (more = {}) => ({ trace: [], agents: [], active: [], turns: [], checks: [], ...more })
+const OPEN = { openGroups: new Set(), hideFinished: false }
+
+test('the flow draws a lane per agent, arcs each way, and calls on their own lane', () => {
+  const agents = [agent('a', { startedAt: 20, endedAt: 60, callId: 'spawn' }), agent('b', { startedAt: 30, endedAt: undefined, status: 'running' })]
+  const trace = [call('spawn', MAIN, 10, { tool: 'Agent' }), call('x', 't', 25, { agentId: 'a', tool: 'Bash', ms: 1 }), call('y', 't', 50, { agentId: 'a', tool: 'Read', ms: 1 }), call('z', 't', 35, { agentId: 'b' })]
+  const { lanes, dots, arcs } = flowOf(flowInput({ agents, trace, active: [{ id: 'z', isAsking: true }] }), MAIN, 100, OPEN)
+  assert.deepEqual(lanes.map(l => l.id), ['main', 'a', 'b'])
+  assert.deepEqual(dots.map(d => [d.key, d.lane, d.state, d.isBig]), [['spawn', 'main', 'ok', false], ['x', 'a', 'ok', true], ['y', 'a', 'ok', false], ['z', 'b', 'asking', true]])
+  const of = key => arcs.find(a => a.key === key)
+  assert.deepEqual([of('spawn:a').fromAt, of('spawn:a').toAt, of('spawn:a').toLane], [10, 25, 'a'])
+  assert.deepEqual([of('back:a').fromAt, of('back:a').toAt, of('back:a').toLane], [50, 60, 'main'])
+  assert.equal(of('back:b'), undefined)
+  assert.deepEqual([of('ask:z').fromLane, of('ask:z').toLane], ['b', 'main'])
+})
+
+test('lanes sharing a prefix fold past eight and open on request; finished lanes can hide', () => {
+  const agents = Array.from({ length: 9 }, (_, i) => agent(`a${i}`, { task: `Review: f${i}`, startedAt: i, endedAt: i === 8 ? undefined : 50 + i, status: i === 8 ? 'running' : 'done' }))
+  const trace = [call('x', 't', 5, { agentId: 'a1' })]
+  const folded = flowOf(flowInput({ agents, trace }), MAIN, 100, OPEN)
+  assert.deepEqual(folded.lanes.map(l => l.id), ['main', 'group:Review: '])
+  assert.equal(folded.lanes[1].isRunning, true)
+  assert.equal(folded.dots[0].lane, 'group:Review: ')
+  assert.equal(folded.arcs.filter(a => a.kind === 'spawn').length, 1)
+  assert.equal(folded.arcs.filter(a => a.kind === 'handback').length, 1)
+  assert.equal(flowOf(flowInput({ agents }), MAIN, 100, { ...OPEN, openGroups: new Set(['Review: ']) }).lanes.length, 10)
+  const live = flowOf(flowInput({ agents, trace }), MAIN, 100, { ...OPEN, hideFinished: true })
+  assert.deepEqual(live.lanes.map(l => l.id), ['main', 'a8'])
+  assert.deepEqual(live.dots, [])
+})
+
+test('dots closer than four pixels merge into one mark, and the worst state shows', () => {
+  const dot = (key, at, state = 'ok') => ({ key, lane: 'a', at, state, isBig: false, call: {} })
+  const marks = mergeDots([dot('1', 0), dot('2', 3, 'failed'), dot('3', 100), dot('out', 2000)], { from: 0, to: 1000 }, 1000)
+  assert.deepEqual(marks.map(m => [m.key, m.count, m.state]), [['1', 2, 'failed'], ['3', 1, 'ok']])
+})
+
+test('the window opens on the last activity, follows when live, and stays inside the session', () => {
+  const d = flowInput({ trace: [call('x', MAIN, 1000, { ms: 500 })] })
+  assert.equal(edgeOf(d, 900_000, false), 1500)
+  assert.equal(edgeOf(d, 900_000, true), 900_000)
+  assert.equal(edgeOf(flowInput(), 900_000, false), 900_000)
+  assert.deepEqual(windowOf(DEFAULT_VIEW, d, 900_000, true), { from: 780_000, to: 900_000 })
+  assert.deepEqual(windowOf({ ms: 100, at: 500 }, d, 900_000, true), { from: 400, to: 500 })
+  const whole = wholeOf(d, 900_000)
+  assert.equal(whole.from, 1000)
+  assert.deepEqual(clampView({ ms: 1, at: null }, whole), { ms: 5000, at: null })
+  assert.deepEqual(clampView({ ms: 10_000, at: 0 }, whole), { ms: 10_000, at: 11_000 })
+  assert.deepEqual(clampView({ ms: 10_000, at: 2_000_000 }, whole), { ms: 10_000, at: 900_000 })
+  assert.equal(clampView({ ms: 5_000_000, at: null }, whole).ms, 899_000)
 })
 
 test('positions stay on the track', () => {

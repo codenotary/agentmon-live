@@ -101,6 +101,36 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   expect(keys(snap.labels.page as object)).toEqual([...SHAPE.page].sort())
 })
 
+test('a full session stays under the size the server takes', () => {
+  const text = 'x'.repeat(300)
+  const snap = toSnapshot({
+    session: { id: 's', cwd: '/w' },
+    now: 1,
+    main: { model: 'm', effort: '' },
+    usage: { startedAt: 0, context: { window: 100 }, cost: { usd: 0 }, rateLimits: [] },
+    ins: shapeInsights({}),
+    turnRing: Array.from({ length: 50 }, (_, i) => ({ startedAt: i, wallMs: 1, buckets: { model: 1 }, prompt: text.slice(0, 120) })),
+    doing: [],
+    calls: Array.from({ length: 60 }, (_, i) => ({ id: `c${i}`, at: i, who: 'general-purpose', view: 'shell' as const, what: text, result: 'failed', error: 'e'.repeat(2000), agentId: 'a' })),
+    agents: Array.from({ length: 60 }, (_, i) => ({ id: `a${i}`, type: 'general-purpose', model: 'm', effort: 'high', task: text.slice(0, 100), status: 'done' as const, files: 1, tools: 1, input: 1, output: 1, startedAt: 0, callId: 'toolu_01234567890123456789', prompt: 'p'.repeat(500), usd: 1, cached: 1, errors: 1 })),
+    checks: [],
+    files: { read: [], edited: [], editedAt: 0 },
+    log: Array.from({ length: 50 }, (_, i) => ({ at: i, who: 'general-purpose', what: text, result: 'done', agentId: 'a' })),
+    tasks: [],
+    streak: 0,
+    dismissed: [],
+    learned: { current: '', sessions: [], mem: [], bench: [] },
+    focus: [],
+    t: LANGUAGES.en!,
+    lang: 'en',
+    isPaneOpen: true,
+    build: 'x',
+    testReview: { files: [], dropped: [], isGreen: false },
+    trace: Array.from({ length: 500 }, (_, i) => ({ id: `toolu_${i}`, at: i, who: 'general-purpose', tool: 'Bash', what: text, ms: 1, isFailed: true, error: text, agentId: 'agent-1234' })),
+  })
+  expect(JSON.stringify(snap).length).toBeLessThan(1024 * 1024)
+})
+
 test('a dismissed item stays away from the page as from the pane', () => {
   const snap = toSnapshot({
     session: { id: 's', cwd: '/w' },

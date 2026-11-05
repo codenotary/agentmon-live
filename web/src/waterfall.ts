@@ -11,23 +11,12 @@ const STARTS_AGENT = /^(Agent|Task)$/
 
 export const spanOf = (t: WebTurn, now: number) => ({ from: t.startedAt, to: t.isLive ? now : t.startedAt + t.wallMs })
 
-// An agent can outlive the turn that started it: the axis takes in every row, so no bar is cut off at the edge.
-export const fitSpan = (span: { from: number; to: number }, rows: readonly { from: number; to: number }[]) => ({
-  from: Math.min(span.from, ...rows.map(r => r.from)),
-  to: Math.max(span.to, ...rows.map(r => r.to)),
-})
-
 const TICK_STEPS_MS = [100, 200, 500, 1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000]
 const MAX_TICKS = 5
 // Round steps, so the axis never reads 0s 1s 3s 4s.
 export function ticksOf(ms: number): { step: number; at: number[] } {
   const step = TICK_STEPS_MS.find(x => ms / x <= MAX_TICKS) ?? Math.ceil(ms / MAX_TICKS / 3_600_000) * 3_600_000
   return { step, at: Array.from({ length: Math.ceil(ms / step) }, (_, i) => i * step) }
-}
-
-// With nothing to show yet, a new turn would blank the chart: the newest turn with rows stands in until its first call.
-export function followedTurn(d: WaterfallInput, turns: readonly WebTurn[], mainName: string, now: number): WebTurn | undefined {
-  return turns.findLast(t => rowsOf(d, spanOf(t, now), mainName, now).length > 0) ?? turns.at(-1)
 }
 
 export const xOf = (at: number, from: number, to: number) => Math.min(100, Math.max(0, ((at - from) / Math.max(1, to - from)) * 100))

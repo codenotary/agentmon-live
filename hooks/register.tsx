@@ -34,9 +34,10 @@ const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
 const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
-const KEEP_TRACE = 200
+const KEEP_TRACE = 500
 const TRACE_TEXT = 300
 const AGENT_PROMPT = 500
+const TURN_PROMPT = 120
 const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
@@ -458,6 +459,7 @@ export const register: Register = on => {
       const turnAt = turn.startedAt
       void debug($, 'turn.start', { prompt_chars: e.text.length, isFix })
       clk = newClock(turnAt, true)
+      clk.prompt = turn.prompt.slice(0, TURN_PROMPT)
       await Promise.all([
         update($, stats, s => ({ ...s, streak: 0 })),
         update($, main, v => ({ ...v, turnAt, turnLive: true })),

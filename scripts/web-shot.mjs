@@ -85,6 +85,21 @@ for (const b of buttons) await b.click()
 const texts = await page.$$eval('.help-text', list => list.length)
 if (texts !== widgets) problems.push(`help: opened ${texts} of ${widgets} texts`)
 
+// Dragging on the flow's strip picks a time and leaves Follow; Follow comes back; a lane name filters Tool calls.
+await page.$eval('[data-testid=flow-brush]', el => el.scrollIntoView({ block: 'center' }))
+const strip = await page.locator('[data-testid=flow-brush]').boundingBox()
+await page.mouse.move(strip.x + strip.width * 0.2, strip.y + 10)
+await page.mouse.down()
+await page.mouse.move(strip.x + strip.width * 0.4, strip.y + 10)
+await page.mouse.up()
+const follow = page.locator('#flow .chip', { hasText: 'Follow' })
+if (await follow.getAttribute('aria-pressed') !== 'false') problems.push('flow: a drag did not leave Follow')
+await follow.click()
+if (await follow.getAttribute('aria-pressed') !== 'true') problems.push('flow: Follow did not come back')
+await page.locator('.flow-label', { hasText: 'Run the server tests' }).click()
+if (!await page.$('#calls .chip[aria-pressed=true]:has-text("Run the server tests")')) problems.push('flow: a lane name did not filter Tool calls')
+await page.locator('#calls .chip', { hasText: 'Run the server tests' }).click()
+
 // A second session turns the working directory into a switch, and picking it shows that session.
 const other = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/snapshot.json'), 'utf8'))
 other.session.cwd = '/home/dev/other-project'

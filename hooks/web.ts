@@ -76,7 +76,7 @@ function urgentItems(p: SnapshotParts): WebFocus[] {
 // Pure, and the one place that knows both shapes: the test holds its keys to the fixture the page is drawn from.
 export function toSnapshot(p: SnapshotParts): WebSnapshot {
   const { ins, t } = p
-  const live: WebTurn[] = ins.turn ? [{ startedAt: ins.turn.startedAt, wallMs: p.now - ins.turn.startedAt, buckets: liveBuckets(ins.turn, p.now), isLive: true }] : []
+  const live: WebTurn[] = ins.turn ? [{ startedAt: ins.turn.startedAt, wallMs: p.now - ins.turn.startedAt, buckets: liveBuckets(ins.turn, p.now), isLive: true, ...(ins.turn.prompt === undefined ? {} : { prompt: ins.turn.prompt }) }] : []
   const turns = [...p.turnRing, ...live]
   const buckets = Object.fromEntries([...new Set(turns.flatMap(x => Object.keys(x.buckets)))].map(k => [k, bucketName(k)]))
   return {
@@ -112,7 +112,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
 
 export function pushTurn(ring: WebTurn[], last: TurnTime | undefined): WebTurn[] {
   if (!last || ring.at(-1)?.startedAt === last.startedAt) return ring
-  return [...ring, { startedAt: last.startedAt, wallMs: last.wallMs, buckets: last.buckets }].slice(-KEEP_TURNS)
+  return [...ring, { startedAt: last.startedAt, wallMs: last.wallMs, buckets: last.buckets, ...(last.prompt === undefined ? {} : { prompt: last.prompt }) }].slice(-KEEP_TURNS)
 }
 
 // shortcut: the turn ring restarts on a module reload, keep it in the store when people ask for history across reloads.

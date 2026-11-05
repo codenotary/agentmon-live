@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 
 import type { Call, WebSnapshot } from '../../types/index'
 import { nextEvents, type FeedEvent } from './events.ts'
+import { DEFAULT_VIEW, type FlowView } from './flow.ts'
 import { pushPoint } from './format.ts'
 
 const PICK_KEY = 'agentmon-live-session'
@@ -25,6 +26,10 @@ export type State = {
   onlyFailures: boolean
   // The agent Tool calls is narrowed to, by the name it shows; the agent table sets it too.
   whoFilter: string | null
+  // The time the flow chart and the waterfall show.
+  flowView: FlowView
+  // Agent rows folded open: the flow chart's lane labels open them too.
+  openAgents: ReadonlySet<string>
   theme: Theme
   call: Detail | null
   isPaletteOpen: boolean
@@ -56,6 +61,8 @@ let state: State = {
   downAt: 0,
   onlyFailures: false,
   whoFilter: null,
+  flowView: DEFAULT_VIEW,
+  openAgents: new Set(),
   theme: savedTheme === 'dark' || savedTheme === 'auto' ? savedTheme : 'light',
   call: null,
   isPaletteOpen: false,
@@ -76,7 +83,7 @@ export const currentOf = (st: State): WebSnapshot | undefined => (st.picked ? st
 
 export function pick(id: string): void {
   save(PICK_KEY, id)
-  set({ picked: id, whoFilter: null })
+  set({ picked: id, whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set() })
 }
 
 export function setTheme(theme: Theme): void {

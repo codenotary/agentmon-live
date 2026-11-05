@@ -14,7 +14,7 @@ export type Item = { kind: 'agent'; line: AgentLine } | { kind: 'group'; prefix:
 const LONG_RUN_MS = 5 * 60_000
 const MANY_INPUT_TOKENS = 1_000_000
 // More than this many sharing a prefix fold into one row: a fan-out stays on one screen.
-const GROUP_OVER = 8
+export const GROUP_OVER = 8
 
 export const LEVEL_TONE: Record<Level, Tone> = { 0: 'good', 1: 'warn', 2: 'bad' }
 export const isRunning = (a: Pick<Card, 'status'>) => a.status === 'running' || a.status === 'waiting'

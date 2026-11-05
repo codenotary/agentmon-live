@@ -205,6 +205,19 @@ button.wf-row:hover { background: var(--surface-2); }
 .inline-bar i { display: block; height: 100%; border-radius: 2px; background: var(--signal-bright); transition: width .5s; }
 .chevron { transition: transform .2s; }
 .chevron.open { transform: rotate(90deg); }
+.flow-brush { cursor: crosshair; border-radius: 6px; }
+.flow-brush-text { font: 400 9px var(--font-mono); fill: var(--ink-3); pointer-events: none; }
+.flow-label { position: absolute; left: 0; display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 4px; border-radius: 5px; font: 400 11px var(--font-mono); color: var(--ink-2); text-align: left; cursor: pointer; }
+.flow-label:hover { color: var(--ink); background: var(--surface-2); }
+.flow-dot { transition: cx .25s ease-in-out; transform-box: fill-box; transform-origin: center; animation: dot-in .2s ease-out; }
+.flow-mark { transition: x .25s ease-in-out; }
+.flow-count { font: 400 8px var(--font-mono); fill: var(--surface); pointer-events: none; }
+.flow-arc { stroke-width: 1.5; stroke-opacity: .35; stroke-dasharray: 1; animation: arc-in .3s ease-out; transition: stroke-opacity .15s; }
+.flow-arc.hot { stroke-opacity: 1; }
+.flow-running { stroke-dasharray: 6 4; animation: flow-march 1.4s linear infinite; }
+@keyframes dot-in { from { transform: scale(0); } 70% { transform: scale(1.6); } }
+@keyframes arc-in { from { stroke-dashoffset: 1; } }
+@keyframes flow-march { to { stroke-dashoffset: -20; } }
 .row-in { animation: row-in 1.2s ease-out; }
 .flat-sweep { animation: sweep 3.2s linear infinite; }
 .spin { animation: spin 1.4s linear infinite; }
