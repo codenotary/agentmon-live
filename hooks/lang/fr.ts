@@ -12,7 +12,6 @@ export const fr: Strings = {
       disconnected: 'Déconnecté du serveur de session. Nouvelle tentative…',
       noSessions: 'Aucune session en cours. Lancez Claude Code et cette page se remplit.',
       update: 'Cette session utilise une autre version d\'AgentMon Live. Mettez-la à jour pour tout voir ici.',
-      cache: 'cache',
       tokensIn: 'entrée',
       tokensOut: 'sortie',
       context: 'Contexte',

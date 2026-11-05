@@ -1,4 +1,4 @@
-import type { Active, Card, TraceCall, WebTurn } from '../../types/index'
+import type { Active, Card, TraceCall } from '../../types/index'
 
 import { endOf, isRunning } from './agents.ts'
 import { agentNames } from './format.ts'
@@ -9,7 +9,7 @@ export type Row = { key: string; name: string; full?: string; what: string; dept
 export type WaterfallInput = { trace?: TraceCall[]; agents: Card[]; active: Active[] }
 
 // A subagent's own row stands for the call that started it.
-const STARTS_AGENT = /^(Agent|Task)$/
+export const STARTS_AGENT = /^(Agent|Task)$/
 
 // Every tool call for the table, so an agent's row and its calls agree. `calls` holds only git, shell and MCP, with the longer error text; a session of an older version sends only that.
 export function tableRows(d: { trace?: TraceCall[]; calls: readonly (Omit<Detail, 'view'> & { view: string })[]; active: readonly { id: string }[] }): Detail[] {
@@ -32,7 +32,17 @@ export function tableRows(d: { trace?: TraceCall[]; calls: readonly (Omit<Detail
   })
 }
 
-export const spanOf = (t: WebTurn, now: number) => ({ from: t.startedAt, to: t.isLive ? now : t.startedAt + t.wallMs })
+export type CallColumn = 'at' | 'who' | 'what' | 'result'
+export type CallSort = { id: CallColumn; isDesc: boolean }
+
+export function sortCalls(rows: readonly Detail[], sort: CallSort, whoName: (c: Detail) => string): Detail[] {
+  const value = (c: Detail) => (sort.id === 'who' ? whoName(c) : c[sort.id])
+  const by = (x: Detail, y: Detail) => {
+    const [a, b] = [value(x), value(y)]
+    return typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b))
+  }
+  return [...rows].sort((x, y) => by(x, y) * (sort.isDesc ? -1 : 1))
+}
 
 const TICK_STEPS_MS = [100, 200, 500, 1000, 2000, 5000, 10_000, 15_000, 30_000, 60_000, 120_000, 300_000, 600_000, 900_000, 1_800_000, 3_600_000]
 const MAX_TICKS = 5

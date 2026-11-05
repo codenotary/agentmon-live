@@ -1,5 +1,4 @@
 import { ChevronRight } from 'lucide-react'
-import { motion } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 
@@ -152,11 +151,12 @@ export function App() {
         {st.isDown ? <div className="panel !border-bad bg-bad-soft px-3.5 py-2.5 text-[13px] text-bad" role="status">{p.disconnected}</div> : null}
         {s && !isCurrent ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status">{p.update}</div> : null}
         {!s && !st.isDown ? <Standby text={p.noSessions} /> : null}
-        {s && l ? <motion.div key={s.session.id} className="flex min-w-0 flex-col gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }}>{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><Part view={x.id} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PageSection>)}</motion.div> : null}
+        {s && l ? <div key={s.session.id} className="fade-in flex min-w-0 flex-col gap-4">{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><Part view={x.id} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PageSection>)}</div> : null}
       </main>
       </div>
       <Palette s={s} p={p} sections={sections} />
       <CallDetail l={l} s={s} />
+      {st.notice ? <div className={`notice ${st.notice.isBad ? 'bad' : ''}`} role="status" data-testid="notice">{st.notice.text}</div> : null}
     </>
   )
 }

@@ -12,7 +12,6 @@ export const de: Strings = {
       disconnected: 'Verbindung zum Sitzungsserver getrennt. Neuer Versuch…',
       noSessions: 'Keine Sitzung läuft. Starte Claude Code, dann füllt sich diese Seite.',
       update: 'Diese Sitzung läuft mit einer anderen AgentMon-Live-Version. Aktualisiere sie, um hier alles zu sehen.',
-      cache: 'Cache',
       tokensIn: 'ein',
       tokensOut: 'aus',
       context: 'Kontext',

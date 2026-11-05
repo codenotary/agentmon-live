@@ -21,6 +21,7 @@ export const isRunning = (a: Pick<Card, 'status'>) => a.status === 'running' || 
 export const isFailed = (a: Pick<Card, 'status' | 'tests'>) => a.status === 'error' || a.tests === 'FAIL'
 // An agent the engine dropped has a final status and no `endedAt`: its time stops at its last sign of life, not at now.
 export const endOf = (a: Pick<Card, 'status' | 'startedAt' | 'endedAt' | 'lastAt'>, now: number) => a.endedAt ?? (isRunning(a) ? now : (a.lastAt ?? a.startedAt))
+export const dotOf = (a: Pick<Card, 'status' | 'tests'>) => (isFailed(a) ? 'error' : a.status)
 export const elapsedOf = (a: Pick<Card, 'status' | 'startedAt' | 'endedAt' | 'lastAt'>, now: number) => endOf(a, now) - a.startedAt
 export const tokensOf = (a: Pick<Card, 'input' | 'output'>) => a.input + a.output
 

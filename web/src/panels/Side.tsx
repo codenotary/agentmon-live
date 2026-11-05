@@ -1,5 +1,4 @@
 import { CheckCircle2, Circle, Cpu, FileText, Gauge, ListChecks, Loader, ShieldCheck } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
 import { useMemo } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
@@ -9,8 +8,6 @@ import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill, toneVar } from '../ui/Pill.tsx'
 
-const ROW = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, height: 0 }, transition: { duration: 0.22 } }
-
 export function Running({ s, p }: { s: WebSnapshot; p: Page }) {
   const now = useClock(s)
   const names = useMemo(() => agentNames(s.agents), [s.agents])
@@ -18,17 +15,15 @@ export function Running({ s, p }: { s: WebSnapshot; p: Page }) {
     <Panel id="running" title={p.running} help={p.helpRunning} icon={Cpu}>
       {s.active.length === 0 ? <Empty text={p.nothingRunning} /> : null}
       <ul className="flex flex-col gap-2 text-[13px]">
-        <AnimatePresence initial={false}>
           {s.active.map(a => (
-            <motion.li key={a.id} {...ROW} className="flex min-w-0 items-baseline justify-between gap-2.5">
+            <li key={a.id} className="fade-in flex min-w-0 items-baseline justify-between gap-2.5">
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 <i className="rec mr-2 inline-block size-1.5 rounded-full bg-signal-bright align-middle" aria-hidden />
                 <b className="font-semibold">{whoOf(a, names)}</b> <span className="font-mono text-xs">{a.tool} {a.what}</span>
               </span>
               <span className="whitespace-nowrap text-ink-3 tabular-nums">{dur(now - a.startedAt)}</span>
-            </motion.li>
+            </li>
           ))}
-        </AnimatePresence>
       </ul>
     </Panel>
   )

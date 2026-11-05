@@ -11,6 +11,8 @@ const COLLAPSED_KEY = 'agentmon-live-collapsed'
 const HISTORY_POINTS = 600
 const KEEP_EVENTS = 100
 const THEME_FADE_MS = 200
+const NOTICE_MS = 2500
+const NOTICE_BAD_MS = 10_000
 
 export type Theme = 'auto' | 'dark' | 'light'
 // A row of the calls table or the waterfall, for the drawer.
@@ -34,6 +36,7 @@ export type State = {
   openAgents: ReadonlySet<string>
   // The page's sections folded by this viewer.
   collapsed: ReadonlySet<string>
+  notice: { text: string; isBad: boolean } | null
   theme: Theme
   call: Detail | null
   isPaletteOpen: boolean
@@ -68,6 +71,7 @@ let state: State = {
   flowView: DEFAULT_VIEW,
   openAgents: new Set(),
   collapsed: new Set(parseIds(load(COLLAPSED_KEY))),
+  notice: null,
   theme: savedTheme === 'dark' || savedTheme === 'auto' ? savedTheme : 'light',
   call: null,
   isPaletteOpen: false,
@@ -91,6 +95,14 @@ export function pick(id: string): void {
   // A section's link in the address belongs to the session being left.
   history.replaceState(null, '', location.pathname + location.search)
   set({ picked: id, whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set() })
+}
+
+let noticeTimer: ReturnType<typeof setTimeout> | undefined
+export function notify(text: string, isBad = false): void {
+  clearTimeout(noticeTimer)
+  set({ notice: { text, isBad } })
+  // A failed copy shows the text to copy by hand: it stays longer.
+  noticeTimer = setTimeout(() => set({ notice: null }), isBad ? NOTICE_BAD_MS : NOTICE_MS)
 }
 
 export function setCollapsed(id: string, isCollapsed: boolean): void {
@@ -169,6 +181,12 @@ export function connect(): void {
     const { id } = JSON.parse(e.data) as { id: string }
     const sessions = new Map(state.sessions)
     sessions.delete(id)
-    set({ sessions })
+    const trends = new Map(state.trends)
+    const feed = new Map(state.events)
+    const receivedAt = new Map(state.receivedAt)
+    trends.delete(id)
+    feed.delete(id)
+    receivedAt.delete(id)
+    set({ sessions, trends, events: feed, receivedAt })
   })
 }

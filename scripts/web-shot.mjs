@@ -119,6 +119,14 @@ await page.keyboard.press('/')
 await page.waitForTimeout(50)
 if (await page.evaluate(() => document.activeElement?.id) !== 'q') problems.push('sections: / did not open the log and reach its search')
 
+// A column head sorts Tool calls, and a copy says how it went.
+await page.click('#sort-what')
+if (await page.$eval('#calls th:has(#sort-what)', th => th.getAttribute('aria-sort')) !== 'ascending') problems.push('calls: a column head did not sort')
+await page.click('#calls tbody tr')
+await page.click('[data-testid=drawer] button:has-text("Copy")')
+await page.waitForSelector('[data-testid=notice]', { timeout: 2000 }).catch(() => problems.push('notice: a copy said nothing'))
+await page.keyboard.press('Escape')
+
 // A second session turns the working directory into a switch, and picking it shows that session.
 const other = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/snapshot.json'), 'utf8'))
 other.session.cwd = '/home/dev/other-project'

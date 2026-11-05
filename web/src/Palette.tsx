@@ -1,19 +1,18 @@
 import { Command } from 'cmdk'
 import { Copy, Filter, Monitor, Moon, MoveRight, PanelRightClose, PanelRightOpen, Sun, SwitchCamera } from 'lucide-react'
-import { toast } from 'sonner'
 
 import type { WebSnapshot } from '../../types/index'
 import { sessionNames } from './format.ts'
 import type { Page } from './labels.ts'
 import { jumpTo, type Section } from './Nav.tsx'
-import { pick, requestPane, set, setTheme, useStore } from './store.ts'
+import { notify, pick, requestPane, set, setTheme, useStore } from './store.ts'
 
 export async function copyText(text: string, done: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text)
-    toast.success(done)
+    notify(done)
   } catch {
-    toast.error(text)
+    notify(text, true)
   }
 }
 

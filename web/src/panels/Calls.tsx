@@ -1,34 +1,26 @@
-import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type SortingState } from '@tanstack/react-table'
 import { ArrowDown, ArrowUp, Terminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
 import { agentNames, resultOf, time, whoOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
-import { set, useStore, type Detail } from '../store.ts'
+import { set, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill } from '../ui/Pill.tsx'
-import { tableRows } from '../waterfall.ts'
+import { sortCalls, tableRows, type CallColumn, type CallSort } from '../waterfall.ts'
 
-const column = createColumnHelper<Detail>()
+const CELL = 'px-[18px] py-[11px] align-top max-sm:px-2.5'
 // A scroller of its own would catch the wheel on its way down the page.
 const ROWS_SHOWN = 8
 
 export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const { onlyFailures, whoFilter: who } = useStore()
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'at', desc: true }])
+  const [sort, setSort] = useState<CallSort>({ id: 'at', isDesc: true })
   const [text, setText] = useState('')
   const [isAll, setAll] = useState(false)
 
   const names = useMemo(() => agentNames(s.agents), [s.agents])
-  const columns = useMemo(() => [
-    column.accessor('at', { header: p.when, cell: c => <span className="whitespace-nowrap text-ink-3 tabular-nums">{time(c.getValue())}</span> }),
-    column.accessor(c => whoOf(c, names), { id: 'who', header: p.who, cell: c => { const { agentId } = c.row.original; return <span className="whitespace-nowrap" title={agentId === undefined ? undefined : names.get(agentId)?.full}>{c.getValue()}</span> } }),
-    column.accessor('what', { header: p.what, cell: c => <span className="font-mono text-xs [overflow-wrap:anywhere]"><span className="text-ink-3">{c.row.original.view} </span>{c.getValue()}</span> }),
-    column.accessor('result', { header: p.result, cell: c => { const r = resultOf(c.getValue(), l); return <Pill text={r.text} tone={r.tone} /> } }),
-  ], [p, l, names])
-
   const list = useMemo(() => tableRows(s), [s])
   const people = useMemo(() => [...new Set(list.map(c => whoOf(c, names)))], [list, names])
   const rows = useMemo(() => {
@@ -36,10 +28,10 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
     return list.filter(c => (!who || whoOf(c, names) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.view} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
   }, [list, text, who, onlyFailures, l, names])
 
-  const table = useReactTable({ data: rows, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), getRowId: c => c.id ?? `${c.at}:${c.who}:${c.what}` })
-
-  const all = table.getRowModel().rows
+  const all = useMemo(() => sortCalls(rows, sort, c => whoOf(c, names)), [rows, sort, names])
   const shown = isAll ? all : all.slice(0, ROWS_SHOWN)
+  const columns: [CallColumn, string][] = [['at', p.when], ['who', p.who], ['what', p.what], ['result', p.result]]
+  const sortBy = (id: CallColumn) => setSort(sort.id === id ? { id, isDesc: !sort.isDesc } : { id, isDesc: id === 'at' })
 
   const filters = (
     <>
@@ -60,28 +52,33 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px] tabular-nums">
             <thead className="bg-surface-1">
-              {table.getHeaderGroups().map(group => (
-                <tr key={group.id}>
-                  {group.headers.map(h => {
-                    const dir = h.column.getIsSorted()
-                    return (
-                      <th key={h.id} className={`p-0 text-left ${h.id === 'who' ? 'max-sm:hidden' : ''}`} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'}>
-                        <button type="button" id={`sort-${h.id}`} className="eyebrow flex w-full cursor-pointer items-center gap-1 px-[18px] py-2.5 hover:text-ink max-sm:px-2.5" onClick={h.column.getToggleSortingHandler()}>
-                          {flexRender(h.column.columnDef.header, h.getContext())}
-                          {dir === 'asc' ? <ArrowUp size={11} aria-hidden /> : dir === 'desc' ? <ArrowDown size={11} aria-hidden /> : null}
-                        </button>
-                      </th>
-                    )
-                  })}
-                </tr>
-              ))}
+              <tr>
+                {columns.map(([id, head]) => {
+                  const isSorted = sort.id === id
+                  return (
+                    <th key={id} className={`p-0 text-left ${id === 'who' ? 'max-sm:hidden' : ''}`} aria-sort={!isSorted ? 'none' : sort.isDesc ? 'descending' : 'ascending'}>
+                      <button type="button" id={`sort-${id}`} className="eyebrow flex w-full cursor-pointer items-center gap-1 px-[18px] py-2.5 hover:text-ink max-sm:px-2.5" onClick={() => sortBy(id)}>
+                        {head}
+                        {!isSorted ? null : sort.isDesc ? <ArrowDown size={11} aria-hidden /> : <ArrowUp size={11} aria-hidden />}
+                      </button>
+                    </th>
+                  )
+                })}
+              </tr>
             </thead>
             <tbody>
-              {shown.map(row => (
-                <tr key={row.id} className="row-in cursor-pointer border-t border-line-soft hover:bg-surface-1" tabIndex={0} aria-label={`${p.details}: ${row.original.what}`} onClick={() => set({ call: row.original })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); set({ call: row.original }) } }}>
-                  {row.getVisibleCells().map(cell => <td key={cell.id} className={`px-[18px] py-[11px] align-top max-sm:px-2.5 ${cell.column.id === 'who' ? 'max-sm:hidden' : ''}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
-                </tr>
-              ))}
+              {shown.map(c => {
+                const r = resultOf(c.result, l)
+                const open = () => set({ call: c })
+                return (
+                  <tr key={c.id ?? `${c.at}:${c.who}:${c.what}`} className="row-in cursor-pointer border-t border-line-soft hover:bg-surface-1" tabIndex={0} aria-label={`${p.details}: ${c.what}`} onClick={open} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } }}>
+                    <td className={CELL}><span className="whitespace-nowrap text-ink-3 tabular-nums">{time(c.at)}</span></td>
+                    <td className={`${CELL} max-sm:hidden`}><span className="whitespace-nowrap" title={c.agentId === undefined ? undefined : names.get(c.agentId)?.full}>{whoOf(c, names)}</span></td>
+                    <td className={CELL}><span className="font-mono text-xs [overflow-wrap:anywhere]"><span className="text-ink-3">{c.view} </span>{c.what}</span></td>
+                    <td className={CELL}><Pill text={r.text} tone={r.tone} /></td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
           {all.length > ROWS_SHOWN ? <button type="button" className="chip mt-2" aria-expanded={isAll} onClick={() => setAll(!isAll)}>{isAll ? p.listFewer : `${p.listAll} (${all.length})`}</button> : null}

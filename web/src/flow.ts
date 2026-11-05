@@ -1,7 +1,8 @@
 import type { Card, Check, TraceCall, WebTurn } from '../../types/index'
 
-import { endOf, isRunning } from './agents.ts'
+import { dotOf, endOf, isRunning } from './agents.ts'
 import { agentNames } from './format.ts'
+import { STARTS_AGENT } from './waterfall.ts'
 
 export type FlowInput = { trace?: TraceCall[]; agents: Card[]; active: readonly { id: string; isAsking?: boolean }[]; turns: WebTurn[]; checks?: Check[] }
 export type FlowOptions = { hideFinished: boolean }
@@ -20,9 +21,6 @@ export const DEFAULT_VIEW: FlowView = { ms: 120_000, at: null }
 const MIN_WINDOW_MS = 5000
 const MERGE_PX = 4
 const IS_BIG = /^(Bash|Edit|Write|MultiEdit|NotebookEdit)$/
-const STARTS_AGENT = /^(Agent|Task)$/
-
-const dotOf = (a: Card) => (a.status === 'error' || a.tests === 'FAIL' ? 'error' : a.status)
 
 export function flowOf(d: FlowInput, mainName: string, now: number, opts: FlowOptions): { lanes: Lane[]; dots: Dot[]; arcs: Arc[] } {
   const names = agentNames(d.agents)
@@ -110,6 +108,8 @@ export function windowOf(view: FlowView, d: FlowInput, now: number, isLive: bool
 }
 
 export function clampView(view: FlowView, whole: Span): FlowView {
-  const ms = Math.round(Math.min(Math.max(MIN_WINDOW_MS, view.ms), Math.max(MIN_WINDOW_MS, whole.to - whole.from)))
+  // Following, the session grows into a wider window; only a window held in place must fit what exists.
+  const room = view.at === null ? Infinity : Math.max(MIN_WINDOW_MS, whole.to - whole.from)
+  const ms = Math.round(Math.min(Math.max(MIN_WINDOW_MS, view.ms), room))
   return { ms, at: view.at === null ? null : Math.min(whole.to, Math.max(whole.from + ms, view.at)) }
 }

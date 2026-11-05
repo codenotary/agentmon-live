@@ -12,7 +12,6 @@ export const zh: Strings = {
       disconnected: '与会话服务器的连接已断开，正在重试…',
       noSessions: '没有正在运行的会话。启动 Claude Code 后此页面会显示内容。',
       update: '此会话运行的是其他版本的 AgentMon Live。请更新以查看全部内容。',
-      cache: '缓存',
       tokensIn: '输入',
       tokensOut: '输出',
       context: '上下文',

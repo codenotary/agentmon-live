@@ -1,9 +1,8 @@
 import { ArrowDown, ArrowUp, Bot, ChevronRight, Copy, Terminal, TriangleAlert } from 'lucide-react'
-import { motion } from 'motion/react'
 import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 
 import type { Card, WebSnapshot } from '../../../types/index'
-import { elapsedOf, endOf, groupLines, isFailed, isRunning, LEVEL_TONE, linesOf, sortLines, tokensOf, totalsOf, type AgentLine, type Pips, type Sort, type SortKey } from '../agents.ts'
+import { dotOf, elapsedOf, endOf, groupLines, isRunning, LEVEL_TONE, linesOf, sortLines, tokensOf, totalsOf, type AgentLine, type Pips, type Sort, type SortKey } from '../agents.ts'
 import { agentNames, dur, hhmm, kilo, time, type AgentName } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { jumpTo } from '../Nav.tsx'
@@ -56,7 +55,7 @@ function Detail({ a, s, l, name, now }: { a: Card; s: WebSnapshot; l: Labels; na
     [p.result, `${l.status[a.status] ?? a.status}${a.testsWhy ? ` · ${a.testsWhy}` : ''}`],
   ]
   return (
-    <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+    <div className="fold-in overflow-hidden">
       <div className="grid gap-4 border-t border-line-soft bg-surface-1 p-3 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-2 text-xs">
           <p className="text-[13px] [overflow-wrap:anywhere] whitespace-pre-wrap">{a.prompt || a.task}</p>
@@ -73,7 +72,7 @@ function Detail({ a, s, l, name, now }: { a: Card; s: WebSnapshot; l: Labels; na
           <button type="button" className="icon-btn" onClick={() => showCalls(name?.short, true)}><TriangleAlert size={13} aria-hidden />{p.onlyFailures}</button>
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -117,8 +116,6 @@ function Line({ id, isOpen, setOpen, dot, title, name, sub, ms, calls, tokens, u
     </tr>
   )
 }
-
-const dotOf = (a: Card) => (isFailed(a) ? 'error' : a.status)
 
 export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page

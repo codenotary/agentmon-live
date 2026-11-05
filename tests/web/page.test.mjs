@@ -9,7 +9,7 @@ import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
 import { agentNames, countWord, parseIds, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
-import { rowsOf, spanOf, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
+import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
 import { BUILT, builtHash, sourceHash } from '../../web/source-hash.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -19,10 +19,8 @@ const empty = { trace: [], agents: [], active: [] }
 const MAIN = 'Hauptsitzung'
 const call = (id, who, at, more = {}) => ({ id, at, who, tool: 'Bash', what: id, ...more })
 
-test('a turn with no calls draws no rows, and a live one ends now', () => {
+test('a time with no calls draws no rows', () => {
   assert.deepEqual(rowsOf(empty, { from: 0, to: 10 }, MAIN, 10), [])
-  assert.deepEqual(spanOf({ startedAt: 100, wallMs: 1, buckets: {}, isLive: true }, 700), { from: 100, to: 700 })
-  assert.deepEqual(spanOf({ startedAt: 100, wallMs: 50, buckets: {} }, 700), { from: 100, to: 150 })
 })
 
 test('only the turn\'s calls show, in order, and the slowest is marked', () => {
@@ -244,7 +242,8 @@ test('the window opens on the last activity, follows when live, and stays inside
   assert.deepEqual(clampView({ ms: 1, at: null }, whole), { ms: 5000, at: null })
   assert.deepEqual(clampView({ ms: 10_000, at: 0 }, whole), { ms: 10_000, at: 11_000 })
   assert.deepEqual(clampView({ ms: 10_000, at: 2_000_000 }, whole), { ms: 10_000, at: 900_000 })
-  assert.equal(clampView({ ms: 5_000_000, at: null }, whole).ms, 899_000)
+  assert.equal(clampView({ ms: 120_000, at: null }, { from: 0, to: 30_000 }).ms, 120_000)
+  assert.deepEqual(clampView({ ms: 5_000_000, at: 500_000 }, whole), { ms: 899_000, at: 900_000 })
 })
 
 test('what needs you comes first, the rest in time order; a wait is amber, a failure red', () => {
@@ -274,6 +273,16 @@ test('the calls table lists every tool, so an agent that only read still has row
   assert.equal(rows[1].error, 'the longer text')
   const old = [{ id: 'g', at: 1, who: MAIN, view: 'git', what: 'git status', result: 'ok' }]
   assert.deepEqual(tableRows({ calls: old, active: [] }), old)
+})
+
+test('the calls table sorts numbers as numbers and words as words, and either way round', () => {
+  const rows = [{ at: 9, who: 'b', what: 'z', result: 'ok' }, { at: 10, who: 'a', what: 'y', result: 'failed' }]
+  const who = c => c.who
+  assert.deepEqual(sortCalls(rows, { id: 'at', isDesc: true }, who).map(c => c.at), [10, 9])
+  assert.deepEqual(sortCalls(rows, { id: 'at', isDesc: false }, who).map(c => c.at), [9, 10])
+  assert.deepEqual(sortCalls(rows, { id: 'what', isDesc: false }, who).map(c => c.what), ['y', 'z'])
+  assert.deepEqual(sortCalls(rows, { id: 'who', isDesc: true }, c => c.who.toUpperCase()).map(c => c.who), ['b', 'a'])
+  assert.equal(rows[0].at, 9)
 })
 
 test('positions stay on the track', () => {

@@ -5,7 +5,6 @@ export const PAGE_EN = {
   "disconnected": "Disconnected from the session server. Trying again…",
   "noSessions": "No session is running. Start Claude Code and this page fills in.",
   "update": "This session runs a different AgentMon Live version. Update it to see everything here.",
-  "cache": "cache",
   "tokensIn": "in",
   "tokensOut": "out",
   "context": "Context",

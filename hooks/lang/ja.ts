@@ -12,7 +12,6 @@ export const ja: Strings = {
       disconnected: 'セッションサーバーとの接続が切れました。再試行しています…',
       noSessions: '実行中のセッションはありません。Claude Code を起動すると、このページに表示されます。',
       update: 'このセッションは別のバージョンの AgentMon Live で動作しています。すべて表示するには更新してください。',
-      cache: 'キャッシュ',
       tokensIn: '入力',
       tokensOut: '出力',
       context: 'コンテキスト',

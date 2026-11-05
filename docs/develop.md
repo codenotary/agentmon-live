@@ -36,7 +36,7 @@ npx -p typescript tsc --noEmit -p .
 
 ### Work on the web view
 
-The server has no build step. The page does: its source is in `web/` (React, Tailwind, Radix, Motion), and `npm run build` turns it into the committed `server/app.html`, `app.js`, `app.css` and `vendor.js`, so users install nothing. The libraries sit in `vendor.js`, so a change to the page alone leaves that file as it is, unless it starts using another part of a library. Never edit these files by hand. A test fails if the page is older than its source.
+The server has no build step. The page does: its source is in `web/` (React, Tailwind, Radix), and `npm run build` turns it into the committed `server/app.html`, `app.js`, `app.css` and `vendor.js`, so users install nothing. The libraries sit in `vendor.js`, so a change to the page alone leaves that file as it is, unless it starts using another part of a library. Never edit these files by hand. A test fails if the page is older than its source.
 
 ```sh
 cd web && npm ci && npm run build
