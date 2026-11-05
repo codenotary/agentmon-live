@@ -8,7 +8,7 @@ import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
-import { droppedLines, editLine } from './testreview'
+import { droppedLines, editLine, isFlagged, lineText } from './testreview'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -46,6 +46,13 @@ let frame: { key: string; tree: RenderElement } | undefined
 // With a refresh rate, while work runs a change redraws the pane at the next period boundary; a key press, a resize,
 // `c` or a clear (both write the advisor), a new urgent item and an idle pane redraw at once. A frame kept skips the other reads, so their writes do not redraw it;
 // register.tsx's pulse, on each boundary, draws the next one.
+// Putting the test review away empties its list; its key stays out of `dismissed`, so the same edit later shows again.
+async function dismissFocus($: EngineInterface, keys: readonly string[]) {
+  const isReview = (key: string) => key.startsWith('testReview:')
+  await update($, layout, l => ({ ...l, dismissed: [...(l.dismissed ?? []), ...keys.filter(k => !isReview(k))].slice(-50) }))
+  if (keys.some(isReview)) await update($, testReview, () => INIT.testReview)
+}
+
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   if (cfg.refreshMs <= 0) return drawFresh($, e)
   const [lay, tab, adv, now, doing, checked, list] = await Promise.all([read($, layout), read($, view), read($, advisor), $.clock.now(), read($, active), read($, checks), read($, agents)])
@@ -349,7 +356,10 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         </Text>
       ))}
       {reviewed.files.map(f => (
-        <Text color={f.removed > 0 || f.skips > 0 ? 'yellow' : undefined} dimColor={f.removed === 0 && f.skips === 0}>{cut(editLine(t, f), whatRoom + 20)}</Text>
+        <Box flexDirection="column">
+          <Text color={isFlagged(f) ? 'yellow' : undefined} dimColor={!isFlagged(f)}>{cut(editLine(t, f), whatRoom + 20)}</Text>
+          {(f.lines ?? []).slice(lay.isDetailed ? -5 : -2).flatMap(lineText).map(line => <Text dimColor>  {cut(line, whatRoom + 16)}</Text>)}
+        </Box>
       ))}
       {reviewed.isGreen && droppedLines(t, reviewed).map(line => <Text color="yellow">{cut(line, whatRoom + 20)}</Text>)}
     </Box>
@@ -673,7 +683,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           <Box justifyContent="space-between">
             {title(urgent.length > 0 ? `${ti.focus} · ${t.attention}` : ti.focus, urgent.length > 0 ? 'red' : 'yellow')}
             {dismissable.length > 0 && (
-              <Button key="attention:dismiss" plain hotkey="x" onPress={() => update($, layout, l => ({ ...l, dismissed: [...(l.dismissed ?? []), ...dismissable].slice(-50) }))}>
+              <Button key="attention:dismiss" plain hotkey="x" onPress={() => dismissFocus($, dismissable)}>
                 {t.dismiss}
               </Button>
             )}

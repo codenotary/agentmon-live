@@ -221,7 +221,8 @@ export type Task = { id: string; subject: string; activeForm?: string; status: '
 export type SkillUse = { name: string; count: number; who: string; at: number }
 
 // Test files this turn edited, what the edits took out, and test runs that shrank, for a person to look at beside a passing run.
-export type TestEdit = { path: string; removed: number; skips: number; at: number }
+export type TestLine = { before?: string; after?: string }
+export type TestEdit = { path: string; removed: number; skips: number; at: number; changed?: number; lines?: TestLine[] }
 export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: number; skipped: number; ranNow: number; skippedNow: number }[]; isGreen: boolean }
 
 declare module 'claude-code' {

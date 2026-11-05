@@ -1,12 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Check, Task, TestEdit } from '../types'
+import type { Check, Task } from '../types'
 import { PROMPT_CHURN_EDITS } from './bench'
 import { addNote, consult } from './advisor'
 import { coverageGaps, doneGaps, droppedRuns, isDoc, isWithin, testCfg } from './gate'
 import type { Target, TestRun } from './gate'
 import { relPath, SOURCE } from './sizeguard'
+import { mergeEdit } from './testreview'
+import type { Weakening } from './testreview'
 import { mask } from './format'
 import { notePrompt } from './learning'
 import { cfg, INIT, isLive } from './state'
@@ -25,7 +27,7 @@ const REQUEST_ROOM = 2000
 
 // `before` holds the checks as they stood at the prompt; `codeEditAt` and `lastCodeEditAt` are the turn's first and last edit of a file that is not a doc.
 // `docs` are the doc files the main loop read this turn; `edits` counts the edits per code file; `tests` every test run; `root` the project.
-export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number; tests: TestRun[]; root: string; testEdits: Map<string, TestEdit> }
+export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number; tests: TestRun[]; root: string; testEdits: Set<string> }
 
 // A new prompt, or `/agentmon clear` mid-turn: everything the turn gathered goes, the prompt and its start stay.
 export function resetTurn(turn: Turn, before: Check[]) {
@@ -36,18 +38,26 @@ export function resetTurn(turn: Turn, before: Check[]) {
   turn.edits = new Map()
   turn.docs = new Set()
   turn.tests = []
-  turn.testEdits = new Map()
+  turn.testEdits = new Set()
   turn.before = before
   turn.codeEditAt = undefined
   turn.lastCodeEditAt = undefined
 }
 
-// What a person should look at beside the passing result: the turn's test edits, and runs that shrank.
-export async function syncTestReview($: EngineInterface, turn: Turn) {
-  const files = [...turn.testEdits.values()]
+// What a person should look at beside the passing result. It outlasts the turn until they put it away; a new edit waits for a new run.
+export async function noteTestEdit($: EngineInterface, turn: Turn, path: string, found: Weakening, at: number) {
+  turn.testEdits.add(path)
+  await update($, testReview, r => ({ ...r, files: mergeEdit(r.files, path, found, at), isGreen: false }))
+}
+
+export async function noteTestRun($: EngineInterface, turn: Turn) {
   const last = turn.tests.filter(r => r.result !== 'running').at(-1)
-  const isGreen = files.length > 0 && last?.result === 'ok' && files.every(f => last.at >= f.at)
-  await update($, testReview, () => ({ files, dropped: files.length > 0 ? droppedRuns(turn.tests, turn.lastCodeEditAt) : [], isGreen }))
+  const dropped = turn.testEdits.size > 0 ? droppedRuns(turn.tests, turn.lastCodeEditAt) : []
+  await update($, testReview, r => ({
+    ...r,
+    dropped: [...new Map([...r.dropped, ...dropped].map(d => [JSON.stringify(d), d])).values()],
+    isGreen: r.files.length > 0 && last?.result === 'ok' && r.files.every(f => last.at >= f.at),
+  }))
 }
 
 const MANIFESTS = ['package.json', 'pyproject.toml', 'Cargo.toml', 'go.mod']

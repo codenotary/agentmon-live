@@ -6,8 +6,8 @@ import { addNote } from './advisor'
 import { isDoc, parseTestRules, testCfg } from './gate'
 import { book, newClock, snapshot } from './clock'
 import { priceUsd } from './bench'
-import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, openGaps, resetTurn, syncTestReview } from './done'
-import { addTestEdit, isTestPath, weakeningOf } from './testreview'
+import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, noteTestEdit, noteTestRun, openGaps, resetTurn } from './done'
+import { isTestPath, NOTHING, weakeningOf } from './testreview'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { build, checkRelease, refreshBase, watchBase } from './release'
@@ -28,6 +28,7 @@ const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
 const agents = atom({ plugin: 'agentmon-live', key: 'agents' } as const, INIT.agents)
 const log = atom({ plugin: 'agentmon-live', key: 'log' } as const, INIT.log)
+const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const, INIT.testReview)
 const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
@@ -240,7 +241,7 @@ export const register: Register = on => {
   // Who runs each Skill call under way, for the `skill.prompt` it raises; none matches when the person typed the command.
   const skillRuns: { skill: string; who: string }[] = []
   // Files in `edited` were edited successfully this turn, by the main loop or its subagents.
-  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), edits: new Map(), docs: new Set(), before: [], tests: [], testEdits: new Map(), root: '' }
+  const turn: Turn = { prompt: '', startedAt: 0, tools: 0, delegated: 0, trail: [], edited: new Set(), edits: new Map(), docs: new Set(), before: [], tests: [], testEdits: new Set(), root: '' }
   // Fable judges an answer, so "check now" during a turn waits for the turn's answer.
   let isTurnLive = false
   let isCheckQueued = false
@@ -401,7 +402,7 @@ export const register: Register = on => {
       ])
       // The request stays: the turn under way still answers it.
       resetTurn(turn, [])
-      await syncTestReview($, turn)
+      await update($, testReview, () => INIT.testReview)
       await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const }))
       await refreshStatus($)
       return { text: t.cleared }
@@ -431,7 +432,6 @@ export const register: Register = on => {
       turn.prompt = mask(e.text)
       turn.startedAt = await $.clock.now()
       resetTurn(turn, await read($, checks))
-      await syncTestReview($, turn)
       blockAt = undefined
       isPassed = false
       newPrompt()
@@ -579,7 +579,7 @@ export const register: Register = on => {
     const sized = /^(Edit|Write|NotebookEdit)$/.test(e.tool) && watched(pathOf(e), cwd) !== undefined ? pathOf(e) : undefined
     if (sized) await noteSizeBefore($, sized)
     const testFile = /^(Edit|MultiEdit|Write)$/.test(e.tool) && pathOf(e) && isTestPath(pathOf(e)!) ? pathOf(e)! : undefined
-    const weakened = testFile ? await weakeningOf($, e, testFile).catch(() => ({ removed: 0, skips: 0 })) : undefined
+    const weakened = testFile ? await weakeningOf($, e, testFile).catch(() => NOTHING) : undefined
 
     // Bookkeeping after the call must not add to a turn that started meanwhile.
     const turnAt = turn.startedAt
@@ -637,9 +637,9 @@ export const register: Register = on => {
           turn.lastCodeEditAt = at
           turn.edits.set(touched, (turn.edits.get(touched) ?? 0) + 1)
         }
-        if (weakened && touched === testFile) addTestEdit(turn.testEdits, touched, weakened, at)
+        if (weakened && touched === testFile) await noteTestEdit($, turn, touched, weakened, at)
       }
-      if (sameTurn && (weakened || scopes.length > 0)) await syncTestReview($, turn)
+      if (sameTurn && r.deny === undefined && scopes.length > 0) await noteTestRun($, turn)
       // Project docs only: not memory files, files outside the project, or .txt (requirements.txt, CMakeLists.txt).
       if (touched && cat === 'read' && isDoc(touched) && !/\.txt$/i.test(touched) && !isMemoryPath(touched) && relPath(touched, cwd) !== undefined && e.agentId === undefined && sameTurn) turn.docs.add(touched)
       if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)

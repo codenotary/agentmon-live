@@ -1,5 +1,5 @@
 import type { Active, Card, Insights, TurnTime, TestReview } from '../types'
-import { needsReview, reviewText } from './testreview'
+import { needsReview, reviewLines, reviewText } from './testreview'
 import { clockTime, decimal, isHigh, kilo, limitName, modelName, pad, shortPath } from './format'
 import type { BaseDrift } from './git'
 import { overlap } from './git'
@@ -212,7 +212,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
   // A green run after the tests themselves changed: some updates are right, so a person looks; it sends nothing back.
   if (testReview && needsReview(testReview)) {
     const what = reviewText(cfg.t, testReview)
-    out.push({ key: `testReview:${what}`, score: 72, tag: t.tag.tests, color: 'yellow', text: t.testReview(what), prompt: t.promptTestReview(what) })
+    out.push({ key: `testReview:${what}`, score: 72, tag: t.tag.tests, color: 'yellow', text: t.testReview(what), prompt: `${t.promptTestReview(what)}\n\n${reviewLines(testReview)}`.trim() })
   }
 
   // A call running far past what it usually takes.

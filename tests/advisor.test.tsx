@@ -298,7 +298,7 @@ test('a check chained with git, or behind ||, is still recorded with its real ou
 })
 
 // A two-package repo in gate mode with optional `.agentmon-tests` rules; `cd` moves the shell.
-function monorepo(on: On, rules?: string) {
+function monorepo(on: On, rules?: string, files: Record<string, string> = {}) {
   let shell = '/repo'
   on('session.cwd', () => ({ value: shell }))
   on('fs.exists', (_, e) => ({ value: ['/repo/package.json', '/repo/packages/api/package.json', '/repo/packages/web/package.json'].includes(e.path) }))
@@ -306,6 +306,7 @@ function monorepo(on: On, rules?: string) {
   on('fs.read', (_, e) => {
     if (e.path.endsWith('/settings.json')) return { value: settingsWith({ advisorMode: 'gate' }) }
     if (rules !== undefined && e.path === '/repo/.agentmon-tests') return { value: rules }
+    if (files[e.path] !== undefined) return { value: files[e.path]! }
     throw new Error('ENOENT')
   })
   return { cd: (dir: string) => (shell = dir) }
@@ -761,5 +762,92 @@ test('a failing run after a weakened test shows no review item and is still sent
   expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'Done.' })).block).toBeTruthy()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /Green run after test edits/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('a changed assertion shows its old and new line, and the question carries them', async ($, on) => {
+  const clock = mock.clock(on)
+  const filled: string[] = []
+  engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })
+  monorepo(on)
+  on('prompt.fill', (_, e) => {
+    filled.push(e.text)
+    return { isFilled: true }
+  })
+  await greenAfterTestEdit($, clock, WEAKENED[0]!)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /- expect\(parse\('b'\)\)\.toBe\(2\)/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /\+ expect\(parse\('b'\)\)\.toBe\(3\)/ })).toBeTruthy()
+  await ui.press({ key: 'investigate:0' })
+  expect(filled.join()).toContain("+ expect(parse('b')).toBe(3)")
+  await ui.unmount()
+})
+
+test('the review outlasts the turn until x puts it away, and the same edit later shows again', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })
+  monorepo(on)
+  const item = /Green run after test edits/
+  await greenAfterTestEdit($, clock, WEAKENED[0]!)
+  await $.turn.start({ text: 'Next thing', turnId: 'm2' })
+  await clock.settle()
+  let ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: item })).toBeTruthy()
+  await ui.press({ key: 'attention:dismiss' })
+  expect(await ui.find({ type: 'Text', text: item })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /parser\.test\.ts:/ })).toBe(undefined)
+  await ui.unmount()
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Edit', file_path: FILE, old_string: WEAKENED[0]!.old, new_string: WEAKENED[0]!.new })
+  await clock.advance(1000)
+  ui = await $.ui.mount(PANE)
+  // Edited again and not run yet: listed, but no green run to speak of.
+  expect(await ui.find({ type: 'Text', text: item })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /parser\.test\.ts:/ })).toBeTruthy()
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: item })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a later failing run takes the review off Focus and leaves the list', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })
+  monorepo(on)
+  await greenAfterTestEdit($, clock, WEAKENED[0]!)
+  await $.turn.start({ text: 'Next thing', turnId: 'm2' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test fail' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Green run after test edits/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /parser\.test\.ts:/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('/agentmon clear empties the review', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })
+  monorepo(on)
+  await greenAfterTestEdit($, clock, WEAKENED[0]!)
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'clear' })
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /parser\.test\.ts:/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('an edit of only a fragment of an assertion is still seen as changing it', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })
+  monorepo(on, undefined, { [FILE]: "test('adds', () => {\n  expect(2 + 2).toBe(5)\n  expect(2 + 2).toBe(5)\n})" })
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
+  await $.tool.call({ tool: 'Edit', file_path: FILE, old_string: 'toBe(5)', new_string: 'toBe(4)' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Green run after test edits: parser\.test\.ts: assertions changed: 1/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /\+ expect\(2 \+ 2\)\.toBe\(4\)/ })).toBeTruthy()
   await ui.unmount()
 })

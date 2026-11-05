@@ -79,7 +79,7 @@ const en = {
   gapUncovered: (dir: string, files: string) => `${dir}: edited (${files}), but no test run after the edit reached it`,
   gapEmpty: (command: string) => `${command} ran no tests`,
   gapDropped: (command: string, ran: number, skipped: number, ranNow: number, skippedNow: number) => `${command} ran ${ranNow} tests and skipped ${skippedNow} after the edit, ${ran} and ${skipped} before it`,
-  testEditLine: (file: string, removed: number, skips: number) => (removed > 0 || skips > 0 ? `${file}: ${removed} assertions removed, ${skips} skips added` : `${file}: test edited`),
+  testEdit: { removed: 'assertions removed:', changed: 'assertions changed:', skips: 'skips added:', plain: 'test edited' },
   testsRan: (ran: number, skipped: number) => `${ran} run${skipped > 0 ? ` · ${skipped} skipped` : ''}`,
   askClaude: 'ask Claude',
   checkAfterTurn: 'The done gate checks the answer when this turn ends.',
@@ -186,7 +186,7 @@ const en = {
     promptBase: (base: string, n: number, files: string) =>
       `${base} has ${n} new commits that change files this session edited: ${files}. Show what those commits changed in these files, then rebase this branch onto ${base}, resolve any conflicts and rerun the checks.`,
     testReview: (what: string) => `Green run after test edits: ${what}. Check they are right.`,
-    promptTestReview: (what: string) => `The tests pass, but this turn changed the tests: ${what}. Show each removed assertion, skip or dropped test from the diff, and say why it is right. Restore any that only hid a failure.`,
+    promptTestReview: (what: string) => `The tests pass, but the tests were changed: ${what}. Show each removed or changed assertion, skip or dropped test from the diff, and say why it is right. Restore any that only hid a failure.`,
     promptWait: (list: string) => `These calls waited for my approval most often: ${list}. Suggest permission allow rules for the safe ones; change nothing yet.`,
     fresh: (k: string) => `the last turn worked where this ${k} session had not been · /clear before the next unrelated task (/clear <name> to come back)`,
     redo: (n: number) => `${n} corrections in a row · a third rarely lands: /clear and one new prompt with what you learned`,
