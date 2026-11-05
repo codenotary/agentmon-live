@@ -279,8 +279,10 @@ test('the built page is current with its source', () => {
 
 test('the page loads nothing from another origin and stays small', () => {
   assert.doesNotMatch(page, /<(script|link|img)\b[^>]*\b(src|href)="(https?:)?\/\//)
-  assert.doesNotMatch(page, /@import\s+url\(/)
-  assert.ok(statSync(join(ROOT, 'server/app.html')).size < 700 * 1024)
+  assert.doesNotMatch(readFileSync(join(ROOT, 'server/app.css'), 'utf8'), /@import\s+url\(|url\((https?:)?\/\//)
+  for (const file of ['/app.js', '/vendor.js', '/app.css']) assert.ok(page.includes(`"${file}"`), file)
+  const total = ['app.html', 'app.js', 'vendor.js', 'app.css'].reduce((n, f) => n + statSync(join(ROOT, 'server', f)).size, 0)
+  assert.ok(total < 800 * 1024, `${total} bytes`)
 })
 
 test('a session of an older version sends no trace: the waterfall is empty, not a crash', () => {

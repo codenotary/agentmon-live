@@ -1,5 +1,5 @@
 // After `vite build`: stamps the page, places it where the server reads it, and collects the notices of what it bundles.
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -10,6 +10,8 @@ const SERVER = join(HERE, '../server')
 
 const built = readFileSync(join(HERE, 'dist/index.html'), 'utf8')
 if (!built.includes('<head>')) throw new Error('the built page has no <head>')
+for (const file of ['vendor.js', 'app.js', 'app.css']) copyFileSync(join(HERE, 'dist', file), join(SERVER, file))
+// Last: the server takes this file's time as the build's.
 writeFileSync(join(SERVER, 'app.html'), built.replace('<head>', () => `<head>\n<meta name="agentmon-source" content="${sourceHash()}">`))
 
 const lock = JSON.parse(readFileSync(join(HERE, 'package-lock.json'), 'utf8'))

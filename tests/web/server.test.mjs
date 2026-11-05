@@ -75,6 +75,21 @@ test('health names the server and / serves the page with a strict policy', async
   assert.equal(page.headers['access-control-allow-origin'], undefined)
 })
 
+test('the page\'s files come from a fixed list, with a policy that lets them run', async () => {
+  startServer(47500)
+  await waitUp(47500)
+  const policy = (await call(47500, '/')).headers['content-security-policy']
+  assert.match(policy, /script-src 'self'/)
+  assert.match(policy, /style-src 'self'/)
+  for (const [path, type] of [['/app.js', 'text/javascript'], ['/vendor.js', 'text/javascript'], ['/app.css', 'text/css']]) {
+    const r = await call(47500, path)
+    assert.equal(r.status, 200, path)
+    assert.ok(r.headers['content-type'].startsWith(type), path)
+  }
+  assert.equal((await call(47500, '/web.mjs')).status, 404)
+  assert.equal((await call(47500, '/app.html')).status, 404)
+})
+
 test('fonts come from a fixed list, nothing else on disk', async () => {
   startServer(47412)
   await waitUp(47412)

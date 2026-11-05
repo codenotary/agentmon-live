@@ -20,7 +20,7 @@ npx -p typescript tsc --noEmit -p .
 | `hooks/done.ts` | The done gate's material, checks and per-turn state |
 | `hooks/clock.ts` | The turn clock: where a turn's time went |
 | `hooks/release.ts` | Build label, release check and base-branch watch |
-| `hooks/web.ts`, `server/web.mjs`, `web/` (builds `server/app.html`) | The web view: publisher, local server, page |
+| `hooks/web.ts`, `server/web.mjs`, `web/` (builds `server/app.html`, `app.js`, `vendor.js`, `app.css`) | The web view: publisher, local server, page |
 | `hooks/render.tsx` | The pane |
 | `hooks/insights.ts` | The Focus rules and their thresholds, time and context helpers |
 | `hooks/learn.ts`, `hooks/learning.ts`, `hooks/bench.ts` | What is learned across sessions: the pure rules, the store and commands, and the self benchmark |
@@ -36,7 +36,7 @@ npx -p typescript tsc --noEmit -p .
 
 ### Work on the web view
 
-The server has no build step. The page does: its source is in `web/` (React, Tailwind, Radix, Motion), and `npm run build` inlines it into the committed `server/app.html`, so users install nothing. Never edit `server/app.html` by hand. A test fails if the page is older than its source.
+The server has no build step. The page does: its source is in `web/` (React, Tailwind, Radix, Motion), and `npm run build` turns it into the committed `server/app.html`, `app.js`, `app.css` and `vendor.js`, so users install nothing. The libraries sit in `vendor.js`, so a change to the page alone leaves that file as it is, unless it starts using another part of a library. Never edit these files by hand. A test fails if the page is older than its source.
 
 ```sh
 cd web && npm ci && npm run build

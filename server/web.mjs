@@ -16,8 +16,13 @@ const FONTS = [
   'manrope-latin-700-normal.woff2',
   'jetbrains-mono-latin-400-normal.woff2',
 ]
+const ASSETS = {
+  '/app.js': 'text/javascript; charset=utf-8',
+  '/vendor.js': 'text/javascript; charset=utf-8',
+  '/app.css': 'text/css; charset=utf-8',
+}
 const HEADERS = {
-  'content-security-policy': "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
+  'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
   'x-content-type-options': 'nosniff',
   'cache-control': 'no-store',
 }
@@ -56,6 +61,7 @@ function serve(port, fixture) {
   const stamp = stampOfFiles()
   // In memory, so a plugin update that removes this folder leaves a running server whole.
   const page = readFileSync(join(HERE, 'app.html'))
+  const assets = new Map(Object.entries(ASSETS).map(([path, type]) => [path, { type, body: readFileSync(join(HERE, path)) }]))
   const fonts = new Map(FONTS.map(f => [f, readFileSync(join(HERE, 'fonts', f))]))
   const sessions = new Map()
   const paneRequests = new Map()
@@ -85,6 +91,8 @@ function serve(port, fixture) {
     if (req.method === 'GET') {
       if (path === '/') return reply(res, 200, 'text/html; charset=utf-8', page)
       if (path === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, pid: process.pid, sessions: sessions.size, stamp }))
+      const asset = assets.get(path)
+      if (asset) return reply(res, 200, asset.type, asset.body)
       if (path.startsWith('/fonts/')) {
         const font = fonts.get(path.slice('/fonts/'.length))
         return font ? reply(res, 200, 'font/woff2', font) : reply(res, 404, 'text/plain', 'not found')
