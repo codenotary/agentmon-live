@@ -64,13 +64,31 @@ Installing asks nothing. Ask Claude in chat ("hide the usage box", "switch Agent
 
 ### Web view
 
-The same session in a browser, with the room a terminal lacks: Focus, running calls, usage tiles, where each turn went as a chart, a sortable table of tool calls, changes and verification, tasks, subagents, insights, a searchable session log, and what the project's past sessions left. Open it with `o`, `/agentmon open`, or the link in the pane's header. It follows your language and your system's light or dark setting.
+The same session in a browser, with the room a terminal lacks. Open it with `o`, `/agentmon open`, or the link in the pane's header. It follows your language and, until you choose a theme with its button, your system's light or dark setting.
 
-Every running session on the machine shares one server, and the page has a picker when more than one is running. The server is a small Node program inside the plugin. It starts with the first session and stops one minute after the last one leaves. It needs `node` on your `PATH`: without it the pane works as usual, there is no button, and the debug log says why.
+- **Turn waterfall:** every tool call of a turn in the order it started, as bars by how long each took, with each subagent's calls nested under it. The slowest call is marked, failures are red, running calls are striped, and a call waiting for approval says so. Gaps are time the model spent thinking. It follows the newest turn; the arrows go back to earlier ones. Click a call to see its details.
+- **Navigation:** a rail on the left switches between the views: Overview (instruments, waterfall, events, running calls), Tool calls (where each turn went, the table, insights), Verification (lights and tasks), Subagents, Files, Session log and Across sessions. Each view has its own link, and the browser's back button works. The rail shows how many events are open, how many calls run and how many subagents the session has. On a phone it is a strip across the top.
+- **Events:** what needs you, such as a waiting approval or a failed test, as a timeline. An item that goes away stays there, marked cleared with its time. The history starts when you open the page. A new urgent item changes the tab's title, so you see it from another tab.
+- **Instruments:** gauges for context and the 5-hour and 7-day quotas, then session cost with its trend since you opened the page, turns, cache hits and tokens.
+- **The other views:** a sortable and filterable table of tool calls, the session log with its search, and what the project's past sessions left. Leaving a view clears its search and its filters, except Only failures.
+- **Pane button:** the button in the top bar, or the command palette, hides or shows the pane in that Claude Code session, so the browser can take over. The session goes on as usual and the done gate still runs. `/agentmon` in the session shows the pane again.
 
-The page is read-only: nothing flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. It has no login, so on a machine shared with other people, they can read your session's commands, paths and costs from the local port. Secrets are masked first, as in the pane. Set `web` to `off` on a shared machine.
+| Key | Action |
+|---|---|
+| `Ctrl+K` or `⌘K` | Command palette: switch session, go to a view, show only failures, hide the pane, change theme, copy the working directory |
+| `/` | Search the session log |
 
-`web` and `webPort` take effect at the next session start. Where no browser can open, as over SSH, `o` and `/agentmon open` give the address to open yourself.
+Every running session on the machine shares one server, and the page has a picker when more than one is running. The server is a small Node program inside the plugin. It starts with the first session and stops one minute after the last one leaves. A session whose plugin files are newer replaces a running server, and open tabs reload themselves. It needs `node` on your `PATH`: Claude Code does not include it. Without it the pane works as usual, there is no button, and the session shows a short notice when it starts. The debug log says why.
+
+The page only reads, with one exception: the pane button tells the session to hide or show its pane. Nothing else flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. It has no login, so on a machine shared with other people, they can read your session's commands, paths and costs from the local port, and hide or show your pane. Secrets are masked first, as in the pane. Set `web` to `off` on a shared machine.
+
+`web` and `webPort` take effect at the next session start. Over SSH on Linux, a browser opens on your desktop session on that machine if you have one, such as a local or RDP login. Where no browser can open, `o` and `/agentmon open` give the address to open yourself.
+
+With no desktop session there, the server still listens on the remote machine, so forward its port from your own machine, keeping the same number, and open the address there. The server refuses a different port number in the address.
+
+```sh
+ssh -L 47311:127.0.0.1:47311 <user>@<host>
+```
 
 ### Debug log
 

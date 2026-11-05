@@ -1,19 +1,20 @@
-import { atom, read } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface, SessionUsage } from 'claude-code'
 
-import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main, Task, TurnTime, WebFocus, WebSnapshot, WebTurn } from '../types'
+import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main, Task, TraceCall, TurnTime, WebFocus, WebSnapshot, WebTurn } from '../types'
 import { debug } from './debuglog'
 import type { Strings } from './i18n'
 import type { Insight } from './insights'
 import { bucketName, focusList, liveBuckets } from './insights'
 import { learnedItems } from './learn'
-import { cfg, INIT, liveStatus, liveTurn, shapeInsights } from './state'
+import { cfg, INIT, liveStatus, liveTurn, PANE, shapeInsights } from './state'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const agents = atom({ plugin: 'agentmon-live', key: 'agents' } as const, INIT.agents)
 const log = atom({ plugin: 'agentmon-live', key: 'log' } as const, INIT.log)
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
+const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
 const files = atom({ plugin: 'agentmon-live', key: 'files' } as const, INIT.files)
@@ -50,6 +51,8 @@ export type SnapshotParts = {
   focus: Insight[]
   t: Strings
   lang: string
+  isPaneOpen: boolean
+  trace: TraceCall[]
 }
 
 // The pane's list of what needs the person, in its order and with its keys, so a dismissal holds on both surfaces.
@@ -77,8 +80,9 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     session: p.session,
     now: p.now,
     lang: p.lang,
-    labels: { page: t.web.page, status: t.status, check: t.check, cat: t.cat, buckets, result: { ok: t.ok, failed: t.failed, unknown: t.unknown, running: t.status.running } },
+    labels: { page: t.web.page, main: t.mainSession, status: t.status, check: t.check, cat: t.cat, buckets, result: { ok: t.ok, failed: t.failed, unknown: t.unknown, running: t.status.running } },
     main: p.main,
+    isPaneOpen: p.isPaneOpen,
     focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: false }))],
     usage: {
       ctxPct: p.usage.context.percent,
@@ -89,6 +93,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     turnCount: ins.turns,
     active: p.doing,
     calls: p.calls,
+    trace: p.trace,
     agents: p.agents,
     checks: p.checks,
     files: { ...p.files, read: p.files.read.slice(-KEEP_FILES), edited: p.files.edited.slice(-KEEP_FILES) },
@@ -129,8 +134,21 @@ async function ensureServer($: EngineInterface): Promise<void> {
   cfg.webUrl = `http://127.0.0.1:${port}/`
 }
 
+// The flag keeps a pane the person hid closed when a module reload or `/clear` runs session.start again.
+export async function setPane($: EngineInterface, isOpen: boolean): Promise<void> {
+  await update($, layout, l => ({ ...l, isPaneHidden: !isOpen }))
+  if (isOpen) await $.ui.open({ id: PANE, title: 'AgentMon Live' })
+  else await $.ui.close({ id: PANE })
+}
+
+// What the page's button asked for; the server hands it over once.
+async function takePaneRequest($: EngineInterface, id: string): Promise<void> {
+  const r = await $.http.fetch(`${cfg.webUrl}pane/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+  if (r.status === 200) await setPane($, (JSON.parse(r.text) as { isOpen: boolean }).isOpen)
+}
+
 async function publish($: EngineInterface): Promise<void> {
-  const [id, usage, now, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, insStored, learnt] = await Promise.all([
+  const [id, usage, now, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, insStored, learnt, panes, traced] = await Promise.all([
     $.session.id(),
     $.session.usage(),
     $.clock.now(),
@@ -147,8 +165,11 @@ async function publish($: EngineInterface): Promise<void> {
     read($, tasks),
     read($, insights),
     read($, learned),
+    $.ui.panes().catch(() => []),
+    read($, trace),
   ])
   if (id === endedId) return
+  await takePaneRequest($, id)
   const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
   turnRing = pushTurn(turnRing, ins.last && ins.last.startedAt >= ringFrom ? ins.last : undefined)
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
@@ -176,6 +197,8 @@ async function publish($: EngineInterface): Promise<void> {
     focus,
     t: cfg.t,
     lang: cfg.lang,
+    isPaneOpen: panes.some(x => x.id === PANE),
+    trace: traced,
   })
   // `now` moves on every read; the rest says whether anything changed.
   const json = JSON.stringify({ ...snapshot, now: 0 })
@@ -226,6 +249,7 @@ export async function startWeb($: EngineInterface, dir: string): Promise<void> {
   } catch (error) {
     cfg.webUrl = undefined
     void debug($, 'web.start', { message: String(error) })
+    $.ui.toast(cfg.t.web.failed)
     return
   }
   $.ui.invalidate('ui.render')

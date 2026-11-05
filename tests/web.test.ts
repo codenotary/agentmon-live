@@ -19,6 +19,8 @@ const PANE = {
 } as const
 
 // A running server: `ensure` answers the port, `open` succeeds, the rest of the host stays quiet.
+let panesOpened = 0
+
 function engine(on: On, ensure: () => unknown = () => ({ exitCode: 0, stdout: '{"port":47311}\n', stderr: '' }), sessionId: () => string = () => 'sess-1', openExit = 0) {
   const argvs: (readonly string[])[] = []
   on('process.run', (_, e) => {
@@ -28,7 +30,10 @@ function engine(on: On, ensure: () => unknown = () => ({ exitCode: 0, stdout: '{
     return { value: ensure() as never }
   })
   on('command.register', () => ({ value: { command: 'agentmon' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', () => {
+    panesOpened += 1
+    return { value: { isPlaced: true } }
+  })
   on('session.id', () => ({ value: sessionId() }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 290000, percent: 29 }, cost: { usd: 1.5 }, rateLimits: [{ kind: 'seven_day', percentUsed: 77 }] } }))
@@ -46,7 +51,7 @@ function posts(on: On) {
   return sent
 }
 
-const onlyPosts = <T extends { method?: string }>(sent: T[]) => sent.filter(s => s.method === 'POST')
+const onlyPosts = <T extends { method?: string; url: string }>(sent: T[]) => sent.filter(s => s.method === 'POST' && s.url.includes('/state/'))
 
 test('toSnapshot maps a session to the contract the page reads', () => {
   const t = LANGUAGES.de!
@@ -70,6 +75,8 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     focus: [{ key: 'k', score: 1, tag: 'tip', color: 'blue', text: 'look', prompt: 'p' }],
     t,
     lang: 'de',
+    isPaneOpen: true,
+    trace: [],
   })
   expect(snap.v).toBe(1)
   expect(snap.usage).toEqual({ ctxPct: 19, rate: [{ kind: 'seven_day', pct: 77 }], usd: 2 })
@@ -79,7 +86,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   // What needs the person comes first, then the insights.
   expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false]])
   expect(snap.lang).toBe('de')
-  expect((snap.labels.page as Record<string, string>).focus).toBe(t.web.page.focus)
+  expect((snap.labels.page as Record<string, string>).events).toBe(t.web.page.events)
   expect(JSON.stringify(snap)).not.toContain('"prompt"')
   expect((snap.labels.result as Record<string, string>).failed).toBe(t.failed)
 
@@ -111,6 +118,8 @@ test('a dismissed item stays away from the page as from the pane', () => {
     focus: [],
     t: LANGUAGES.en!,
     lang: 'en',
+    isPaneOpen: true,
+    trace: [],
   })
   expect(snap.focus).toEqual([])
 })
@@ -140,13 +149,41 @@ test('a session starts the server and posts JSON to it, once while nothing chang
   expect(ensure?.[1]).toMatch(/server\/web\.mjs$/)
   expect(ensure?.at(-1)).toBe('47311')
   expect(onlyPosts(sent).length).toBe(1)
-  expect(sent[0]!.url).toBe('http://127.0.0.1:47311/state/sess-1')
-  expect(sent[0]!.type).toBe('application/json')
-  const body = JSON.parse(sent[0]!.body!) as WebSnapshot
+  const first = onlyPosts(sent)[0]!
+  expect(first.url).toBe('http://127.0.0.1:47311/state/sess-1')
+  expect(first.type).toBe('application/json')
+  const body = JSON.parse(first.body!) as WebSnapshot
   expect(body.session.branch).toBe('main')
   await clock.advance(5000)
   await clock.settle()
   expect(onlyPosts(sent).length).toBe(1)
+})
+
+test('the page closes the pane, a new start keeps it closed, and /agentmon shows it again', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const before = panesOpened
+  const closed: string[] = []
+  on('ui.close', (_, e) => {
+    closed.push(e.id)
+    return { value: undefined }
+  })
+  let pending = true
+  on('http.fetch', (_, e) => {
+    const isAsked = e.url.includes('/pane/') && pending
+    if (isAsked) pending = false
+    return { value: isAsked ? { status: 200, ok: true, headers: {}, text: '{"isOpen":false}' } : { status: 204, ok: true, headers: {}, text: '' } }
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  expect(panesOpened - before).toBe(1)
+  await clock.advance(600)
+  await clock.settle()
+  expect(closed).toEqual(['agentmon-live'])
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  expect(panesOpened - before).toBe(1)
+  await $.command.run({ command: 'agentmon', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })
+  expect(panesOpened - before).toBe(2)
 })
 
 test('a quiet session still posts every 30 s, so the server keeps it', async ($, on) => {
@@ -182,10 +219,16 @@ test('no Node: the pane draws as before, with no button and no posts', async ($,
     throw new Error('spawn node ENOENT')
   })
   const sent = posts(on)
+  const toasts: string[] = []
+  on('ui.toast', (_, e) => {
+    toasts.push(String(e.text))
+    return { value: undefined }
+  })
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
   await clock.advance(2000)
   await clock.settle()
   expect(onlyPosts(sent).length).toBe(0)
+  expect(toasts).toEqual([LANGUAGES.en!.web.failed])
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ key: 'web:open' })).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /AGENTMON LIVE/ })).toBeTruthy()

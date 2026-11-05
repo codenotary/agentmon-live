@@ -21,7 +21,7 @@ import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize
 import { drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadOptions } from './options'
-import { openBrowser, startWeb, stopWeb } from './web'
+import { openBrowser, setPane, startWeb, stopWeb } from './web'
 import type { View } from '../types'
 
 
@@ -33,6 +33,9 @@ const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const,
 const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
+const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
+const KEEP_TRACE = 200
+const TRACE_TEXT = 300
 const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
@@ -313,7 +316,7 @@ export const register: Register = on => {
       update($, calls, list => list.map(c => (c.result === 'running' ? { ...c, result: t.unknown } : c))),
       update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
-    void $.ui.open({ id: PANE, title: 'AgentMon Live' })
+    if (!(await read($, layout)).isPaneHidden) void $.ui.open({ id: PANE, title: 'AgentMon Live' })
     // Reading the build and the status line need not hold up the session.
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
@@ -392,7 +395,7 @@ export const register: Register = on => {
     const v = VIEWS.find(x => x === arg.toLowerCase())
     if (v) {
       await update($, view, () => v)
-      await $.ui.open({ id: PANE, title: 'AgentMon Live' })
+      await setPane($, true)
       return { text: `AgentMon Live: ${t.cat[v]}` }
     }
     if (CLEAR_ARGS.includes(arg)) {
@@ -419,7 +422,7 @@ export const register: Register = on => {
       await refreshStatus($)
       return { text: t.cleared }
     }
-    await $.ui.open({ id: PANE, title: 'AgentMon Live' })
+    await setPane($, true)
     return { text: t.opened }
   }).catch(($, e, next) => ({ text: `agentmon-live: the command failed (${next.error.message ?? next.error.kind})` }))
 
@@ -579,6 +582,7 @@ export const register: Register = on => {
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
       update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => (tick($), pulse($))),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
+      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT) }].slice(-KEEP_TRACE)),
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
@@ -610,6 +614,7 @@ export const register: Register = on => {
       await Promise.all([
         update($, active, all => all.filter(a => a.id !== callId)),
         ran === undefined && tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: t.unknown } : c))),
+        ran === undefined && $.clock.now().then(end => update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: end - startedAt, isFailed: true } : c)))),
         ran === undefined && found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: 'unknown' as const } : c))),
       ])
     }
@@ -689,6 +694,7 @@ export const register: Register = on => {
         update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
         update($, flow, all => [...all, { cat, at }].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
+        update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}) } : c))),
         found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
         !failed && sized && recordSize($, sized),

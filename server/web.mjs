@@ -1,7 +1,6 @@
-// shortcut: a server left from an older plugin version serves its old page until it idles out; add a version handshake when the contract changes often.
-import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { get, createServer } from 'node:http'
+import { spawn, spawnSync } from 'node:child_process'
+import { readFileSync, statSync } from 'node:fs'
+import { createServer, get, request } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -19,6 +18,11 @@ const HEADERS = {
   'content-security-policy': "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
   'x-content-type-options': 'nosniff',
   'cache-control': 'no-store',
+}
+
+// Which server is newer: file times, because a rebuild keeps the version and a total order stops two sessions replacing each other in turn.
+function stampOfFiles() {
+  return Math.max(statSync(join(HERE, 'app.html')).mtimeMs, statSync(fileURLToPath(import.meta.url)).mtimeMs)
 }
 
 function envMs(name, fallback) {
@@ -41,11 +45,18 @@ function isWriteAllowed(req) {
   return req.headers.origin === undefined && (req.headers['content-type'] ?? '').split(';')[0].trim() === 'application/json'
 }
 
+// The page's own button: a browser always sends Origin on a POST, and another site's is not one of these.
+function isOwnPage(req, port) {
+  return req.headers.origin === `http://127.0.0.1:${port}` || req.headers.origin === `http://localhost:${port}`
+}
+
 function serve(port, fixture) {
+  const stamp = stampOfFiles()
   // In memory, so a plugin update that removes this folder leaves a running server whole.
   const page = readFileSync(join(HERE, 'app.html'))
   const fonts = new Map(FONTS.map(f => [f, readFileSync(join(HERE, 'fonts', f))]))
   const sessions = new Map()
+  const paneRequests = new Map()
   const clients = new Set()
   const ttlMs = envMs('AGENTMON_WEB_TTL_MS', 90_000)
   const idleMs = envMs('AGENTMON_WEB_IDLE_MS', 60_000)
@@ -58,6 +69,7 @@ function serve(port, fixture) {
   const packed = (id, json) => `{"id":${JSON.stringify(id)},"snapshot":${json}}`
   const drop = id => {
     sessions.delete(id)
+    paneRequests.delete(id)
     if (sessions.size === 0) idleSince = Date.now()
     broadcast('removed', JSON.stringify({ id }))
   }
@@ -70,19 +82,41 @@ function serve(port, fixture) {
 
     if (req.method === 'GET') {
       if (path === '/') return reply(res, 200, 'text/html; charset=utf-8', page)
-      if (path === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, pid: process.pid, sessions: sessions.size }))
+      if (path === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, pid: process.pid, sessions: sessions.size, stamp }))
       if (path.startsWith('/fonts/')) {
         const font = fonts.get(path.slice('/fonts/'.length))
         return font ? reply(res, 200, 'font/woff2', font) : reply(res, 404, 'text/plain', 'not found')
       }
       if (path === '/events') {
         res.writeHead(200, { ...HEADERS, 'content-type': 'text/event-stream' })
+        send(res, 'build', String(stamp))
         for (const [id, s] of sessions) send(res, 'snapshot', packed(id, s.json))
         clients.add(res)
         req.on('close', () => clients.delete(res))
         return undefined
       }
       return reply(res, 404, 'text/plain', 'not found')
+    }
+
+    if (path === '/quit' && req.method === 'POST') {
+      if (!isWriteAllowed(req)) return reply(res, 403, 'text/plain', 'forbidden')
+      res.on('finish', () => process.exit(0))
+      return reply(res, 204)
+    }
+
+    const asked = path.match(/^\/pane\/([\w-]{1,80})\/(open|close)$/)
+    if (asked && req.method === 'POST') {
+      if (!isOwnPage(req, port)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!sessions.has(asked[1])) return reply(res, 404, 'text/plain', 'not found')
+      paneRequests.set(asked[1], asked[2] === 'open')
+      return reply(res, 204)
+    }
+    const taken = path.match(/^\/pane\/([\w-]{1,80})$/)
+    if (taken && req.method === 'POST') {
+      if (!isWriteAllowed(req)) return reply(res, 403, 'text/plain', 'forbidden')
+      const isOpen = paneRequests.get(taken[1])
+      paneRequests.delete(taken[1])
+      return isOpen === undefined ? reply(res, 204) : reply(res, 200, 'application/json', JSON.stringify({ isOpen }))
     }
 
     const match = /^\/state\/([\w-]{1,80})$/.exec(path)
@@ -131,38 +165,63 @@ function serve(port, fixture) {
   server.listen(port, '127.0.0.1')
 }
 
+// No shared agent: a kept-alive socket to a server that just quit would read as a port someone else holds.
 function probe(port) {
   return new Promise(resolve => {
-    const req = get({ host: '127.0.0.1', port, path: '/health', timeout: 1000 }, res => {
+    const req = get({ host: '127.0.0.1', port, path: '/health', timeout: 1000, agent: false }, res => {
       let text = ''
       res.on('data', d => (text += d))
       res.on('end', () => {
         try {
-          resolve(JSON.parse(text).name === NAME ? 'ours' : 'other')
+          const { name, stamp } = JSON.parse(text)
+          // A server from before the stamp cannot be told to quit: leave it to idle out, on its port.
+          resolve(name === NAME && typeof stamp === 'number' ? { state: 'ours', stamp } : { state: 'other' })
         } catch {
-          resolve('other')
+          resolve({ state: 'other' })
         }
       })
     })
     req.on('timeout', () => req.destroy())
-    req.on('error', e => resolve(e.code === 'ECONNREFUSED' ? 'free' : 'other'))
+    req.on('error', e => resolve({ state: e.code === 'ECONNREFUSED' ? 'free' : 'other' }))
+  })
+}
+
+function askToQuit(port) {
+  return new Promise(resolve => {
+    const req = request({ host: '127.0.0.1', port, path: '/quit', method: 'POST', headers: { 'content-type': 'application/json' }, timeout: 1000, agent: false }, res => {
+      res.resume()
+      res.on('end', resolve)
+    })
+    req.on('timeout', () => req.destroy())
+    req.on('error', resolve)
+    req.end('{}')
   })
 }
 
 // Detached with no pipes: the mod's `$.process.run` waits for this process's output to close, and the server outlives the session.
 async function ensure(startPort) {
+  const mine = stampOfFiles()
+  const isOlder = found => found.state === 'ours' && found.stamp < mine
   for (let port = startPort; port < startPort + PORT_TRIES; port += 1) {
-    let state = await probe(port)
-    if (state === 'free') {
+    let found = await probe(port)
+    // shortcut: an older session that finds the port free in this gap can win it; the next ensure from a newer session replaces that server.
+    if (isOlder(found)) {
+      await askToQuit(port)
+      for (let i = 0; i < 60 && isOlder(found); i += 1) {
+        await new Promise(done => setTimeout(done, 50))
+        found = await probe(port)
+      }
+    }
+    if (found.state === 'free') {
       const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'serve', String(port)], { detached: true, stdio: 'ignore', windowsHide: true })
       child.unref()
       // Two sessions starting together: the loser's server exits on the taken port, and this probe finds the winner's.
-      for (let i = 0; i < 60 && state === 'free'; i += 1) {
+      for (let i = 0; i < 60 && found.state === 'free'; i += 1) {
         await new Promise(done => setTimeout(done, 50))
-        state = await probe(port)
+        found = await probe(port)
       }
     }
-    if (state === 'ours') {
+    if (found.state === 'ours') {
       process.stdout.write(`${JSON.stringify({ port })}\n`)
       return 0
     }
@@ -170,18 +229,25 @@ async function ensure(startPort) {
   return 1
 }
 
-// shortcut: success means the opener started, not that a browser appeared; wait for its exit if people report silent failures over SSH.
+// An SSH shell has no DISPLAY even when the person has a desktop session on this machine; systemd knows that session's.
+function desktopEnv() {
+  if (process.platform !== 'linux' || process.env.DISPLAY || process.env.WAYLAND_DISPLAY) return process.env
+  const { stdout } = spawnSync('systemctl', ['--user', 'show-environment'], { encoding: 'utf8', timeout: 2000 })
+  const found = (stdout ?? '').split('\n').map(line => /^(DISPLAY|WAYLAND_DISPLAY|XAUTHORITY)=(.*)$/.exec(line)).filter(Boolean)
+  return { ...process.env, ...Object.fromEntries(found.map(m => [m[1], m[2]])) }
+}
+
 // The regex is what makes `cmd /c` safe here: it leaves no character the Windows shell would act on.
 function open(url) {
   if (!/^http:\/\/127\.0\.0\.1:\d{1,5}\/?$/.test(url ?? '')) return Promise.resolve(2)
   const argv = process.platform === 'win32' ? ['cmd', '/c', 'start', '', url] : [process.platform === 'darwin' ? 'open' : 'xdg-open', url]
   return new Promise(resolve => {
-    const child = spawn(argv[0], argv.slice(1), { detached: true, stdio: 'ignore', windowsHide: true })
+    const child = spawn(argv[0], argv.slice(1), { detached: true, stdio: 'ignore', windowsHide: true, env: desktopEnv() })
     child.on('error', () => resolve(1))
-    child.on('spawn', () => {
-      child.unref()
-      resolve(0)
-    })
+    child.on('exit', code => resolve(code === 0 ? 0 : 1))
+    child.unref()
+    // An opener that starts the browser itself stays until the browser closes; one that failed has exited by now.
+    setTimeout(() => resolve(0), 2000)
   })
 }
 

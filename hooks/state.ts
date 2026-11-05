@@ -52,6 +52,7 @@ export const INIT = {
   stats: { errors: {}, compactions: 0, streak: 0 },
   calls: [],
   testReview: { files: [], dropped: [], isGreen: false },
+  trace: [],
   view: 'git' as View,
   active: [],
   checks: [],

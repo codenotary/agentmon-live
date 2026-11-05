@@ -293,6 +293,7 @@ test('clear keeps running agents and drops history', async ($, on) => {
 })
 
 test('an advisor answer that arrives after a clear is dropped', async ($, on) => {
+  withOptions(on, { web: 'off' })
   const clock = mock.clock(on)
   const toasts: string[] = []
   engine(on)
@@ -659,6 +660,7 @@ test('check now asks Fable at once, from the button and the command', async ($, 
 })
 
 test('an advisor answer that arrives after a reload is dropped', async ($, on) => {
+  withOptions(on, { web: 'off' })
   const clock = mock.clock(on)
   const toasts: string[] = []
   engine(on)

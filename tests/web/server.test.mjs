@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -123,6 +124,25 @@ test('a web page cannot write: Origin or the wrong type is refused', async () =>
   assert.equal((await call(47416, '/state/s', { method: 'DELETE', headers: { 'content-type': 'application/json', origin: 'null' } })).status, 403)
 })
 
+test('the page asks for the pane, another site cannot, and the session takes it once', async () => {
+  startServer(47419)
+  await waitUp(47419)
+  await post(47419, 's', { v: 1 })
+  const ask = (path, origin) => call(47419, path, { method: 'POST', headers: origin ? { origin } : {} })
+  const take = (headers = {}) => call(47419, '/pane/s', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: '{}' })
+  assert.equal((await ask('/pane/s/close', 'https://evil.example')).status, 403)
+  assert.equal((await ask('/pane/s/close', 'null')).status, 403)
+  assert.equal((await ask('/pane/s/close')).status, 403)
+  assert.equal((await take()).status, 204)
+  assert.equal((await ask('/pane/gone/close', 'http://127.0.0.1:47419')).status, 404)
+  assert.equal((await ask('/pane/s/close', 'http://127.0.0.1:47419')).status, 204)
+  assert.equal((await take({ origin: 'http://127.0.0.1:47419' })).status, 403)
+  const r = await take()
+  assert.equal(r.status, 200)
+  assert.deepEqual(JSON.parse(r.text), { isOpen: false })
+  assert.equal((await take()).status, 204)
+})
+
 test('a bad id or body is refused', async () => {
   startServer(47417)
   await waitUp(47417)
@@ -165,14 +185,71 @@ test('ensure moves past a port someone else holds', async () => {
   assert.deepEqual(JSON.parse(out), { port: 47441 })
 })
 
+// The server folder with files from long ago, so the real one counts as newer.
+function olderCopy() {
+  const dir = mkdtempSync(join(tmpdir(), 'agentmon-old-'))
+  cpSync(dirname(WEB), dir, { recursive: true })
+  const then = new Date('2020-01-01')
+  for (const f of ['web.mjs', 'app.html']) utimesSync(join(dir, f), then, then)
+  return join(dir, 'web.mjs')
+}
+const SHORT = { AGENTMON_WEB_TTL_MS: '500', AGENTMON_WEB_IDLE_MS: '500', AGENTMON_WEB_SWEEP_MS: '100' }
+
+test('ensure from newer files replaces an older server, on the same port', async () => {
+  const old = olderCopy()
+  const child = spawn(process.execPath, [old, 'serve', '47450'], { stdio: 'ignore' })
+  children.push(child)
+  const before = JSON.parse((await waitUp(47450)).text)
+  const gone = new Promise(done => child.on('exit', done))
+  const r = spawnSync(process.execPath, [WEB, 'ensure', '47450'], { env: { ...process.env, ...SHORT }, encoding: 'utf8', timeout: 8000 })
+  assert.deepEqual(JSON.parse(r.stdout), { port: 47450 })
+  assert.equal(await gone, 0)
+  const after = JSON.parse((await waitUp(47450)).text)
+  assert.notEqual(after.pid, before.pid)
+  assert.ok(after.stamp > before.stamp)
+  const text = await readEvents(47450, t => t.includes('event: build'))
+  assert.match(text, new RegExp(`event: build\\ndata: ${after.stamp}`))
+})
+
+test('ensure from older files leaves a newer server alone', async () => {
+  startServer(47451)
+  const before = JSON.parse((await waitUp(47451)).text)
+  const r = spawnSync(process.execPath, [olderCopy(), 'ensure', '47451'], { env: { ...process.env, ...SHORT }, encoding: 'utf8', timeout: 8000 })
+  assert.deepEqual(JSON.parse(r.stdout), { port: 47451 })
+  assert.equal(JSON.parse((await waitUp(47451)).text).pid, before.pid)
+})
+
+test('a server from before the stamp keeps its port; ensure moves on', async () => {
+  const legacy = createServer((_, res) => res.end(JSON.stringify({ name: 'agentmon-live', pid: 1, sessions: 0 })))
+  await new Promise(done => legacy.listen(47452, '127.0.0.1', done))
+  const child = spawn(process.execPath, [WEB, 'ensure', '47452'], { env: { ...process.env, ...SHORT }, stdio: ['ignore', 'pipe', 'ignore'] })
+  let out = ''
+  child.stdout.on('data', d => (out += d))
+  const code = await new Promise(done => child.on('exit', done))
+  legacy.close()
+  assert.equal(code, 0)
+  assert.deepEqual(JSON.parse(out), { port: 47453 })
+})
+
+test('a web page cannot make the server quit', async () => {
+  startServer(47454)
+  await waitUp(47454)
+  assert.equal((await call(47454, '/quit', { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' } })).status, 403)
+  assert.equal((await call(47454, '/quit', { method: 'POST', headers: { 'content-type': 'text/plain' } })).status, 403)
+  assert.equal((await waitUp(47454)).status, 200)
+})
+
 test('open takes only a loopback address', () => {
   const r = spawnSync(process.execPath, [WEB, 'open', 'https://evil.example/'], { encoding: 'utf8' })
   assert.equal(r.status, 2)
 })
 
 test('the page puts no tool text through HTML', () => {
-  const page = readFileSync(join(dirname(WEB), 'app.html'), 'utf8')
-  assert.doesNotMatch(page, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/)
+  // The source, not the built page: react-dom's own code names these, and React escapes what the source hands it.
+  const dir = join(dirname(WEB), '../web/src')
+  const files = readdirSync(dir, { recursive: true }).filter(f => /\.tsx?$/.test(f))
+  assert.ok(files.length > 0)
+  for (const f of files) assert.doesNotMatch(readFileSync(join(dir, f), 'utf8'), /innerHTML|outerHTML|insertAdjacentHTML|document\.write/i, f)
 })
 
 test('the fixture the page is drawn from keeps the snapshot shape', () => {
@@ -181,4 +258,33 @@ test('the fixture the page is drawn from keeps the snapshot shape', () => {
   assert.deepEqual(keys(fixture), [...SHAPE.top].sort())
   for (const part of ['session', 'usage', 'insights', 'learned', 'labels']) assert.deepEqual(keys(fixture[part]), [...SHAPE[part]].sort())
   assert.deepEqual(keys(fixture.labels.page), [...SHAPE.page].sort())
+})
+
+// Stand-ins on the PATH, so the test opens no real browser: `xdg-open` records the display it was given.
+function fakeOpener(xdgBody, systemdOut) {
+  const dir = mkdtempSync(join(tmpdir(), 'agentmon-open-'))
+  const write = (name, body) => writeFileSync(join(dir, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 })
+  write('xdg-open', xdgBody.replace('$OUT', join(dir, 'out')))
+  write('systemctl', `printf '${systemdOut}'`)
+  const { DISPLAY, WAYLAND_DISPLAY, ...env } = process.env
+  return { dir, env: { ...env, PATH: dir } }
+}
+
+test('over SSH, open finds the desktop session\'s display', { skip: process.platform !== 'linux' }, () => {
+  const { dir, env } = fakeOpener('echo "$DISPLAY" > $OUT', 'HOME=/x\\nDISPLAY=:77\\n')
+  const r = spawnSync(process.execPath, [WEB, 'open', 'http://127.0.0.1:47311/'], { env, encoding: 'utf8' })
+  assert.equal(r.status, 0)
+  assert.equal(readFileSync(join(dir, 'out'), 'utf8').trim(), ':77')
+})
+
+test('an opener that fails is reported, not taken for success', { skip: process.platform !== 'linux' }, () => {
+  const { env } = fakeOpener('exit 3', '')
+  const r = spawnSync(process.execPath, [WEB, 'open', 'http://127.0.0.1:47311/'], { env, encoding: 'utf8' })
+  assert.equal(r.status, 1)
+})
+
+test('an opener that stays running counts as opened', { skip: process.platform !== 'linux' }, () => {
+  const { env } = fakeOpener('/bin/sleep 5', '')
+  const r = spawnSync(process.execPath, [WEB, 'open', 'http://127.0.0.1:47311/'], { env, encoding: 'utf8' })
+  assert.equal(r.status, 0)
 })

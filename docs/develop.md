@@ -20,7 +20,7 @@ npx -p typescript tsc --noEmit -p .
 | `hooks/done.ts` | The done gate's material, checks and per-turn state |
 | `hooks/clock.ts` | The turn clock: where a turn's time went |
 | `hooks/release.ts` | Build label, release check and base-branch watch |
-| `hooks/web.ts`, `server/web.mjs`, `server/app.html` | The web view: publisher, local server, page |
+| `hooks/web.ts`, `server/web.mjs`, `web/` (builds `server/app.html`) | The web view: publisher, local server, page |
 | `hooks/render.tsx` | The pane |
 | `hooks/insights.ts` | The Focus rules and their thresholds, time and context helpers |
 | `hooks/learn.ts`, `hooks/learning.ts`, `hooks/bench.ts` | What is learned across sessions: the pure rules, the store and commands, and the self benchmark |
@@ -36,20 +36,28 @@ npx -p typescript tsc --noEmit -p .
 
 ### Work on the web view
 
-The server and the page have no build step. To draw the page without a session:
+The server has no build step. The page does: its source is in `web/` (React, Tailwind, Radix, Motion), and `npm run build` inlines it into the committed `server/app.html`, so users install nothing. Never edit `server/app.html` by hand. A test fails if the page is older than its source.
+
+```sh
+cd web && npm ci && npm run build
+```
+
+To draw the page from the fixture, with no session:
 
 ```sh
 node server/web.mjs serve 47390 --fixture tests/fixtures/snapshot.json
 ```
 
-Then open `http://127.0.0.1:47390/`. Server tests run with `node --test 'tests/web/*.test.mjs'`, because `claude plugin test` has no Node. For screenshots in light, dark and at phone width, which also report script errors and sideways scrolling:
+Then open `http://127.0.0.1:47390/`. With that server running, `npm run dev` in `web/` serves the page with hot reload. To watch live motion, `node scripts/web-demo.mjs` posts two changing sessions.
+
+Server tests run with `node --test 'tests/web/*.test.mjs'`, because `claude plugin test` has no Node. For screenshots in light, dark, at phone width, with the palette and with a call's details open, which also report script errors, sideways scrolling and broken navigation (rail links, back button, deep links, the `/` key):
 
 ```sh
 npm i --no-save playwright && npx playwright install chromium
 node scripts/web-shot.mjs <out dir>
 ```
 
-The design tokens in `server/app.html` are copied from `frontend/design-system/src/index.css` in `agentmon-teams`. Update them by hand when that file changes. `toSnapshot` in `hooks/web.ts` is the only code that knows both the state's and the page's shapes.
+The design tokens in `web/src/theme.css` are copied from `frontend/design-system/src/index.css` in `agentmon-teams`. Update them by hand when that file changes. `toSnapshot` in `hooks/web.ts` is the only code that knows both the state's and the page's shapes.
 
 ### See the pane from a script
 

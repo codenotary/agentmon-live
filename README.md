@@ -31,7 +31,9 @@ h: history   d: details
 
 [![AgentMon Live demo: the done gate catches a failing test before Claude stops](docs/demo.png)](https://asciinema.org/a/1270436)
 
-![AgentMon Live web view: Focus, usage tiles, where each turn went, tool calls, changes and verification](docs/web-view.png)
+![AgentMon Live web view: navigation rail, gauges, turn waterfall and events](docs/web-view.png)
+
+The web view needs `node` on your `PATH`, which Claude Code does not include. Everything else works without it.
 
 ## Why you want it
 

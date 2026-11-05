@@ -1,68 +1,623 @@
 {
   "v": 1,
-  "session": { "id": "fixture", "cwd": "/home/dev/github/agent-radar", "branch": "browser-screen" },
+  "session": {
+    "id": "fixture",
+    "cwd": "/home/dev/github/agent-radar",
+    "branch": "browser-screen"
+  },
   "now": 1793803000000,
   "lang": "en",
   "labels": {
-    "page": { "disconnected": "Disconnected from the session server. Trying again…", "noSessions": "No session is running. Start Claude Code and this page fills in.", "update": "This session runs a different AgentMon Live version. Update it to see everything here.", "cache": "cache", "tokensIn": "in", "tokensOut": "out", "context": "Context", "quota": "7-day quota", "cost": "Session cost", "turns": "Turns", "focus": "Focus", "running": "Running now", "turnClock": "Where each turn went", "toolCalls": "Tool calls", "when": "When", "who": "Who", "what": "What", "result": "Result", "changes": "Changes and verification", "edited": "Edited", "read": "Read", "subagents": "Subagents", "insights": "Insights", "slow": "Slowest calls", "big": "Largest results", "tasks": "Tasks", "log": "Session log", "search": "Search the log", "learning": "Across sessions", "sessions": "Sessions", "calls": "Calls", "errors": "Errors", "none": "Nothing yet." },
-    "status": { "running": "running", "waiting": "waiting", "done": "done", "error": "error", "cancelled": "cancelled" },
-    "check": { "test": "tests", "lint": "lint", "typecheck": "types", "build": "build" },
-    "cat": { "git": "git", "shell": "shell", "edit": "edit" },
-    "result": { "ok": "ok", "failed": "failed", "unknown": "unknown", "running": "running" },
-    "buckets": { "model": "model", "shell": "shell", "edit": "edit", "read": "read files", "you": "waiting on you", "idle": "between steps", "agents": "agents" }
+    "page": {
+      "disconnected": "Disconnected from the session server. Trying again…",
+      "noSessions": "No session is running. Start Claude Code and this page fills in.",
+      "update": "This session runs a different AgentMon Live version. Update it to see everything here.",
+      "cache": "cache",
+      "tokensIn": "in",
+      "tokensOut": "out",
+      "context": "Context",
+      "quota": "7-day quota",
+      "cost": "Session cost",
+      "turns": "Turns",
+      "running": "Running now",
+      "turnClock": "Where each turn went",
+      "toolCalls": "Tool calls",
+      "when": "When",
+      "who": "Who",
+      "what": "What",
+      "result": "Result",
+      "edited": "Edited",
+      "read": "Read",
+      "subagents": "Subagents",
+      "insights": "Insights",
+      "slow": "Slowest calls",
+      "big": "Largest results",
+      "tasks": "Tasks",
+      "log": "Session log",
+      "search": "Search the log",
+      "learning": "Across sessions",
+      "sessions": "Sessions",
+      "calls": "Calls",
+      "errors": "Errors",
+      "none": "Nothing yet.",
+      "live": "live",
+      "idle": "idle",
+      "quota5h": "5-hour quota",
+      "cacheHit": "Cache hit",
+      "tokens": "Tokens",
+      "commands": "Commands",
+      "paletteHint": "Type a command…",
+      "jumpTo": "Jump to",
+      "actions": "Actions",
+      "themeAuto": "Theme: system",
+      "themeDark": "Theme: dark",
+      "themeLight": "Theme: light",
+      "copyCwd": "Copy the working directory",
+      "onlyFailures": "Only failures",
+      "showAll": "Show all calls",
+      "filterCalls": "Filter calls",
+      "everyone": "Everyone",
+      "follow": "Follow",
+      "copy": "Copy",
+      "copied": "Copied",
+      "details": "Call details",
+      "error": "Error",
+      "noMatch": "No match.",
+      "verification": "Verification",
+      "files": "Files",
+      "overview": "Overview",
+      "events": "Events",
+      "cleared": "cleared",
+      "paneHide": "Hide the pane in Claude Code",
+      "paneShow": "Show the pane in Claude Code",
+      "waterfall": "Turn waterfall",
+      "prevTurn": "Previous turn",
+      "nextTurn": "Next turn"
+    },
+    "status": {
+      "running": "running",
+      "waiting": "waiting",
+      "done": "done",
+      "error": "error",
+      "cancelled": "cancelled"
+    },
+    "check": {
+      "test": "tests",
+      "lint": "lint",
+      "typecheck": "types",
+      "build": "build"
+    },
+    "cat": {
+      "git": "git",
+      "shell": "shell",
+      "edit": "edit"
+    },
+    "result": {
+      "ok": "ok",
+      "failed": "failed",
+      "unknown": "unknown",
+      "running": "running"
+    },
+    "buckets": {
+      "model": "model",
+      "shell": "shell",
+      "edit": "edit",
+      "read": "read files",
+      "you": "waiting on you",
+      "idle": "between steps",
+      "agents": "agents"
+    },
+    "main": "main session"
   },
-  "main": { "model": "claude-opus-5-5", "effort": "high", "turnAt": 1793802900000, "turnLive": true },
+  "main": {
+    "model": "claude-opus-5-5",
+    "effort": "high",
+    "turnAt": 1793802900000,
+    "turnLive": true
+  },
   "focus": [
-    { "key": "check:test:1", "tag": "failed", "text": "tests npm test", "isUrgent": true },
-    { "key": "ctx", "tag": "context", "text": "Context is 62% full. /compact before the next large task.", "isUrgent": false }
+    {
+      "key": "check:test:1",
+      "tag": "failed",
+      "text": "tests npm test",
+      "isUrgent": true
+    },
+    {
+      "key": "ctx",
+      "tag": "context",
+      "text": "Context is 62% full. /compact before the next large task.",
+      "isUrgent": false
+    }
   ],
-  "usage": { "ctxPct": 62, "rate": [{ "kind": "five_hour", "pct": 12 }, { "kind": "seven_day", "pct": 77 }], "usd": 8.42 },
+  "usage": {
+    "ctxPct": 62,
+    "rate": [
+      {
+        "kind": "five_hour",
+        "pct": 12
+      },
+      {
+        "kind": "seven_day",
+        "pct": 77
+      }
+    ],
+    "usd": 8.42
+  },
   "turns": [
-    { "startedAt": 1793800100000, "wallMs": 42000, "buckets": { "model": 21000, "read": 12000, "shell": 6000, "idle": 3000 } },
-    { "startedAt": 1793800300000, "wallMs": 118000, "buckets": { "model": 58000, "shell": 40000, "edit": 15000, "idle": 5000 } },
-    { "startedAt": 1793800700000, "wallMs": 305000, "buckets": { "model": 90000, "agents": 150000, "you": 45000, "shell": 12000, "idle": 8000 } },
-    { "startedAt": 1793801500000, "wallMs": 76000, "buckets": { "model": 40000, "edit": 22000, "read": 9000, "idle": 5000 } },
-    { "startedAt": 1793802900000, "wallMs": 100000, "buckets": { "model": 60000, "shell": 40000 }, "isLive": true }
+    {
+      "startedAt": 1793800100000,
+      "wallMs": 42000,
+      "buckets": {
+        "model": 21000,
+        "read": 12000,
+        "shell": 6000,
+        "idle": 3000
+      }
+    },
+    {
+      "startedAt": 1793800300000,
+      "wallMs": 118000,
+      "buckets": {
+        "model": 58000,
+        "shell": 40000,
+        "edit": 15000,
+        "idle": 5000
+      }
+    },
+    {
+      "startedAt": 1793800700000,
+      "wallMs": 305000,
+      "buckets": {
+        "model": 90000,
+        "agents": 150000,
+        "you": 45000,
+        "shell": 12000,
+        "idle": 8000
+      }
+    },
+    {
+      "startedAt": 1793801500000,
+      "wallMs": 240000,
+      "buckets": {
+        "model": 120000,
+        "read": 50000,
+        "shell": 45000,
+        "idle": 25000
+      }
+    },
+    {
+      "startedAt": 1793801900000,
+      "wallMs": 420000,
+      "buckets": {
+        "agents": 210000,
+        "model": 130000,
+        "shell": 50000,
+        "edit": 30000
+      }
+    },
+    {
+      "startedAt": 1793802500000,
+      "wallMs": 350000,
+      "buckets": {
+        "model": 170000,
+        "edit": 90000,
+        "you": 60000,
+        "shell": 30000
+      }
+    },
+    {
+      "startedAt": 1793802900000,
+      "wallMs": 100000,
+      "buckets": {
+        "model": 60000,
+        "shell": 40000
+      },
+      "isLive": true
+    }
   ],
-  "turnCount": 4,
-  "active": [{ "id": "a1", "who": "main", "tool": "Bash", "what": "npm test", "startedAt": 1793802990000 }],
+  "turnCount": 7,
+  "active": [
+    {
+      "id": "a1",
+      "who": "main session",
+      "tool": "Bash",
+      "what": "npm test",
+      "startedAt": 1793802990000
+    }
+  ],
   "calls": [
-    { "at": 1793802950000, "who": "main", "view": "shell", "what": "npm test", "result": "failed", "error": "1 failing" },
-    { "at": 1793802800000, "who": "main", "view": "git", "what": "git status", "result": "ok" },
-    { "at": 1793802700000, "who": "Explore", "view": "mcp", "what": "mcp__codegraph__codegraph_search a very long argument that has to wrap on a narrow phone screen without a horizontal page scroll", "result": "ok" },
-    { "at": 1793802990000, "who": "main", "view": "shell", "what": "npm run build", "result": "running" }
+    {
+      "at": 1793801440000,
+      "who": "main session",
+      "view": "git",
+      "what": "git diff --stat",
+      "result": "ok"
+    },
+    {
+      "at": 1793801560000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm run lint",
+      "result": "ok"
+    },
+    {
+      "at": 1793801620000,
+      "who": "Explore",
+      "view": "mcp",
+      "what": "codegraph_search toSnapshot",
+      "result": "ok"
+    },
+    {
+      "at": 1793801650000,
+      "who": "Explore",
+      "view": "mcp",
+      "what": "codegraph_callers publish",
+      "result": "ok"
+    },
+    {
+      "at": 1793801800000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npx tsc --noEmit -p .",
+      "result": "ok"
+    },
+    {
+      "at": 1793801960000,
+      "who": "tester",
+      "view": "shell",
+      "what": "node --test tests/web",
+      "result": "failed",
+      "error": "server.test.mjs: 1 failing"
+    },
+    {
+      "at": 1793802040000,
+      "who": "tester",
+      "view": "shell",
+      "what": "node --test tests/web",
+      "result": "ok"
+    },
+    {
+      "at": 1793802120000,
+      "who": "reviewer",
+      "view": "git",
+      "what": "git log -5 --oneline",
+      "result": "ok"
+    },
+    {
+      "at": 1793802280000,
+      "who": "main session",
+      "view": "git",
+      "what": "git add -p",
+      "result": "ok"
+    },
+    {
+      "at": 1793802360000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm run build",
+      "result": "ok"
+    },
+    {
+      "at": 1793802480000,
+      "who": "reviewer",
+      "view": "mcp",
+      "what": "codegraph_impact toSnapshot",
+      "result": "ok"
+    },
+    {
+      "at": 1793802580000,
+      "who": "main session",
+      "view": "shell",
+      "what": "node scripts/web-shot.mjs out",
+      "result": "ok"
+    },
+    {
+      "at": 1793802660000,
+      "who": "main session",
+      "view": "git",
+      "what": "git status --short",
+      "result": "ok"
+    },
+    {
+      "at": 1793802740000,
+      "who": "tester",
+      "view": "shell",
+      "what": "npx playwright test",
+      "result": "ok"
+    },
+    {
+      "at": 1793802870000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm test -- --watch=false",
+      "result": "failed",
+      "error": "1 failing: the page puts no tool text through HTML"
+    },
+    {
+      "at": 1793802910000,
+      "who": "tester",
+      "view": "shell",
+      "what": "node --test tests/web/page.test.mjs",
+      "result": "ok"
+    },
+    {
+      "at": 1793802950000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm test",
+      "result": "failed",
+      "error": "1 failing"
+    },
+    {
+      "at": 1793802800000,
+      "who": "main session",
+      "view": "git",
+      "what": "git status",
+      "result": "ok"
+    },
+    {
+      "at": 1793802700000,
+      "who": "Explore",
+      "view": "mcp",
+      "what": "mcp__codegraph__codegraph_search a very long argument that has to wrap on a narrow phone screen without a horizontal page scroll",
+      "result": "ok"
+    },
+    {
+      "at": 1793802990000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm run build",
+      "result": "running"
+    }
   ],
   "agents": [
-    { "id": "ag1", "type": "Explore", "model": "haiku", "effort": "", "task": "Find the session atoms", "status": "done", "files": 3, "tools": 9, "input": 1000, "output": 200, "startedAt": 1793801000000, "endedAt": 1793801100000 },
-    { "id": "ag2", "type": "tester", "model": "sonnet", "effort": "", "task": "Run the server tests", "status": "running", "files": 0, "tools": 2, "input": 400, "output": 50, "startedAt": 1793802900000 }
+    {
+      "id": "ag1",
+      "type": "Explore",
+      "model": "haiku",
+      "effort": "",
+      "task": "Find the session atoms",
+      "status": "done",
+      "files": 3,
+      "tools": 9,
+      "input": 1000,
+      "output": 200,
+      "startedAt": 1793801000000,
+      "endedAt": 1793801100000
+    },
+    {
+      "id": "ag3",
+      "type": "reviewer",
+      "model": "opus",
+      "effort": "high",
+      "task": "Check the snapshot contract",
+      "status": "done",
+      "files": 6,
+      "tools": 14,
+      "input": 3200,
+      "output": 640,
+      "startedAt": 1793802100000,
+      "endedAt": 1793802500000
+    },
+    {
+      "id": "ag2",
+      "type": "tester",
+      "model": "sonnet",
+      "effort": "",
+      "task": "Run the server tests",
+      "status": "running",
+      "files": 0,
+      "tools": 2,
+      "input": 400,
+      "output": 50,
+      "startedAt": 1793802947000
+    }
   ],
   "checks": [
-    { "kind": "test", "command": "npm test", "who": "main", "at": 1793802950000, "result": "failed" },
-    { "kind": "typecheck", "command": "tsc --noEmit", "who": "main", "at": 1793802000000, "result": "ok" }
+    {
+      "kind": "test",
+      "command": "npm test",
+      "who": "main session",
+      "at": 1793802950000,
+      "result": "failed"
+    },
+    {
+      "kind": "typecheck",
+      "command": "tsc --noEmit",
+      "who": "main session",
+      "at": 1793802000000,
+      "result": "ok"
+    }
   ],
-  "files": { "read": ["/home/dev/github/agent-radar/hooks/render.tsx", "/home/dev/github/agent-radar/hooks/state.ts"], "edited": ["/home/dev/github/agent-radar/hooks/web.ts", "/home/dev/github/agent-radar/server/web.mjs"], "editedAt": 1793802900000 },
+  "files": {
+    "read": [
+      "/home/dev/github/agent-radar/hooks/render.tsx",
+      "/home/dev/github/agent-radar/hooks/state.ts"
+    ],
+    "edited": [
+      "/home/dev/github/agent-radar/hooks/web.ts",
+      "/home/dev/github/agent-radar/server/web.mjs"
+    ],
+    "editedAt": 1793802900000
+  },
   "log": [
-    { "at": 1793801000000, "who": "Explore", "what": "Find the session atoms", "result": "started" },
-    { "at": 1793801100000, "who": "Explore", "what": "Find the session atoms", "result": "done" },
-    { "at": 1793802900000, "who": "tester", "what": "Run the server tests", "result": "started" },
-    { "at": 1793802950000, "who": "main", "what": "<img src=x onerror=alert(1)> stays plain text", "result": "failed" }
+    {
+      "at": 1793801000000,
+      "who": "Explore",
+      "what": "Find the session atoms",
+      "result": "started"
+    },
+    {
+      "at": 1793801100000,
+      "who": "Explore",
+      "what": "Find the session atoms",
+      "result": "done"
+    },
+    {
+      "at": 1793802900000,
+      "who": "tester",
+      "what": "Run the server tests",
+      "result": "started"
+    },
+    {
+      "at": 1793802950000,
+      "who": "main session",
+      "what": "<img src=x onerror=alert(1)> stays plain text",
+      "result": "failed"
+    }
   ],
   "tasks": [
-    { "id": "1", "subject": "Write the server", "status": "completed" },
-    { "id": "2", "subject": "Draw the page", "status": "in_progress" },
-    { "id": "3", "subject": "Release 0.24.0", "status": "pending" }
+    {
+      "id": "1",
+      "subject": "Write the server",
+      "status": "completed"
+    },
+    {
+      "id": "2",
+      "subject": "Draw the page",
+      "status": "in_progress"
+    },
+    {
+      "id": "3",
+      "subject": "Release 0.24.0",
+      "status": "pending"
+    }
   ],
   "insights": {
-    "slow": [{ "tool": "Bash", "what": "npm test", "who": "main", "ms": 48000, "at": 1793802950000 }],
-    "big": [{ "tool": "Read", "what": "CHANGELOG.md", "tokens": 42000, "at": 1793801000000 }],
-    "tokens": { "mainIn": 420000, "mainOut": 18000, "mainCached": 380000, "agentsIn": 9000, "agentsOut": 1200 },
+    "slow": [
+      {
+        "tool": "Bash",
+        "what": "npm test",
+        "who": "main session",
+        "ms": 48000,
+        "at": 1793802950000
+      }
+    ],
+    "big": [
+      {
+        "tool": "Read",
+        "what": "CHANGELOG.md",
+        "tokens": 42000,
+        "at": 1793801000000
+      }
+    ],
+    "tokens": {
+      "mainIn": 420000,
+      "mainOut": 18000,
+      "mainCached": 380000,
+      "agentsIn": 9000,
+      "agentsOut": 1200
+    },
     "cacheRead": 380000,
     "cacheTotal": 420000
   },
   "learned": {
     "sessions": 12,
     "bench": [
-      { "id": "b1", "at": 1793700000000, "turns": 9, "calls": 120, "errors": 3, "compactions": 0, "usd": 4.1, "mod": true, "live": true, "editTurns": 4, "verified": 3, "churn": 0, "outTokens": 9000, "turnMs": [], "blocks": 0, "acted": 0, "passed": 0, "fable": 0 }
+      {
+        "id": "b1",
+        "at": 1793700000000,
+        "turns": 9,
+        "calls": 120,
+        "errors": 3,
+        "compactions": 0,
+        "usd": 4.1,
+        "mod": true,
+        "live": true,
+        "editTurns": 4,
+        "verified": 3,
+        "churn": 0,
+        "outTokens": 9000,
+        "turnMs": [],
+        "blocks": 0,
+        "acted": 0,
+        "passed": 0,
+        "fable": 0
+      }
     ]
-  }
+  },
+  "isPaneOpen": true,
+  "trace": [
+    {
+      "id": "t1",
+      "at": 1793802902000,
+      "who": "main session",
+      "tool": "Read",
+      "what": "hooks/web.ts",
+      "ms": 90
+    },
+    {
+      "id": "t2",
+      "at": 1793802906000,
+      "who": "main session",
+      "tool": "Grep",
+      "what": "toSnapshot",
+      "ms": 240
+    },
+    {
+      "id": "t3",
+      "at": 1793802911000,
+      "who": "main session",
+      "tool": "Edit",
+      "what": "hooks/web.ts",
+      "ms": 310
+    },
+    {
+      "id": "t4",
+      "at": 1793802917000,
+      "who": "main session",
+      "tool": "Bash",
+      "what": "npx -p typescript tsc --noEmit -p .",
+      "ms": 19000
+    },
+    {
+      "id": "t5",
+      "at": 1793802938000,
+      "who": "main session",
+      "tool": "Bash",
+      "what": "npm test",
+      "ms": 6200,
+      "isFailed": true,
+      "error": "1 failing: the post loop retries"
+    },
+    {
+      "id": "t6",
+      "at": 1793802947000,
+      "who": "main session",
+      "tool": "Agent",
+      "what": "tester",
+      "ms": 40000
+    },
+    {
+      "id": "t7",
+      "at": 1793802949000,
+      "who": "tester",
+      "tool": "Read",
+      "what": "tests/web.test.ts",
+      "ms": 120
+    },
+    {
+      "id": "t8",
+      "at": 1793802952000,
+      "who": "tester",
+      "tool": "Bash",
+      "what": "claude plugin test .",
+      "ms": 21000
+    },
+    {
+      "id": "t9",
+      "at": 1793802976000,
+      "who": "tester",
+      "tool": "Edit",
+      "what": "tests/web.test.ts",
+      "ms": 200
+    },
+    {
+      "id": "a1",
+      "at": 1793802990000,
+      "who": "main session",
+      "tool": "Bash",
+      "what": "npm test"
+    }
+  ]
 }

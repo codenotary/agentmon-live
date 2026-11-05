@@ -169,6 +169,9 @@ export type View = 'git' | 'shell' | 'mcp'
 // `result` is `running` from the moment the call starts until it reports back; `error` holds its error text.
 export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string }
 
+// Every tool call of the session, for the web view's waterfall; `ms` once it reported back.
+export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; ms?: number; isFailed?: boolean; error?: string }
+
 export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
 // The last run of one kind of check: `unknown` when its exit status could not be read (a pipe, a denial).
@@ -186,7 +189,7 @@ export type LastCall = { tool: string; what: string; who: string; model?: string
 // `mode` is unused since the flow view was dropped; kept so older stores load.
 // `isChangelogOpen` folds out a newer release's notes under the header.
 // `isAgentsOpen` lists every running subagent once more than four run; `isClassic`, set by `v`, beats the `layout` option.
-export type Layout = { isHistoryOpen: boolean; isDetailed: boolean; dismissed?: string[]; mode?: 'radar' | 'flow'; isChangelogOpen?: boolean; isAgentsOpen?: boolean; isClassic?: boolean }
+export type Layout = { isHistoryOpen: boolean; isPaneHidden?: boolean; isDetailed: boolean; dismissed?: string[]; mode?: 'radar' | 'flow'; isChangelogOpen?: boolean; isAgentsOpen?: boolean; isClassic?: boolean }
 
 // One tool call by category and time, for the calls-per-minute rate.
 export type Flow = { cat: string; at: number }
@@ -238,12 +241,16 @@ export type WebSnapshot = {
   lang: string
   labels: Record<string, unknown>
   main: Main
+  // Absent from a session of an older version, which cannot take the page's request.
+  isPaneOpen?: boolean
   focus: WebFocus[]
   usage: { ctxPct?: number; rate: { kind: string; pct: number }[]; usd: number }
   turns: WebTurn[]
   turnCount: number
   active: Active[]
   calls: Call[]
+  // Absent from a session of an older version, like `isPaneOpen`.
+  trace?: TraceCall[]
   agents: Card[]
   checks: Check[]
   files: Files
@@ -264,6 +271,7 @@ declare module 'claude-code' {
       stats: Stats
       calls: Call[]
       testReview: TestReview
+      trace: TraceCall[]
       view: View
       active: Active[]
       checks: Check[]
