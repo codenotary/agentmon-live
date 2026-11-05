@@ -3,10 +3,10 @@ import { Copy, Filter, Monitor, Moon, MoveRight, PanelRightClose, PanelRightOpen
 import { toast } from 'sonner'
 
 import type { WebSnapshot } from '../../types/index'
+import { sessionNames } from './format.ts'
 import type { Page } from './labels.ts'
 import { jumpTo, type Section } from './Nav.tsx'
 import { pick, requestPane, set, setTheme, useStore } from './store.ts'
-import { sessionName } from './TopBar.tsx'
 
 export async function copyText(text: string, done: string): Promise<void> {
   try {
@@ -39,7 +39,7 @@ export function Palette({ s, p, sections }: { s: WebSnapshot | undefined; p: Pag
         </Command.Group>
         {st.sessions.size > 1 ? (
           <Command.Group heading={p.sessions}>
-            {[...st.sessions.entries()].map(([id, x]) => <Command.Item key={id} value={`${id} ${sessionName(id, x)}`} onSelect={run(() => pick(id))}><SwitchCamera size={14} aria-hidden />{sessionName(id, x)}</Command.Item>)}
+            {[...sessionNames(st.sessions)].map(([id, name]) => <Command.Item key={id} value={`${id} ${name}`} onSelect={run(() => pick(id))}><SwitchCamera size={14} aria-hidden />{name}</Command.Item>)}
           </Command.Group>
         ) : null}
         <Command.Group heading={p.jumpTo}>

@@ -76,6 +76,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     t,
     lang: 'de',
     isPaneOpen: true,
+    build: '1.2.3 · abc1234',
     trace: [],
   })
   expect(snap.v).toBe(1)
@@ -86,6 +87,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   // What needs the person comes first, then the insights.
   expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false]])
   expect(snap.lang).toBe('de')
+  expect(snap.build).toBe('1.2.3 · abc1234')
   expect((snap.labels.page as Record<string, string>).events).toBe(t.web.page.events)
   expect(JSON.stringify(snap)).not.toContain('"prompt"')
   expect((snap.labels.result as Record<string, string>).failed).toBe(t.failed)
@@ -119,6 +121,7 @@ test('a dismissed item stays away from the page as from the pane', () => {
     t: LANGUAGES.en!,
     lang: 'en',
     isPaneOpen: true,
+    build: '1.2.3 · abc1234',
     trace: [],
   })
   expect(snap.focus).toEqual([])

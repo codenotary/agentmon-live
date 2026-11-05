@@ -120,9 +120,9 @@ export function App() {
   return (
     <>
       <TopBar s={s} p={p} />
-      <div className="mx-auto flex max-w-[1720px] flex-col lg:flex-row">
+      <div className="flex flex-col lg:flex-row">
       {sections.length ? <Nav sections={sections} label={p.jumpTo} /> : null}
-      <main className="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-4 pb-10 sm:px-6 lg:pr-4">
+      <main className="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-[26px] pb-10 sm:px-8">
         {st.isDown ? <div className="panel !border-bad bg-bad-soft px-3.5 py-2.5 text-[13px] text-bad" role="status">{p.disconnected}</div> : null}
         {s && !isCurrent ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status">{p.update}</div> : null}
         {!s && !st.isDown ? <Standby text={p.noSessions} /> : null}

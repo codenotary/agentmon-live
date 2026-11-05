@@ -21,7 +21,7 @@ export function Running({ s, p }: { s: WebSnapshot; p: Page }) {
             <motion.li key={a.id} {...ROW} className="flex min-w-0 items-baseline justify-between gap-2.5">
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 <i className="rec mr-2 inline-block size-1.5 rounded-full bg-signal-bright align-middle" aria-hidden />
-                <b>{a.who}</b> <span className="font-mono text-xs">{a.tool} {a.what}</span>
+                <b className="font-semibold">{a.who}</b> <span className="font-mono text-xs">{a.tool} {a.what}</span>
               </span>
               <span className="whitespace-nowrap text-ink-3 tabular-nums">{dur(now - a.startedAt)}</span>
             </motion.li>
@@ -47,7 +47,7 @@ export function Checks({ s, l }: { s: WebSnapshot; l: Labels }) {
             <div key={kind} className="min-w-0 rounded-lg border border-line-soft bg-surface-1 p-2.5" title={c ? `${c.command}${c.dir ? ` (${c.dir})` : ''}` : undefined}>
               <div className="flex items-center gap-2">
                 <i className={`size-2 flex-none rounded-full ${c?.result === 'running' ? 'rec' : ''}`} style={{ background: r ? toneVar(r.tone) : 'var(--surface-3)', color: r ? toneVar(r.tone) : undefined }} aria-hidden />
-                <b className="text-[13px]">{l.check[kind] ?? kind}</b>
+                <b className="text-[13px] font-semibold">{l.check[kind] ?? kind}</b>
                 <span className="ml-auto truncate text-[11px] text-ink-3">{r ? `${r.text}${counts}` : '—'}</span>
               </div>
               {c ? <div className="mt-1 truncate font-mono text-[11px] text-ink-3">{time(c.at)} {c.command}</div> : null}
@@ -91,7 +91,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
             {[...s.agents].reverse().map(a => (
               <motion.li key={a.id} {...ROW} className="rounded-lg border border-line-soft bg-surface-1 p-2.5 text-[13px]">
                 <div className="flex items-baseline justify-between gap-2">
-                  <b className="min-w-0 truncate">{a.type}</b>
+                  <b className="min-w-0 truncate font-semibold">{a.type}</b>
                   <Pill text={a.tests === 'FAIL' ? 'FAIL' : (l.status[a.status] ?? a.status)} tone={a.tests === 'FAIL' ? 'bad' : tone(a.status)} />
                 </div>
                 <p className="mt-0.5 text-ink-2 [overflow-wrap:anywhere]" title={a.testsWhy}>{a.task}</p>

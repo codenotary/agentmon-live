@@ -65,7 +65,7 @@ Installing asks nothing. Ask Claude in chat ("hide the usage box", "switch Agent
 
 ### Web view
 
-The same session in a browser, with the room a terminal lacks. Open it with `o`, `/agentmon open`, or the link in the pane's header. It follows your language and starts in the light theme; its button switches to dark or to your system's setting.
+The same session in a browser, with the room a terminal lacks. The top bar shows the mod's version and commit, as the pane's header does. Open it with `o`, `/agentmon open`, or the link in the pane's header. It follows your language and starts in the light theme; its button switches to dark or to your system's setting.
 
 - **Turn waterfall:** every tool call of a turn in the order it started, as bars by how long each took, with each subagent's calls nested under it. The slowest call is marked, failures are red, running calls are striped, and a call waiting for approval says so. Gaps are time the model spent thinking. It follows the newest turn; the arrows go back to earlier ones. Click a call to see its details.
 - **Help:** every widget has a small `i` beside its title. Hover it for what the widget shows, or click it to keep the text open.
@@ -80,7 +80,7 @@ The same session in a browser, with the room a terminal lacks. Open it with `o`,
 | `Ctrl+K` or `⌘K` | Command palette: switch session, jump to a section, show only failures, hide the pane, change theme, copy the working directory |
 | `/` | Search the session log |
 
-Every running session on the machine shares one server, and the page has a picker when more than one is running. The server is a small Node program inside the plugin. It starts with the first session and stops one minute after the last one leaves. A session whose plugin files are newer replaces a running server, and open tabs reload themselves. It needs `node` on your `PATH`: Claude Code does not include it. Without it the pane works as usual, there is no button, and the session shows a short notice when it starts. The debug log says why.
+Every running session on the machine shares one server. With more than one running, the working directory in the top bar becomes a switch between them. A dot and a word show each session's state: green and pulsing when it works, orange when it waits for you (an approval or a waiting subagent), grey when it is idle. The server is a small Node program inside the plugin. It starts with the first session and stops one minute after the last one leaves. A session whose plugin files are newer replaces a running server, and open tabs reload themselves. It needs `node` on your `PATH`: Claude Code does not include it. Without it the pane works as usual, there is no button, and the session shows a short notice when it starts. The debug log says why.
 
 The page only reads, with one exception: the pane button tells the session to hide or show its pane. Nothing else flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. It has no login, so on a machine shared with other people, they can read your session's commands, paths and costs from the local port, and hide or show your pane. Secrets are masked first, as in the pane. Set `web` to `off` on a shared machine.
 

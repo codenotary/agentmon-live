@@ -550,6 +550,7 @@
     ]
   },
   "isPaneOpen": true,
+  "build": "0.26.0 · b888ede",
   "trace": [
     {
       "id": "t1",

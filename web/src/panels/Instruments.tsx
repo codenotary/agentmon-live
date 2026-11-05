@@ -11,9 +11,9 @@ import { Sparkline } from '../ui/Sparkline.tsx'
 
 function Stat({ label, children, foot }: { label: string; children: ReactNode; foot?: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col justify-center gap-0.5 p-3">
-      <span className="eyebrow truncate">{label}</span>
-      <span className="font-display text-[30px] leading-none font-extrabold tabular-nums">{children}</span>
+    <div className="flex min-w-0 flex-col justify-center gap-0.5 px-5 py-[18px]">
+      <span className="kpi-label truncate">{label}</span>
+      <span className="font-display text-[26px] leading-8 font-bold tracking-[-.02em] text-heading tabular-nums">{children}</span>
       {foot}
     </div>
   )
@@ -36,14 +36,14 @@ export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: T
     <Stat key="turns" label={p.turns}><NumberFlow value={s.turnCount} /></Stat>,
     <Stat key="cache" label={p.cacheHit}>{cache === undefined ? '—' : <NumberFlow value={cache} suffix="%" />}</Stat>,
     <Stat key="tokens" label={p.tokens}>
-      <span className="text-[15px]">
+      <span className="text-[13px] tracking-normal whitespace-nowrap">
         <span className="text-ink-3">{p.tokensIn} </span>{kilo(tokens.mainIn + tokens.agentsIn)}
         <span className="text-ink-3"> · {p.tokensOut} </span>{kilo(tokens.mainOut + tokens.agentsOut)}
       </span>
     </Stat>,
   ]
   return (
-    <section id="instruments" className="panel relative grid grid-cols-2 divide-line-soft sm:grid-cols-3 lg:grid-cols-7" data-testid="instruments" aria-label={p.context}>
+    <section id="instruments" className="kpi-band grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 [&>*]:border-line xl:[&>*:not(:first-child)]:border-l" data-testid="instruments" aria-label={p.context}>
       {parts}
       <HelpButton text={p.helpInstruments} isOpen={isHelpOpen} onToggle={() => setHelpOpen(!isHelpOpen)} className="absolute top-1.5 right-1.5" />
       {isHelpOpen ? <p className="help-text col-span-full m-3 mt-0">{p.helpInstruments}</p> : null}

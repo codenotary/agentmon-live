@@ -9,9 +9,9 @@ export function HelpButton({ text, isOpen, onToggle, className = '' }: { text: s
 export function Panel({ id, title, help, icon: Icon, aside, className = '', children }: { id?: string; title: string; help: string; icon?: LucideIcon; aside?: ReactNode; className?: string; children: ReactNode }) {
   const [isHelpOpen, setHelpOpen] = useState(false)
   return (
-    <section id={id} className={`panel px-5 py-[18px] ${className}`} aria-label={title}>
+    <section id={id} className={`panel p-5 ${className}`} aria-label={title}>
       <header className="mb-3 flex min-h-6 flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className="flex items-center gap-2 font-display text-base leading-none font-bold text-ink">
+        <h2 className="flex items-center gap-2 font-display text-base leading-6 font-bold text-heading">
           {Icon ? <Icon size={14} className="text-ink-3" aria-hidden /> : null}
           {title}
         </h2>

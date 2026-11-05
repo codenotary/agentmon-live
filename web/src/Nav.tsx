@@ -64,7 +64,7 @@ export function Nav({ sections, label }: { sections: Section[]; label: string })
     <nav ref={nav} className="side-nav" aria-label={label} data-testid="nav">
       {sections.map(({ id, label: name, icon: Icon, count, isAlert }) => (
         <a key={id} href={`#${domId(id)}`} className="nav-item" aria-current={active === id ? 'location' : undefined}>
-          <Icon size={14} className="flex-none" aria-hidden />
+          <Icon size={16} className="flex-none" aria-hidden />
           <span className="truncate">{name}</span>
           {count ? <span className={`nav-count ${isAlert ? 'alert' : ''}`}>{count}</span> : null}
         </a>

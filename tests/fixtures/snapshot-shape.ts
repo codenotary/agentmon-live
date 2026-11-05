@@ -1,6 +1,6 @@
 // The snapshot's keys, in one place: the kit cannot load the JSON fixture, so its test holds toSnapshot to this and the server test holds the fixture to it.
 export const SHAPE = {
-  top: ['v', 'session', 'now', 'lang', 'labels', 'main', 'isPaneOpen', 'focus', 'usage', 'turns', 'turnCount', 'active', 'calls', 'trace', 'agents', 'checks', 'files', 'log', 'tasks', 'insights', 'learned'],
+  top: ['v', 'session', 'now', 'lang', 'labels', 'main', 'isPaneOpen', 'build', 'focus', 'usage', 'turns', 'turnCount', 'active', 'calls', 'trace', 'agents', 'checks', 'files', 'log', 'tasks', 'insights', 'learned'],
   session: ['id', 'cwd', 'branch'],
   usage: ['ctxPct', 'rate', 'usd'],
   insights: ['slow', 'big', 'tokens', 'cacheRead', 'cacheTotal'],

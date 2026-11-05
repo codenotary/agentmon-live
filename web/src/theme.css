@@ -2,6 +2,8 @@
 
 /* Tokens from the AgentMon design system (tokens.json in its artifact); keep them in step. */
 @font-face { font-family: "DM Sans"; font-weight: 400; font-display: swap; src: url(/fonts/dm-sans-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "DM Sans"; font-weight: 500; font-display: swap; src: url(/fonts/dm-sans-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "DM Sans"; font-weight: 600; font-display: swap; src: url(/fonts/dm-sans-latin-600-normal.woff2) format("woff2"); }
 @font-face { font-family: "DM Sans"; font-weight: 700; font-display: swap; src: url(/fonts/dm-sans-latin-700-normal.woff2) format("woff2"); }
 @font-face { font-family: Manrope; font-weight: 700; font-display: swap; src: url(/fonts/manrope-latin-700-normal.woff2) format("woff2"); }
 @font-face { font-family: "JetBrains Mono"; font-weight: 400; font-display: swap; src: url(/fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2"); }
@@ -17,6 +19,7 @@
   --line-soft: #f0f3f8;
   --line-input: #d9e0ec;
   --ink: #0f1729;
+  --heading: #2b2f36;
   --ink-2: #4a5568;
   --ink-3: #6b7688;
   --signal: #b84b1f;
@@ -53,6 +56,7 @@
     --line-soft: #1e2536;
     --line-input: #2a3247;
     --ink: #e8ecf4;
+    --heading: #e8ecf4;
     --ink-2: #8b95aa;
     --ink-3: #8b95aa;
     --signal: #fdd08a;
@@ -80,6 +84,7 @@
   --line-soft: #1e2536;
   --line-input: #2a3247;
   --ink: #e8ecf4;
+  --heading: #e8ecf4;
   --ink-2: #8b95aa;
   --ink-3: #8b95aa;
   --signal: #fdd08a;
@@ -106,6 +111,7 @@
   --color-line: var(--line);
   --color-line-soft: var(--line-soft);
   --color-ink: var(--ink);
+  --color-heading: var(--heading);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-signal: var(--signal);
@@ -129,7 +135,7 @@
   body {
     margin: 0;
     color: var(--ink);
-    background-color: var(--page);
+    background-color: var(--surface);
     font: 400 14px/1.45 var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
@@ -144,6 +150,9 @@
   border-radius: 14px;
   background-color: var(--surface);
 }
+/* The numbers across the top: no card, ruled above and below. */
+.kpi-band { position: relative; min-width: 0; border-block: 1px solid var(--line); }
+.kpi-label { font-size: 13px; line-height: 18px; color: var(--ink-3); }
 .help-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; color: var(--ink-3); cursor: help; transition: color .15s, background-color .15s; }
 .help-btn:hover, .help-btn[aria-expanded=true] { color: var(--ink); background: var(--surface-2); }
 .help-text { padding: 8px 10px; border: 1px solid var(--info-line); border-radius: 10px; background: var(--info); font-size: 13px; line-height: 1.5; color: var(--ink-2); }
@@ -198,18 +207,15 @@ button.wf-row:hover { background: var(--surface-2); }
 .section:last-child { min-height: calc(100vh - 100px); }
 
 /* The navigation: a strip across the top on small screens, a rail to the right of the page on large ones. */
-.side-nav { position: sticky; top: 0; z-index: 20; display: flex; gap: 2px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--page); scrollbar-width: none; }
-.nav-item { position: relative; display: flex; flex: none; align-items: center; gap: 9px; height: 30px; padding: 0 10px; border-radius: 8px; font-size: 13px; color: var(--ink-2); transition: color .15s, background-color .15s; }
-.nav-item svg { color: var(--ink-3); }
-.nav-item:hover { color: var(--ink); background: var(--surface-1); }
-.nav-item:hover svg { color: var(--ink); }
-.nav-item[aria-current] { color: var(--ink); background: var(--surface-2); }
-.nav-count { margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--surface-3); font: 400 11px/18px var(--font-mono); text-align: center; color: var(--ink-2); }
+.side-nav { position: sticky; top: 0; z-index: 20; display: flex; gap: 2px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--surface-1); scrollbar-width: none; }
+.nav-item { display: flex; flex: none; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; font-size: 14px; line-height: 20px; color: var(--ink-2); transition: color .15s, background-color .15s; }
+.nav-item:hover { color: var(--ink); background: var(--surface-2); }
+.nav-item[aria-current] { padding-block: 9px; font-weight: 700; color: var(--signal); background: var(--signal-soft); }
+.nav-count { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; height: 20px; min-width: 20px; padding: 0 7px; border-radius: 9999px; background: var(--surface-2); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .nav-count.alert { background: var(--bad); color: #fff; }
 @media (min-width: 1024px) {
   .section { scroll-margin-top: 69px; }
-  .side-nav { order: 2; top: 53px; flex: none; flex-direction: column; align-self: flex-start; width: 212px; height: calc(100vh - 53px); padding: 16px 24px 16px 8px; overflow-y: auto; border-bottom: 0; background: none; }
-  .nav-item[aria-current]::before { content: ""; position: absolute; top: 6px; bottom: 6px; left: -8px; width: 2px; border-radius: 9999px; background: var(--signal-bright); }
+  .side-nav { order: 2; top: 53px; flex: none; flex-direction: column; align-self: flex-start; width: 245px; height: calc(100vh - 53px); padding: 18px 12px; overflow-y: auto; border-bottom: 0; border-left: 1px solid var(--line); background: var(--surface-1); }
 }
 
 /* The event feed: a rail with one mark per event. */
@@ -233,8 +239,23 @@ button.wf-row:hover { background: var(--surface-2); }
 [cmdk-item][data-selected="true"] { background: var(--surface-2); color: var(--ink); }
 [cmdk-empty] { padding: 20px; text-align: center; font-size: 13px; color: var(--ink-3); }
 .pop { z-index: 45; max-width: 320px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--ink); font-size: 12px; box-shadow: var(--shadow-hover); }
-.select-item { padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; outline: 0; overflow-wrap: anywhere; }
-.select-item[data-highlighted] { background: var(--surface-2); color: var(--ink); }
+.state-dot { display: inline-block; flex: none; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; }
+.state-dot.active { background: var(--good); animation: rec 1.6s ease-in-out infinite; }
+.state-dot.waiting { background: var(--signal-bright); }
+.state-dot.idle { background: var(--ink-3); }
+.select-trigger .state-dot { margin-right: 0; }
+.select-trigger { display: inline-flex; flex: 0 1 auto; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; height: 32px; padding: 0 12px; border: 1px solid var(--line-input); border-radius: 8px; background: var(--surface); font: 400 12px var(--font-mono); color: var(--ink-2); cursor: pointer; }
+.select-trigger:hover { color: var(--ink); background: var(--surface-1); }
+.select-trigger[data-state=open], .select-trigger:focus-visible { outline: 0; border-color: var(--signal-bright); box-shadow: 0 0 0 2px rgb(245 147 0 / .25); }
+.select-menu { z-index: 45; min-width: var(--radix-select-trigger-width); max-width: min(520px, calc(100vw - 32px)); max-height: min(360px, var(--radix-select-content-available-height)); padding: 4px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); box-shadow: var(--shadow-hover); animation: fade .12s ease-out; }
+.select-item { position: relative; display: block; padding: 7px 12px 7px 28px; border-radius: 8px; font: 400 13px/18px var(--font-mono); color: var(--ink); cursor: pointer; outline: 0; overflow-wrap: anywhere; }
+.select-item[data-highlighted] { background: var(--surface-2); }
+.select-check { position: absolute; top: 9px; left: 8px; color: var(--signal); }
+.select-detail { display: block; font: 400 12px/16px var(--font-sans); color: var(--ink-3); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 9999px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

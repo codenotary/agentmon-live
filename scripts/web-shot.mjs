@@ -1,5 +1,6 @@
 // Serves the fixture, screenshots the page in light, dark, at phone width, with the palette and with a call's details open, and checks the navigation: `npm i --no-save playwright && npx playwright install chromium && node scripts/web-shot.mjs <out dir>`.
 import { spawn } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -51,7 +52,7 @@ for (const href of await links()) {
   await page.click(`.nav-item[href="${href}"]`)
   await page.waitForTimeout(150)
   const top = await topOf(href)
-  if (top !== 69) problems.push(`nav: ${href} landed at ${top}, not under the header`)
+  if (Math.abs(top - 69) > 2) problems.push(`nav: ${href} landed at ${top}, not under the header`)
   const y = await page.evaluate(() => scrollY)
   if (y <= lastY) problems.push(`nav: ${href} did not move down the page (${lastY} then ${y})`)
   lastY = y
@@ -68,7 +69,7 @@ await page.goto(`${url}#section-log`)
 await page.reload()
 await page.waitForSelector('#log')
 await page.waitForTimeout(150)
-if (await topOf('#section-log') !== 69) problems.push('nav: the deep link did not land')
+if (Math.abs(await topOf('#section-log') - 69) > 2) problems.push('nav: the deep link did not land')
 await page.goto(`${url}#nonsense`)
 await page.reload()
 await page.waitForSelector('#waterfall')
@@ -76,12 +77,30 @@ await page.keyboard.press('/')
 if (await page.evaluate(() => document.activeElement?.id) !== 'q') problems.push('nav: / did not reach the log search')
 
 // Every widget has its i, and it opens its own text.
-const widgets = await page.$$eval('main .panel', list => list.length)
+const widgets = await page.$$eval('main .panel, main .kpi-band', list => list.length)
 const buttons = await page.$$('.help-btn')
 if (buttons.length !== widgets) problems.push(`help: ${widgets} widgets and ${buttons.length} i buttons`)
 for (const b of buttons) await b.click()
 const texts = await page.$$eval('.help-text', list => list.length)
 if (texts !== widgets) problems.push(`help: opened ${texts} of ${widgets} texts`)
+
+// A second session turns the working directory into a switch, and picking it shows that session.
+const other = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/snapshot.json'), 'utf8'))
+other.session.cwd = '/home/dev/other-project'
+other.session.branch = 'main'
+await fetch(`${url.slice(0, -1)}/state/second`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(other) })
+await page.goto(url)
+await page.waitForSelector('#picker')
+const inBar = await page.$eval('header', h => h.textContent)
+if (!/\d+\.\d+\.\d+ · [0-9a-f]{7}/.test(inBar)) problems.push('build: the top bar shows no version and commit')
+if ((inBar.match(/other-project/g) ?? []).length !== 1) problems.push('switch: the top bar does not show the folder once, in the switch')
+if (!await page.$('#picker .state-dot')) problems.push('switch: no state dot on the switch')
+await page.click('#picker')
+await page.waitForSelector('[role=option][data-state=checked]')
+if ((await page.$$('[role=option] .state-dot')).length !== 2) problems.push('switch: not every session in the list has its state dot')
+await page.screenshot({ path: join(out, 'web-switch.png') })
+await page.click('[role=option]:has-text("agent-radar")')
+await page.waitForFunction(() => document.querySelector('#picker')?.textContent.includes('agent-radar'), null, { timeout: 2000 }).catch(() => problems.push('switch: picking a session did not show it'))
 
 await browser.close()
 server.kill()

@@ -241,6 +241,8 @@ export type WebSnapshot = {
   lang: string
   labels: Record<string, unknown>
   main: Main
+  // The mod's version and commit, as in the pane's header. Absent from a session of an older version.
+  build?: string
   // Absent from a session of an older version, which cannot take the page's request.
   isPaneOpen?: boolean
   focus: WebFocus[]

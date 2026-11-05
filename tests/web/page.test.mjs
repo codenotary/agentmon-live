@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { nextEvents } from '../../web/src/events.ts'
-import { pushPoint, resultOf, titleFor } from '../../web/src/format.ts'
+import { pushPoint, resultOf, sessionNames, stateOf, titleFor } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { rowsOf, spanOf, xOf } from '../../web/src/waterfall.ts'
 import { sourceHash } from '../../web/source-hash.mjs'
@@ -119,4 +119,22 @@ test('the page loads nothing from another origin and stays small', () => {
 test('a session of an older version sends no trace: the waterfall is empty, not a crash', () => {
   const { trace: _, ...old } = empty
   assert.deepEqual(rowsOf(old, { from: 0, to: 10 }, MAIN, 10), [])
+})
+
+test('the session switch names sessions by folder and branch, and tells two in one place apart by id', () => {
+  const at = (cwd, branch) => ({ session: { cwd, branch } })
+  const names = sessionNames(new Map([['aaaaaaaa1', at('/w/a', 'main')], ['bbbbbbbb2', at('/w/a', 'main')], ['c', at('/w/c')]]))
+  assert.equal(names.get('aaaaaaaa1'), '/w/a · main · aaaaaa')
+  assert.equal(names.get('bbbbbbbb2'), '/w/a · main · bbbbbb')
+  assert.equal(names.get('c'), '/w/c')
+})
+
+test('a session is idle, active, or waiting for you, and waiting wins', () => {
+  const at = (main, active, agents) => stateOf({ main, active, agents })
+  assert.equal(at({}, [], []), 'idle')
+  assert.equal(at({ turnLive: {} }, [], []), 'active')
+  assert.equal(at({}, [{}], []), 'active')
+  assert.equal(at({ turnLive: {} }, [{ isAsking: true }], []), 'waiting')
+  assert.equal(at({}, [], [{ status: 'waiting' }]), 'waiting')
+  assert.equal(at({}, [], [{ status: 'done' }]), 'idle')
 })

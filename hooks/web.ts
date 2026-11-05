@@ -52,6 +52,7 @@ export type SnapshotParts = {
   t: Strings
   lang: string
   isPaneOpen: boolean
+  build: string
   trace: TraceCall[]
 }
 
@@ -83,6 +84,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     labels: { page: t.web.page, main: t.mainSession, status: t.status, check: t.check, cat: t.cat, buckets, result: { ok: t.ok, failed: t.failed, unknown: t.unknown, running: t.status.running } },
     main: p.main,
     isPaneOpen: p.isPaneOpen,
+    build: p.build,
     focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: false }))],
     usage: {
       ctxPct: p.usage.context.percent,
@@ -198,6 +200,7 @@ async function publish($: EngineInterface): Promise<void> {
     t: cfg.t,
     lang: cfg.lang,
     isPaneOpen: panes.some(x => x.id === PANE),
+    build: cfg.build,
     trace: traced,
   })
   // `now` moves on every read; the rest says whether anything changed.

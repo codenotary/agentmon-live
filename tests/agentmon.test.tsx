@@ -1025,6 +1025,30 @@ test('clear empties the task list and the skills', async ($, on) => {
   await ui.unmount()
 })
 
+test('a marketplace install has no .git: the commit comes from the install record', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('env.get', () => ({ value: '/h' }))
+  let root = ''
+  on('fs.read', (_, e) => {
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) {
+      root = e.path.replace('/.claude-plugin/plugin.json', '')
+      return { value: '{ "name": "agentmon-live", "version": "0.6.0" }' }
+    }
+    if (e.path.endsWith('/plugins/installed_plugins.json')) {
+      const entry = (installPath: string, sha: string) => ({ installPath, gitCommitSha: sha.repeat(40) })
+      return { value: JSON.stringify({ plugins: { 'other@x': [entry('/other', 'a')], 'agentmon-live@agentmon-live': [entry(root, 'b')] } }) }
+    }
+    throw new Error('ENOENT')
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^ 0\.6\.0 · bbbbbbb$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('in a worktree the header names only the version', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)

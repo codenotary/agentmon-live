@@ -10,6 +10,8 @@ const MAX_BODY = 1024 * 1024
 const PORT_TRIES = 20
 const FONTS = [
   'dm-sans-latin-400-normal.woff2',
+  'dm-sans-latin-500-normal.woff2',
+  'dm-sans-latin-600-normal.woff2',
   'dm-sans-latin-700-normal.woff2',
   'manrope-latin-700-normal.woff2',
   'jetbrains-mono-latin-400-normal.woff2',

@@ -9,7 +9,7 @@ const ARC = 75
 export function Gauge({ label, pct, tone }: { label: string; pct: number | undefined; tone: Tone }) {
   const filled = ((pct ?? 0) / 100) * ARC
   return (
-    <div className="flex items-center gap-3 p-3" role="img" aria-label={`${label}: ${pct === undefined ? '—' : `${pct}%`}`}>
+    <div className="flex items-center gap-3 px-5 py-[18px]" role="img" aria-label={`${label}: ${pct === undefined ? '—' : `${pct}%`}`}>
       <div className="relative size-16 flex-none">
         <svg viewBox="0 0 64 64" className="size-full rotate-[135deg]" aria-hidden>
           <circle cx="32" cy="32" r="27" fill="none" stroke="var(--surface-3)" strokeWidth="5" strokeLinecap="round" pathLength={100} strokeDasharray={`${ARC} 100`} />
@@ -19,7 +19,7 @@ export function Gauge({ label, pct, tone }: { label: string; pct: number | undef
           {pct === undefined ? '—' : <NumberFlow value={pct} suffix="%" />}
         </span>
       </div>
-      <span className="eyebrow min-w-0">{label}</span>
+      <span className="kpi-label min-w-0">{label}</span>
     </div>
   )
 }

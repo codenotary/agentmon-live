@@ -2,9 +2,22 @@ import type { EngineInterface } from 'claude-code'
 
 import { readBase } from './git'
 import { isNewer, mask } from './format'
+import { configDir } from './learning'
 import { cfg } from './state'
 
-// Which build is loaded: the manifest's version and, in a git checkout, the commit (`0.6.0 · 3366336`).
+// A marketplace install has no `.git`, but Claude Code records the commit it installed from.
+// shortcut: reads Claude Code's own installed_plugins.json, which promises no format; if it changes, only the commit goes missing.
+async function installedSha($: EngineInterface, root: string): Promise<string> {
+  try {
+    const { conf } = await configDir($)
+    const all = JSON.parse(await $.fs.read(`${conf}/plugins/installed_plugins.json`)) as { plugins?: Record<string, { installPath?: string; gitCommitSha?: string }[]> }
+    return Object.values(all.plugins ?? {}).flat().find(x => x.installPath === root)?.gitCommitSha ?? ''
+  } catch {
+    return ''
+  }
+}
+
+// Which build is loaded: the manifest's version and the commit, from a git checkout or the install record (`0.6.0 · 3366336`).
 export async function build($: EngineInterface): Promise<string> {
   const root = $.plugin.root
   const read = (path: string) => $.fs.read(`${root}/${path}`).catch(() => '')
@@ -22,7 +35,9 @@ export async function build($: EngineInterface): Promise<string> {
         : (await read(`.git/${ref}`)).trim() ||
           ((await read('.git/packed-refs')).split('\n').find(line => line.endsWith(` ${ref}`))?.split(' ')[0] ?? '')
   // A worktree's `.git` is a file (`gitdir: …`), so what reads here need not be a commit.
-  return [version, /^[0-9a-f]{40}$/.test(sha) ? sha.slice(0, 7) : ''].filter(Boolean).join(' · ')
+  const isCommit = (x: string) => /^[0-9a-f]{40}$/.test(x)
+  const commit = isCommit(sha) ? sha : await installedSha($, root)
+  return [version, isCommit(commit) ? commit.slice(0, 7) : ''].filter(Boolean).join(' · ')
 }
 
 // Where the branch stands against its base, read again every `minutes`; a fetch first only when asked for and the network is allowed.
