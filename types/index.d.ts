@@ -253,6 +253,8 @@ export type WebSnapshot = {
   calls: Call[]
   // Absent from a session of an older version, like `isPaneOpen`.
   trace?: TraceCall[]
+  // `dropped` is already in the session's language. Absent from a session of an older version.
+  testReview?: { files: TestEdit[]; dropped: string[]; isGreen: boolean }
   agents: Card[]
   checks: Check[]
   files: Files

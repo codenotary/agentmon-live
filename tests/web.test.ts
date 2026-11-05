@@ -77,6 +77,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     lang: 'de',
     isPaneOpen: true,
     build: '1.2.3 · abc1234',
+    testReview: { files: [], dropped: [], isGreen: false },
     trace: [],
   })
   expect(snap.v).toBe(1)
@@ -122,6 +123,7 @@ test('a dismissed item stays away from the page as from the pane', () => {
     lang: 'en',
     isPaneOpen: true,
     build: '1.2.3 · abc1234',
+    testReview: { files: [], dropped: [], isGreen: false },
     trace: [],
   })
   expect(snap.focus).toEqual([])

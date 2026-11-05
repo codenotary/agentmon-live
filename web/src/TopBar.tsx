@@ -58,7 +58,7 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
   const live = s?.v === 1 ? s : undefined
   const now = live ? stateOf(live) : 'idle'
   const isLive = now === 'active'
-  const state = st.isDown ? { text: <X size={12} aria-label={p.disconnected} />, cls: 'text-bad', dot: 'var(--bad)' } : live && now === 'waiting' ? { text: stateWord(live, p), cls: 'text-warn', dot: 'var(--warn)' } : isLive ? { text: p.live, cls: 'text-signal', dot: 'var(--signal-bright)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
+  const state = st.isDown ? { text: <X size={12} aria-label={p.disconnected} />, cls: 'text-bad', dot: 'var(--bad)' } : live && now === 'waiting' ? { text: stateWord(live, p), cls: 'text-signal', dot: 'var(--signal-bright)' } : isLive ? { text: p.live, cls: 'text-good', dot: 'var(--good)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
   const themeLabel = { auto: p.themeAuto, dark: p.themeDark, light: p.themeLight }[st.theme]
   const ThemeIcon = { auto: Monitor, dark: Moon, light: Sun }[st.theme]
   return (
@@ -67,7 +67,7 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
         <span className="font-display text-[15px] font-extrabold whitespace-nowrap">AgentMon Live</span>
         {live?.build ? <span className="font-mono text-[11px] whitespace-nowrap text-ink-3" data-testid="build">{live.build}</span> : null}
         <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold tracking-[.09em] uppercase ${state.cls}`} role="status">
-          <i className={`size-1.5 rounded-full ${isLive && !st.isDown ? 'rec' : ''}`} style={{ background: state.dot }} aria-hidden />
+          <i className={`size-2 rounded-full ${isLive && !st.isDown ? 'rec' : ''}`} style={{ background: state.dot }} aria-hidden />
           {state.text}
         </span>
         {live ? <span className="text-[13px] font-bold text-signal">{live.main.model}{live.main.effort ? ` (${live.main.effort})` : ''}</span> : null}

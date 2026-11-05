@@ -1,12 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, SessionUsage } from 'claude-code'
 
-import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main, Task, TraceCall, TurnTime, WebFocus, WebSnapshot, WebTurn } from '../types'
+import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main, Task, TestReview, TraceCall, TurnTime, WebFocus, WebSnapshot, WebTurn } from '../types'
 import { debug } from './debuglog'
 import type { Strings } from './i18n'
 import type { Insight } from './insights'
 import { bucketName, focusList, liveBuckets } from './insights'
 import { learnedItems } from './learn'
+import { droppedLines } from './testreview'
 import { cfg, INIT, liveStatus, liveTurn, PANE, shapeInsights } from './state'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
@@ -15,6 +16,7 @@ const log = atom({ plugin: 'agentmon-live', key: 'log' } as const, INIT.log)
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
 const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
+const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const, INIT.testReview)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
 const files = atom({ plugin: 'agentmon-live', key: 'files' } as const, INIT.files)
@@ -53,6 +55,7 @@ export type SnapshotParts = {
   lang: string
   isPaneOpen: boolean
   build: string
+  testReview: TestReview
   trace: TraceCall[]
 }
 
@@ -85,6 +88,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     main: p.main,
     isPaneOpen: p.isPaneOpen,
     build: p.build,
+    testReview: { files: p.testReview.files, dropped: droppedLines(t, p.testReview), isGreen: p.testReview.isGreen },
     focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: false }))],
     usage: {
       ctxPct: p.usage.context.percent,
@@ -150,7 +154,7 @@ async function takePaneRequest($: EngineInterface, id: string): Promise<void> {
 }
 
 async function publish($: EngineInterface): Promise<void> {
-  const [id, usage, now, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, insStored, learnt, panes, traced] = await Promise.all([
+  const [id, usage, now, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, insStored, learnt, panes, traced, reviewed] = await Promise.all([
     $.session.id(),
     $.session.usage(),
     $.clock.now(),
@@ -169,6 +173,7 @@ async function publish($: EngineInterface): Promise<void> {
     read($, learned),
     $.ui.panes().catch(() => []),
     read($, trace),
+    read($, testReview),
   ])
   if (id === endedId) return
   await takePaneRequest($, id)
@@ -178,7 +183,7 @@ async function publish($: EngineInterface): Promise<void> {
   const cards = list.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const c = usage.context
   const learnedFocus = learnedItems(learnt, { percent: c.percent, window: c.window, model: m.model, effort: m.effort, calls: ins.turnCalls })
-  const focus = focusList({ ins, doing, agents: cards, percent: c.percent, window: c.window, tokens: c.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited })
+  const focus = focusList({ ins, doing, agents: cards, percent: c.percent, window: c.window, tokens: c.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited, testReview: reviewed })
   const snapshot = toSnapshot({
     session: { id, cwd, branch },
     now,
@@ -201,6 +206,7 @@ async function publish($: EngineInterface): Promise<void> {
     lang: cfg.lang,
     isPaneOpen: panes.some(x => x.id === PANE),
     build: cfg.build,
+    testReview: reviewed,
     trace: traced,
   })
   // `now` moves on every read; the rest says whether anything changed.

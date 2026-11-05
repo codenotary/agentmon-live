@@ -34,6 +34,28 @@ export function Running({ s, p }: { s: WebSnapshot; p: Page }) {
 
 const KINDS = ['test', 'typecheck', 'lint', 'build'] as const
 
+// Beside the passing result: what the tests lost, for a person to judge. It sends nothing back.
+function TestEdits({ s, l }: { s: WebSnapshot; l: Labels }) {
+  const review = s.testReview
+  if (!review || review.files.length === 0) return null
+  const name = (path: string) => path.slice(path.lastIndexOf('/') + 1)
+  return (
+    <div className="mt-3" data-testid="test-edits">
+      <span className="eyebrow">{l.page.testEdits}</span>
+      <ul className="mt-1 flex flex-col gap-1 text-xs">
+        {review.files.map(f => (
+          <li key={f.path} className="flex items-center gap-2" title={f.path}>
+            <span className="min-w-0 truncate font-mono">{name(f.path)}</span>
+            {f.removed > 0 ? <Pill text={`${l.page.assertsRemoved}: ${f.removed}`} tone="warn" /> : null}
+            {f.skips > 0 ? <Pill text={`${l.page.skipsAdded}: ${f.skips}`} tone="warn" /> : null}
+          </li>
+        ))}
+        {review.isGreen ? review.dropped.map(line => <li key={line} className="text-warn">{line}</li>) : null}
+      </ul>
+    </div>
+  )
+}
+
 export function Checks({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   return (
@@ -55,6 +77,7 @@ export function Checks({ s, l }: { s: WebSnapshot; l: Labels }) {
           )
         })}
       </div>
+      <TestEdits s={s} l={l} />
     </Panel>
   )
 }

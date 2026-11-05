@@ -66,6 +66,9 @@
       "verification": "Verification",
       "files": "Files",
       "overview": "Overview",
+      "testEdits": "Test files edited this turn",
+      "assertsRemoved": "assertions removed",
+      "skipsAdded": "skips added",
       "helpInstruments": "Context: how full this session's context window is; near full, Claude compacts the conversation. 5-hour and 7-day quota: how much of your plan's limits is used. Gauges turn yellow at 60% and red at 80%. Session cost: spend so far, with its trend since you opened this page. Turns: prompts answered. Cache hit: share of input tokens read from the prompt cache; higher is cheaper. Tokens: sent in and out, subagents included.",
       "helpWaterfall": "Every tool call of one turn, in the order it started. A bar shows when the call ran and for how long; a subagent's calls sit under it. Gaps are time the model spent thinking. The slowest call is marked, failures are red and running calls are striped. Click a call for its details; the arrows go to earlier turns.",
       "helpEvents": "What needs you, such as a waiting approval or a failed test. An item that goes away stays here, marked cleared with its time. The history starts when you open this page.",
@@ -73,7 +76,7 @@
       "helpTurns": "One bar per recent turn, showing where its time went: the model, each kind of tool, and waiting for you. The longest turn sets the scale.",
       "helpCalls": "The session's recent tool calls: when, who, what and the result. Click a column head to sort, filter with the box and the buttons, and click a row for its details.",
       "helpInsights": "The calls worth a look: those that took longest, and those whose results were largest in tokens, since large results fill the context.",
-      "helpVerification": "The last test, lint, typecheck and build command and how each ended. A dash means it has not run yet. A number is how many tests ran, with (−n) skipped. Hover for the whole command.",
+      "helpVerification": "The last test, lint, typecheck and build command and how each ended. A dash means it has not run yet. A number is how many tests ran, with (−n) skipped. Hover for the whole command. Test files edited after the last prompt are listed below, with what they took out. Some updates are right, so check them.",
       "helpTasks": "Claude's to-do list for this session, and how many items are done.",
       "helpAgents": "Each subagent of this session: its type, task, status, model, calls and tokens. FAIL means it reported failing tests; hover the task for why.",
       "helpFiles": "The files this session edited and read, the last eight of each, from successful calls only. Hover for the whole path.",
@@ -551,6 +554,7 @@
   },
   "isPaneOpen": true,
   "build": "0.26.0 · b888ede",
+  "testReview": { "files": [{ "path": "/home/dev/github/agent-radar/tests/parser.test.ts", "removed": 1, "skips": 1, "at": 1 }, { "path": "/home/dev/github/agent-radar/tests/web.test.ts", "removed": 0, "skips": 0, "at": 1 }], "dropped": ["npm test ran 38 tests and skipped 2 after the edit, 40 and 0 before it"], "isGreen": true },
   "trace": [
     {
       "id": "t1",
