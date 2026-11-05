@@ -186,7 +186,7 @@ const en = {
     promptBase: (base: string, n: number, files: string) =>
       `${base} has ${n} new commits that change files this session edited: ${files}. Show what those commits changed in these files, then rebase this branch onto ${base}, resolve any conflicts and rerun the checks.`,
     testReview: (what: string) => `Green run after test edits: ${what}. Check they are right.`,
-    promptTestReview: (what: string) => `The tests pass, but the tests were changed: ${what}. Show each removed or changed assertion, skip or dropped test from the diff, and say why it is right. Restore any that only hid a failure.`,
+    promptTestReview: (what: string) => `The tests pass, but the tests were changed:\n${what}\n\nShow each removed or changed assertion, skip or dropped test from the diff, and say why it is right. Restore any that only hid a failure.`,
     promptWait: (list: string) => `These calls waited for my approval most often: ${list}. Suggest permission allow rules for the safe ones; change nothing yet.`,
     fresh: (k: string) => `the last turn worked where this ${k} session had not been · /clear before the next unrelated task (/clear <name> to come back)`,
     redo: (n: number) => `${n} corrections in a row · a third rarely lands: /clear and one new prompt with what you learned`,

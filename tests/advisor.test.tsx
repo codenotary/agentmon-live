@@ -780,6 +780,28 @@ test('a changed assertion shows its old and new line, and the question carries t
   expect(await ui.find({ type: 'Text', text: /\+ expect\(parse\('b'\)\)\.toBe\(3\)/ })).toBeTruthy()
   await ui.press({ key: 'investigate:0' })
   expect(filled.join()).toContain("+ expect(parse('b')).toBe(3)")
+  expect(filled.join()).toContain('```text\nparser.test.ts:')
+  await ui.unmount()
+})
+
+test('a passing run in another package leaves the review off Focus until a run reaches the edited test', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })
+  const { cd } = monorepo(on)
+  const item = /Green run after test edits/
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
+  await $.tool.call({ tool: 'Edit', file_path: FILE, old_string: WEAKENED[0]!.old, new_string: WEAKENED[0]!.new })
+  await clock.advance(1000)
+  cd('/repo/packages/web')
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: item })).toBe(undefined)
+  cd('/repo')
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: item })).toBeTruthy()
   await ui.unmount()
 })
 

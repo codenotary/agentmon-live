@@ -46,7 +46,7 @@ export function droppedRuns(runs: readonly TestRun[], lastCodeEditAt: number | u
 // Runs after the last code edit that executed nothing or fewer tests than before it, targets whose latest run failed, and targets no run covered.
 // The checks keep one row per kind, so a target's failure is reported here: a later pass elsewhere replaces its row.
 // `isOldFail`: the tests already failed at the prompt, so a failure is not this turn's. An unread summary is taken as tests run.
-export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined, isOldFail = false, isTestEdited = false): string[] {
+export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined, { isOldFail = false, isTestEdited = false } = {}): string[] {
   if (lastCodeEditAt === undefined) return []
   const fresh = runs.filter(r => r.at >= lastCodeEditAt && r.result !== 'running')
   const gaps = fresh.filter(r => r.result === 'ok' && r.ran === 0).map(r => t.gapEmpty(r.command))
@@ -108,7 +108,7 @@ export function doneGaps(t: Strings, { checks, before, tasks, agents, since, cod
     else if ((lastCodeEditAt ?? 0) > c.at) gaps.push(t.gapStale(t.check[c.kind], c.command))
   }
   const isOldFail = before.some(b => b.kind === 'test' && b.result === 'failed')
-  for (const gap of coverageGaps(t, runs, targets, lastCodeEditAt, isOldFail, isTestEdited)) if (!gaps.includes(gap)) gaps.push(gap)
+  for (const gap of coverageGaps(t, runs, targets, lastCodeEditAt, { isOldFail, isTestEdited })) if (!gaps.includes(gap)) gaps.push(gap)
   // Code changed, the answer says the checks pass, and nothing ran after the change: the claim has no evidence.
   const claim = lastCodeEditAt === undefined || gaps.length > 0 ? undefined : claimOf(answer)
   if (claim && !checks.some(c => c.at >= lastCodeEditAt! && c.result !== 'running' && c.result !== 'failed')) gaps.push(t.gapClaim(claim))

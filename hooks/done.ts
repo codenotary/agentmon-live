@@ -7,7 +7,7 @@ import { addNote, consult } from './advisor'
 import { coverageGaps, doneGaps, droppedRuns, isDoc, isWithin, testCfg } from './gate'
 import type { Target, TestRun } from './gate'
 import { relPath, SOURCE } from './sizeguard'
-import { mergeEdit } from './testreview'
+import { mergeEdit, runReaches } from './testreview'
 import type { Weakening } from './testreview'
 import { mask } from './format'
 import { notePrompt } from './learning'
@@ -50,14 +50,19 @@ export async function noteTestEdit($: EngineInterface, turn: Turn, path: string,
   await update($, testReview, r => ({ ...r, files: mergeEdit(r.files, path, found, at), isGreen: false }))
 }
 
+const isTestEdited = (turn: Turn) => turn.testEdits.size > 0
+
+// shortcut: only a run over an edited test counts, and one stands for all of them; upgrade when edits in two packages mislead.
 export async function noteTestRun($: EngineInterface, turn: Turn) {
-  const last = turn.tests.filter(r => r.result !== 'running').at(-1)
-  const dropped = turn.testEdits.size > 0 ? droppedRuns(turn.tests, turn.lastCodeEditAt) : []
-  await update($, testReview, r => ({
-    ...r,
-    dropped: [...new Map([...r.dropped, ...dropped].map(d => [JSON.stringify(d), d])).values()],
-    isGreen: r.files.length > 0 && last?.result === 'ok' && r.files.every(f => last.at >= f.at),
-  }))
+  const dropped = isTestEdited(turn) ? droppedRuns(turn.tests, turn.lastCodeEditAt) : []
+  await update($, testReview, r => {
+    const last = turn.tests.filter(run => run.result !== 'running' && r.files.some(f => runReaches(run, f.path))).at(-1)
+    return {
+      ...r,
+      dropped: [...new Map([...r.dropped, ...dropped].map(d => [JSON.stringify(d), d])).values()],
+      isGreen: last === undefined ? r.isGreen : last.result === 'ok' && r.files.every(f => last.at >= f.at),
+    }
+  })
 }
 
 const MANIFESTS = ['package.json', 'pyproject.toml', 'Cargo.toml', 'go.mod']
@@ -124,7 +129,7 @@ export async function openGaps($: EngineInterface, turn: Turn, answer: string): 
   const t = cfg.t
   const [checked, planned, list] = await Promise.all([read($, checks), read($, tasks), read($, agents)])
   const targets = await targetsOf($, turn)
-  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer, runs: turn.tests, targets, isTestEdited: turn.testEdits.size > 0 })
+  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer, runs: turn.tests, targets, isTestEdited: isTestEdited(turn) })
   if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines, judged: true }
   const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-8000)).slice(-4000)}` : ''}`)
   // Fable read untrusted tool output; what it says goes to Claude as a claim, never as a fact.
@@ -138,7 +143,7 @@ export async function benchPrompt($: EngineInterface, turn: Turn, blockAt: numbe
   const after = checked.filter(c => c.at >= (turn.lastCodeEditAt ?? Infinity) && c.result !== 'running')
   notePrompt({
     edit: turn.lastCodeEditAt !== undefined,
-    verified: after.length > 0 && after.every(c => c.result === 'ok') && coverageGaps(cfg.t, turn.tests, targets, turn.lastCodeEditAt, turn.before.some(b => b.kind === 'test' && b.result === 'failed'), turn.testEdits.size > 0).length === 0,
+    verified: after.length > 0 && after.every(c => c.result === 'ok') && coverageGaps(cfg.t, turn.tests, targets, turn.lastCodeEditAt, { isOldFail: turn.before.some(b => b.kind === 'test' && b.result === 'failed'), isTestEdited: isTestEdited(turn) }).length === 0,
     churn: [...turn.edits.values()].some(n => n >= PROMPT_CHURN_EDITS),
     ms: turn.tools > 0 ? now - turn.startedAt : 0,
     block: blockAt !== undefined,
