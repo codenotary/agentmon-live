@@ -25,6 +25,11 @@ test('a legitimate test update counts nothing', () => {
   expect(weakening(LEGITIMATE.old, LEGITIMATE.new)).toEqual(NOTHING)
 })
 
+test('only a runner call or marker counts as a skip, not a property of that name', () => {
+  expect(weakening('', 'const cfg = { only: true }\nrun(cfg.only, list.skip)\nexpect(state.todo).toBe(1)').skips).toBe(0)
+  expect(weakening('', 'describe.only("x", () => {})\ntest.describe.skip("y", () => {})\nthis.skip()\npytest.skip("z")').skips).toBe(4)
+})
+
 test('a run needs review only when green and something was taken out', () => {
   const edit = (removed: number, skips = 0): TestEdit => ({ path: '/r/a.test.ts', removed, skips, at: 1 })
   expect(needsReview({ files: [edit(1)], dropped: [], isGreen: true })).toBe(true)
@@ -69,5 +74,5 @@ test('a secret in a test line is masked, and a long line is cut', () => {
 test('a dropped run sends back unless the task edited tests', () => {
   const run = (at: number, ran: number): TestRun => ({ dir: '/repo', isFocused: false, command: 'npm test', at, result: 'ok', ran, skipped: 0 })
   expect(coverageGaps(en, [run(5, 40), run(20, 35)], [], 10)).toEqual([en.gapDropped('npm test', 40, 0, 35, 0)])
-  expect(coverageGaps(en, [run(5, 40), run(20, 35)], [], 10, false, true)).toEqual([])
+  expect(coverageGaps(en, [run(5, 40), run(20, 35)], [], 10, { isTestEdited: true })).toEqual([])
 })

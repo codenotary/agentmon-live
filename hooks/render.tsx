@@ -43,9 +43,6 @@ const CALM_HIDDEN = ['insights', 'skills', 'usage']
 // The last frame drawn, kept for `refreshRate`, and what it was drawn for.
 let frame: { key: string; tree: RenderElement } | undefined
 
-// With a refresh rate, while work runs a change redraws the pane at the next period boundary; a key press, a resize,
-// `c` or a clear (both write the advisor), a new urgent item and an idle pane redraw at once. A frame kept skips the other reads, so their writes do not redraw it;
-// register.tsx's pulse, on each boundary, draws the next one.
 // Putting the test review away empties its list; its key stays out of `dismissed`, so the same edit later shows again.
 async function dismissFocus($: EngineInterface, keys: readonly string[]) {
   const isReview = (key: string) => key.startsWith('testReview:')
@@ -53,6 +50,9 @@ async function dismissFocus($: EngineInterface, keys: readonly string[]) {
   if (keys.some(isReview)) await update($, testReview, () => INIT.testReview)
 }
 
+// With a refresh rate, while work runs a change redraws the pane at the next period boundary; a key press, a resize,
+// `c` or a clear (both write the advisor), a new urgent item and an idle pane redraw at once. A frame kept skips the other reads, so their writes do not redraw it;
+// register.tsx's pulse, on each boundary, draws the next one.
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   if (cfg.refreshMs <= 0) return drawFresh($, e)
   const [lay, tab, adv, now, doing, checked, list] = await Promise.all([read($, layout), read($, view), read($, advisor), $.clock.now(), read($, active), read($, checks), read($, agents)])

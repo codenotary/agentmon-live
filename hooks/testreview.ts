@@ -8,7 +8,7 @@ const TEST_PATH = /(?:^|\/)(?:__tests__|tests?|spec)\/|(?:\.|_)(?:test|spec)\.\w
 export const isTestPath = (path: string) => TEST_PATH.test(path)
 
 const ASSERT = /\b(?:expect|assert\w*|should|require\.\w+|self\.assert\w+|t\.(?:Error|Fatal)\w*)\s*[(.!]|^\s*assert\s/g
-const SKIP = /\.(?:skip|only|todo)\b|\b(?:xit|xtest|xdescribe|fit|fdescribe)\s*\(|@pytest\.mark\.(?:skip|xfail)|@unittest\.skip|\bt\.Skip\w*\(|#\[ignore|@Ignore\b|@Disabled\b/g
+const SKIP = /\b(?:it|test|describe|context|suite|specify)(?:\.\w+)?\.(?:skip|only|todo)\b|\b(?:this|pytest)\.skip\(|\b(?:xit|xtest|xdescribe|fit|fdescribe)\s*\(|@pytest\.mark\.(?:skip|xfail)|@unittest\.skip|\bt\.Skip\w*\(|#\[ignore|@Ignore\b|@Disabled\b/g
 const COMMENT = /^\s*(?:\/\/|#(?!\[)|\*)/
 
 const KEEP_LINES = 5

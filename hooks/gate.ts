@@ -23,11 +23,11 @@ export function parseTestRules(text: string): TestRule[] {
 
 export const isWithin = (path: string, dir: string) => path === dir || path.startsWith(dir.endsWith('/') ? dir : `${dir}/`)
 
-// A run reaches a target when it ran in the target's directory or above it, or in its workspace; below it, it ran only part of it.
-function reaches(r: TestRun, t: Target): { isPart: boolean } | undefined {
-  if (r.pkg !== undefined) return t.dir.split('/').at(-1) === r.pkg && isWithin(t.dir, r.dir) ? { isPart: false } : undefined
-  if (isWithin(t.dir, r.dir)) return { isPart: false }
-  return isWithin(r.dir, t.dir) ? { isPart: true } : undefined
+// A run reaches a package folder when it ran in it or above it, or in its workspace; below it, it ran only part of it.
+export function reaches(r: TestRun, dir: string): { isPart: boolean } | undefined {
+  if (r.pkg !== undefined) return dir.split('/').at(-1) === r.pkg && isWithin(dir, r.dir) ? { isPart: false } : undefined
+  if (isWithin(dir, r.dir)) return { isPart: false }
+  return isWithin(r.dir, dir) ? { isPart: true } : undefined
 }
 
 // The same command ran fewer tests, or skipped more, after the edit than before it: tests were deleted or skipped.
@@ -46,7 +46,7 @@ export function droppedRuns(runs: readonly TestRun[], lastCodeEditAt: number | u
 // Runs after the last code edit that executed nothing or fewer tests than before it, targets whose latest run failed, and targets no run covered.
 // The checks keep one row per kind, so a target's failure is reported here: a later pass elsewhere replaces its row.
 // `isOldFail`: the tests already failed at the prompt, so a failure is not this turn's. An unread summary is taken as tests run.
-export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined, isOldFail = false, isTestEdited = false): string[] {
+export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined, { isOldFail = false, isTestEdited = false } = {}): string[] {
   if (lastCodeEditAt === undefined) return []
   const fresh = runs.filter(r => r.at >= lastCodeEditAt && r.result !== 'running')
   const gaps = fresh.filter(r => r.result === 'ok' && r.ran === 0).map(r => t.gapEmpty(r.command))
@@ -55,7 +55,7 @@ export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: read
   for (const target of targets) {
     if (!target.isDeclared && fresh.length === 0) continue
     const hits = fresh.flatMap(r => {
-      const hit = reaches(r, target)
+      const hit = reaches(r, target.dir)
       return hit ? [{ ...r, ...hit }] : []
     })
     const last = hits.at(-1)
@@ -108,7 +108,7 @@ export function doneGaps(t: Strings, { checks, before, tasks, agents, since, cod
     else if ((lastCodeEditAt ?? 0) > c.at) gaps.push(t.gapStale(t.check[c.kind], c.command))
   }
   const isOldFail = before.some(b => b.kind === 'test' && b.result === 'failed')
-  for (const gap of coverageGaps(t, runs, targets, lastCodeEditAt, isOldFail, isTestEdited)) if (!gaps.includes(gap)) gaps.push(gap)
+  for (const gap of coverageGaps(t, runs, targets, lastCodeEditAt, { isOldFail, isTestEdited })) if (!gaps.includes(gap)) gaps.push(gap)
   // Code changed, the answer says the checks pass, and nothing ran after the change: the claim has no evidence.
   const claim = lastCodeEditAt === undefined || gaps.length > 0 ? undefined : claimOf(answer)
   if (claim && !checks.some(c => c.at >= lastCodeEditAt! && c.result !== 'running' && c.result !== 'failed')) gaps.push(t.gapClaim(claim))
