@@ -39,6 +39,8 @@ export const PAGE_EN = {
   "sessions": "Sessions",
   "calls": "Calls",
   "call": "Call",
+  "listAll": "Show all",
+  "listFewer": "Show fewer",
   "errors": "Errors",
   "none": "Nothing yet.",
   "live": "live",

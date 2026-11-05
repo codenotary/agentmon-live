@@ -10,6 +10,8 @@ import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill } from '../ui/Pill.tsx'
 
 const column = createColumnHelper<Call>()
+// A scroller of its own would catch the wheel on its way down the page.
+const ROWS_SHOWN = 8
 
 export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
@@ -17,6 +19,7 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'at', desc: true }])
   const [text, setText] = useState('')
   const [who, setWho] = useState<string | null>(null)
+  const [isAll, setAll] = useState(false)
 
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const columns = useMemo(() => [
@@ -34,6 +37,9 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
 
   const table = useReactTable({ data: rows, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), getRowId: c => c.id ?? `${c.at}:${c.who}:${c.what}` })
 
+  const all = table.getRowModel().rows
+  const shown = isAll ? all : all.slice(0, ROWS_SHOWN)
+
   const filters = (
     <>
       <input className="field !h-[26px] !w-40" type="search" aria-label={p.filterCalls} placeholder={p.filterCalls} value={text} onChange={e => setText(e.target.value)} />
@@ -50,9 +56,9 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   return (
     <Panel id="calls" title={p.toolCalls} help={p.helpCalls} icon={Terminal} aside={s.calls.length ? filters : undefined}>
       {s.calls.length === 0 ? <Empty text={p.none} /> : rows.length === 0 ? <Empty text={p.noMatch} /> : (
-        <div className="max-h-[440px] overflow-auto">
+        <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px] tabular-nums">
-            <thead className="sticky top-0 z-10 bg-surface-1">
+            <thead className="bg-surface-1">
               {table.getHeaderGroups().map(group => (
                 <tr key={group.id}>
                   {group.headers.map(h => {
@@ -70,13 +76,14 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
               ))}
             </thead>
             <tbody>
-              {table.getRowModel().rows.map(row => (
+              {shown.map(row => (
                 <tr key={row.id} className="row-in cursor-pointer border-t border-line-soft hover:bg-surface-1" tabIndex={0} aria-label={`${p.details}: ${row.original.what}`} onClick={() => set({ call: row.original })} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); set({ call: row.original }) } }}>
                   {row.getVisibleCells().map(cell => <td key={cell.id} className={`px-[18px] py-[11px] align-top max-sm:px-2.5 ${cell.column.id === 'who' ? 'max-sm:hidden' : ''}`}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
                 </tr>
               ))}
             </tbody>
           </table>
+          {all.length > ROWS_SHOWN ? <button type="button" className="chip mt-2" aria-expanded={isAll} onClick={() => setAll(!isAll)}>{isAll ? p.listFewer : `${p.listAll} (${all.length})`}</button> : null}
         </div>
       )}
     </Panel>

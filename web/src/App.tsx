@@ -36,10 +36,7 @@ function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; 
     case 'calls':
       return (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] xl:items-start">
-          <div className="flex min-w-0 flex-col gap-4">
-            <TurnClock s={s} l={l} />
-            <Calls s={s} l={l} />
-          </div>
+          <div className="min-w-0"><Calls s={s} l={l} /></div>
           <Insights s={s} p={p} />
         </div>
       )
@@ -63,7 +60,7 @@ function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; 
         <>
           <Instruments s={s} p={p} trend={trend} />
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] xl:items-start">
-            <div className="min-w-0"><Waterfall s={s} l={l} /></div>
+            <div className="flex min-w-0 flex-col gap-4"><Waterfall s={s} l={l} /><TurnClock s={s} l={l} /></div>
             <div className="flex min-w-0 flex-col gap-4 max-xl:order-first">
               <Events list={events} p={p} />
               <Running s={s} p={p} />

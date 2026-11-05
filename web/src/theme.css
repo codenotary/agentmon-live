@@ -174,7 +174,7 @@ button.wf-row:hover { background: var(--surface-2); }
 .wf-axis { min-height: 18px; }
 .wf-name { display: flex; min-width: 0; align-items: baseline; gap: 7px; font: 400 12px var(--font-mono); white-space: nowrap; }
 .wf-name b { font-weight: 400; }
-.wf-track { position: relative; display: block; height: 15px; background-image: repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px 25%); }
+.wf-track { position: relative; display: block; height: 15px; background-image: repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px var(--tick-gap, 25%)); }
 .wf-bar { position: absolute; top: 3px; bottom: 3px; min-width: 3px; border-radius: 2px; background: var(--ink-3); opacity: .7; }
 .wf-bar.slowest { background: var(--signal-bright); opacity: 1; }
 .wf-bar.failed { background: var(--bad); opacity: 1; }

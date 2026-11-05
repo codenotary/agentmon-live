@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { nextEvents } from '../../web/src/events.ts'
 import { agentNames, countWord, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
-import { rowsOf, spanOf, xOf } from '../../web/src/waterfall.ts'
+import { fitSpan, followedTurn, rowsOf, spanOf, ticksOf, xOf } from '../../web/src/waterfall.ts'
 import { sourceHash } from '../../web/source-hash.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -108,6 +108,29 @@ test('the cap drops old cleared events before an open one', () => {
   const old = { key: 'old', tag: 't', text: 'x', isUrgent: true }
   const list = [{ ...old, at: 1 }, { key: 'c', tag: 't', text: 'y', isUrgent: false, at: 50, clearedAt: 60 }]
   assert.deepEqual(nextEvents(list, [old], 100, 1).map(e => e.key), ['old'])
+})
+
+test('the axis takes round steps, and at most five ticks', () => {
+  assert.deepEqual(ticksOf(4500), { step: 1000, at: [0, 1000, 2000, 3000, 4000] })
+  assert.deepEqual(ticksOf(31_000).step, 10_000)
+  assert.deepEqual(ticksOf(900).at, [0, 200, 400, 600, 800])
+  assert.deepEqual(ticksOf(0).at, [])
+  for (const ms of [1, 999, 61_000, 5_000_000, 90_000_000]) assert.ok(ticksOf(ms).at.length <= 5, String(ms))
+})
+
+test('the axis takes in a subagent that outlives its turn', () => {
+  assert.deepEqual(fitSpan({ from: 100, to: 200 }, [{ from: 90, to: 150 }, { from: 120, to: 400 }]), { from: 90, to: 400 })
+  assert.deepEqual(fitSpan({ from: 100, to: 200 }, []), { from: 100, to: 200 })
+})
+
+test('following stays on the newest turn with calls until a new one has its first', () => {
+  const old = { startedAt: 0, wallMs: 10, buckets: {} }
+  const fresh = { startedAt: 100, wallMs: 1, buckets: {}, isLive: true }
+  const quiet = { ...empty, trace: [call('x', MAIN, 5, { ms: 1 })] }
+  assert.equal(followedTurn(quiet, [old, fresh], MAIN, 101), old)
+  assert.equal(followedTurn({ ...empty, trace: [call('y', MAIN, 100)] }, [old, fresh], MAIN, 101), fresh)
+  assert.equal(followedTurn(empty, [old, fresh], MAIN, 101), fresh)
+  assert.equal(followedTurn(empty, [], MAIN, 101), undefined)
 })
 
 test('positions stay on the track', () => {

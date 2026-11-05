@@ -46,6 +46,8 @@ export const de: Strings = {
       sessions: 'Sitzungen',
       calls: 'Aufrufe',
       call: 'Aufruf',
+      listAll: 'Alle zeigen',
+      listFewer: 'Weniger zeigen',
       errors: 'Fehler',
       none: 'Noch nichts.',
       live: 'live',

@@ -46,6 +46,8 @@ export const ja: Strings = {
       sessions: 'セッション',
       calls: '呼び出し',
       call: '呼び出し',
+      listAll: 'すべて表示',
+      listFewer: '折りたたむ',
       errors: 'エラー',
       none: 'まだありません。',
       live: '実行中',

@@ -46,6 +46,8 @@ export const es: Strings = {
       sessions: 'Sesiones',
       calls: 'Llamadas',
       call: 'Llamada',
+      listAll: 'Mostrar todo',
+      listFewer: 'Mostrar menos',
       errors: 'Errores',
       none: 'Nada todavía.',
       live: 'en directo',

@@ -1,14 +1,12 @@
 import { ChartNoAxesGantt, ChevronLeft, ChevronRight } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
 import { countWord, dur, hhmm, resultOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { set, useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
-import { rowsOf, spanOf, xOf, type Row } from '../waterfall.ts'
-
-const TICKS = [0, 25, 50, 75]
+import { fitSpan, followedTurn, rowsOf, spanOf, ticksOf, xOf, type Row } from '../waterfall.ts'
 
 const msText = (ms: number | undefined) => (ms === undefined ? '' : ms < 1000 ? `${ms} ms` : dur(ms))
 
@@ -33,11 +31,14 @@ export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   // Null follows the newest turn.
   const [pickedAt, setPickedAt] = useState<number | null>(null)
   const box = useRef<HTMLDivElement>(null)
-  const turn = s.turns.find(t => t.startedAt === pickedAt) ?? s.turns.at(-1)
+  const turn = s.turns.find(t => t.startedAt === pickedAt) ?? followedTurn(s, s.turns, l.main, now)
   const at = turn ? s.turns.indexOf(turn) : -1
   const isFollowing = pickedAt === null
-  const span = turn ? spanOf(turn, now) : { from: 0, to: 0 }
-  const rows = turn ? rowsOf(s, span, l.main, now) : []
+  const turnSpan = turn ? spanOf(turn, now) : { from: 0, to: 0 }
+  const rows = turn ? rowsOf(s, turnSpan, l.main, now) : []
+  const span = fitSpan(turnSpan, rows)
+  const length = span.to - span.from
+  const ticks = ticksOf(length)
   const failed = rows.filter(r => r.state === 'failed').length
   const calls = rows.filter(r => !r.isAgent).length
 
@@ -51,11 +52,11 @@ export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   }
   const aside = turn ? (
     <>
-      <span className="font-mono text-[11px] text-ink-3 tabular-nums">{countWord(calls, p)}{failed ? <span className="text-bad"> · {failed} {failed === 1 ? p.error : p.errors}</span> : null} · {dur(span.to - span.from)}</span>
+      <span className="font-mono text-[11px] text-ink-3 tabular-nums">{countWord(calls, p)}{failed ? <span className="text-bad"> · {failed} {failed === 1 ? p.error : p.errors}</span> : null} · {dur(length)}</span>
       <div className="flex items-center gap-1">
         <button type="button" className="icon-btn !h-[26px] !min-w-[26px] !p-0" aria-label={p.prevTurn} title={p.prevTurn} disabled={at <= 0} onClick={() => goTo(at - 1)}><ChevronLeft size={13} aria-hidden /></button>
         <span className="min-w-11 text-center font-mono text-[11px] tabular-nums">{hhmm(turn.startedAt)}</span>
-        <button type="button" className="icon-btn !h-[26px] !min-w-[26px] !p-0" aria-label={p.nextTurn} title={p.nextTurn} disabled={at >= s.turns.length - 1} onClick={() => goTo(at + 1)}><ChevronRight size={13} aria-hidden /></button>
+        <button type="button" className="icon-btn !h-[26px] !min-w-[26px] !p-0" aria-label={p.nextTurn} title={p.nextTurn} disabled={isFollowing || at >= s.turns.length - 1} onClick={() => goTo(at + 1)}><ChevronRight size={13} aria-hidden /></button>
       </div>
       <button type="button" className="chip" aria-pressed={isFollowing} onClick={() => setPickedAt(null)}>{p.follow}</button>
     </>
@@ -64,11 +65,11 @@ export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   return (
     <Panel id="waterfall" title={p.waterfall} help={p.helpWaterfall} icon={ChartNoAxesGantt} aside={aside}>
       {rows.length === 0 ? <Empty text={p.none} /> : (
-        <>
+        <div style={{ '--tick-gap': `${(ticks.step / Math.max(1, length)) * 100}%` } as CSSProperties}>
           <div className="wf-row wf-axis" aria-hidden>
             <span />
             <span className="wf-track !bg-none">
-              {TICKS.map(pct => <span key={pct} className={`absolute font-mono text-[10px] text-ink-3 ${pct % 50 ? 'max-sm:hidden' : ''}`} style={{ left: `${pct}%` }}>{dur(((span.to - span.from) * pct) / 100)}</span>)}
+              {ticks.at.map((ms, i) => <span key={ms} className={`absolute font-mono text-[10px] whitespace-nowrap text-ink-3 ${i % 2 ? 'max-sm:hidden' : ''}`} style={{ left: `${(ms / Math.max(1, length)) * 100}%` }}>{ticks.step < 1000 ? `${(ms / 1000).toFixed(1)}s` : dur(ms)}</span>)}
             </span>
             <span />
           </div>
@@ -92,7 +93,7 @@ export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
               )
             })}
           </div>
-        </>
+        </div>
       )}
     </Panel>
   )

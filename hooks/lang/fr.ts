@@ -46,6 +46,8 @@ export const fr: Strings = {
       sessions: 'Sessions',
       calls: 'Appels',
       call: 'Appel',
+      listAll: 'Tout afficher',
+      listFewer: 'Afficher moins',
       errors: 'Erreurs',
       none: 'Rien pour l\'instant.',
       live: 'en direct',

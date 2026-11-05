@@ -46,6 +46,8 @@ export const zh: Strings = {
       sessions: '会话',
       calls: '调用',
       call: '调用',
+      listAll: '显示全部',
+      listFewer: '收起',
       errors: '错误',
       none: '暂无内容。',
       live: '运行中',
