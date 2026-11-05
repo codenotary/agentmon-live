@@ -44,7 +44,7 @@ export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: T
     </Stat>,
   ]
   return (
-    <section id="instruments" className="kpi-band grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 [&>*]:border-line xl:[&>*:not(:first-child)]:border-l" data-testid="instruments" aria-label={p.context}>
+    <section id="instruments" className="kpi-band grid auto-rows-fr grid-cols-2 min-[480px]:grid-cols-3 xl:grid-cols-7 [&>*]:border-line xl:[&>*:not(:first-child)]:border-l" data-testid="instruments" aria-label={p.context}>
       {parts}
       <HelpButton text={p.helpInstruments} isOpen={isHelpOpen} onToggle={() => setHelpOpen(!isHelpOpen)} className="absolute top-1.5 right-1.5" />
       {isHelpOpen ? <p className="help-text col-span-full m-3 mt-0">{p.helpInstruments}</p> : null}

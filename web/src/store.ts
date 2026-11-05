@@ -9,6 +9,7 @@ const PICK_KEY = 'agentmon-live-session'
 const THEME_KEY = 'agentmon-live-theme'
 const HISTORY_POINTS = 600
 const KEEP_EVENTS = 100
+const THEME_FADE_MS = 200
 
 export type Theme = 'auto' | 'dark' | 'light'
 // A row of the calls table or the waterfall, for the drawer.
@@ -83,11 +84,15 @@ export const currentOf = (st: State): WebSnapshot | undefined => (st.picked ? st
 
 export function pick(id: string): void {
   save(PICK_KEY, id)
+  // A section's link in the address belongs to the session being left.
+  history.replaceState(null, '', location.pathname + location.search)
   set({ picked: id, whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set() })
 }
 
 export function setTheme(theme: Theme): void {
   save(THEME_KEY, theme)
+  document.documentElement.classList.add('theme-fade')
+  setTimeout(() => document.documentElement.classList.remove('theme-fade'), THEME_FADE_MS)
   set({ theme })
 }
 

@@ -18,6 +18,7 @@ const shots = [
   ['light', 'light', 1440],
   ['dark', 'dark', 1440],
   ['phone', 'dark', 390],
+  ['narrow', 'dark', 620],
   ['palette', 'dark', 1440, page => page.keyboard.press('Control+k')],
   ['drawer', 'dark', 1440, page => page.click('#calls tbody tr')],
   ['agents', 'dark', 1440, async page => { for (const row of await page.locator('[data-testid=agents] tr[data-line]').all()) await row.click() }],
@@ -53,9 +54,10 @@ for (const href of await links()) {
   await page.click(`.nav-item[href="${href}"]`)
   await page.waitForTimeout(150)
   const top = await topOf(href)
-  if (Math.abs(top - 69) > 2) problems.push(`nav: ${href} landed at ${top}, not under the header`)
   const y = await page.evaluate(() => scrollY)
-  if (y <= lastY) problems.push(`nav: ${href} did not move down the page (${lastY} then ${y})`)
+  const atEnd = await page.evaluate(() => innerHeight + scrollY >= document.documentElement.scrollHeight - 2)
+  if (Math.abs(top - 69) > 2 && !(atEnd && top > 69)) problems.push(`nav: ${href} landed at ${top}, not under the header`)
+  if (y < lastY || (y === lastY && !atEnd)) problems.push(`nav: ${href} did not move down the page (${lastY} then ${y})`)
   lastY = y
   const at = await marked()
   if (at.join() !== href) problems.push(`nav: ${href} marked ${at.join()}`)
@@ -66,11 +68,11 @@ await page.click(`.nav-item[href="${second}"]`)
 await page.goBack()
 await page.waitForTimeout(150)
 if (new URL(page.url()).hash !== first) problems.push('nav: back did not return')
-await page.goto(`${url}#section-log`)
+await page.goto(`${url}#section-agents`)
 await page.reload()
-await page.waitForSelector('#log')
+await page.waitForSelector('#agents')
 await page.waitForTimeout(150)
-if (Math.abs(await topOf('#section-log') - 69) > 2) problems.push('nav: the deep link did not land')
+if (Math.abs(await topOf('#section-agents') - 69) > 2) problems.push('nav: the deep link did not land')
 await page.goto(`${url}#nonsense`)
 await page.reload()
 await page.waitForSelector('#waterfall')

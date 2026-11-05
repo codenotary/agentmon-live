@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useMemo } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, dur, kilo, resultOf, short, time, whoOf } from '../format.ts'
+import { agentNames, countWord, dur, kilo, resultOf, short, time, whoOf } from '../format.ts'
 import type { Labels, Page } from '../labels.ts'
 import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -14,9 +14,9 @@ const ROW = { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, exit
 export function Running({ s, p }: { s: WebSnapshot; p: Page }) {
   const now = useClock(s)
   const names = useMemo(() => agentNames(s.agents), [s.agents])
-  if (s.active.length === 0) return null
   return (
     <Panel id="running" title={p.running} help={p.helpRunning} icon={Cpu}>
+      {s.active.length === 0 ? <Empty text={p.nothingRunning} /> : null}
       <ul className="flex flex-col gap-2 text-[13px]">
         <AnimatePresence initial={false}>
           {s.active.map(a => (
@@ -129,7 +129,7 @@ export function Files({ s, p }: { s: WebSnapshot; p: Page }) {
   const isEmpty = s.files.edited.length === 0 && s.files.read.length === 0
   return (
     <Panel id="files" title={p.files} help={p.helpFiles} icon={FileText}>
-      {isEmpty ? <Empty text={p.none} /> : <div className="flex flex-col gap-3"><PathList label={p.edited} list={s.files.edited} /><PathList label={p.read} list={s.files.read} /></div>}
+      {isEmpty ? <Empty text={`${p.noFilesEdited} · ${countWord(s.trace?.length ?? 0, p)}`} /> : <div className="flex flex-col gap-3"><PathList label={p.edited} list={s.files.edited} /><PathList label={p.read} list={s.files.read} /></div>}
     </Panel>
   )
 }

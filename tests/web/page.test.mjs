@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
-import { nextEvents } from '../../web/src/events.ts'
+import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
 import { agentNames, countWord, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
@@ -222,6 +222,19 @@ test('the window opens on the last activity, follows when live, and stays inside
   assert.deepEqual(clampView({ ms: 10_000, at: 0 }, whole), { ms: 10_000, at: 11_000 })
   assert.deepEqual(clampView({ ms: 10_000, at: 2_000_000 }, whole), { ms: 10_000, at: 900_000 })
   assert.equal(clampView({ ms: 5_000_000, at: null }, whole).ms, 899_000)
+})
+
+test('what needs you comes first, the rest in time order; a wait is amber, a failure red', () => {
+  const ev = (key, at, more = {}) => ({ key, tag: 't', text: key, isUrgent: false, at, ...more })
+  const list = [ev('ask:1', 10, { isUrgent: true }), ev('warn', 20), ev('old', 30, { isUrgent: true, clearedAt: 40 })]
+  const { attention, rest } = splitEvents(list)
+  assert.deepEqual(attention.map(e => e.key), ['ask:1'])
+  assert.deepEqual(rest.map(e => e.key), ['old', 'warn'])
+  assert.equal(alertOf([ev('ask:1', 1, { isUrgent: true })]), 'warn')
+  assert.equal(alertOf([ev('ask:1', 1, { isUrgent: true }), ev('check:x', 1, { isUrgent: true })]), 'bad')
+  assert.equal(alertOf([ev('note', 1)]), undefined)
+  assert.ok(titleFor([{ key: 'ask:1', tag: 'approval', text: 'x', isUrgent: true }]).startsWith('⏸'))
+  assert.ok(titleFor([{ key: 'check:x', tag: 'failed', text: 'x', isUrgent: true }]).startsWith('✖'))
 })
 
 test('positions stay on the track', () => {

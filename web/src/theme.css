@@ -218,7 +218,7 @@ button.wf-row:hover { background: var(--surface-2); }
 @keyframes dot-in { from { transform: scale(0); } 70% { transform: scale(1.6); } }
 @keyframes arc-in { from { stroke-dashoffset: 1; } }
 @keyframes flow-march { to { stroke-dashoffset: -20; } }
-.row-in { animation: row-in 1.2s ease-out; }
+.row-in { animation: row-in .7s ease-out; }
 .flat-sweep { animation: sweep 3.2s linear infinite; }
 .spin { animation: spin 1.4s linear infinite; }
 
@@ -228,20 +228,20 @@ button.wf-row:hover { background: var(--surface-2); }
 @keyframes sweep { from { left: 0; } to { left: 100%; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* One page of sections in the rail's order. The last fills the screen, so even it can reach the top when clicked. */
+/* One page of sections in the rail's order. */
 .section { display: flex; flex-direction: column; gap: 16px; min-width: 0; scroll-margin-top: 63px; }
-.section:last-child { min-height: calc(100vh - 100px); }
 
 /* The navigation: a strip across the top on small screens, a rail to the right of the page on large ones. */
-.side-nav { position: sticky; top: 0; z-index: 20; display: flex; gap: 2px; padding: 8px 16px; overflow-x: auto; border-bottom: 1px solid var(--line); background: var(--surface-1); scrollbar-width: none; }
+.side-nav { position: sticky; top: 0; z-index: 20; display: flex; gap: 2px; padding: 8px 32px 8px 16px; overflow-x: auto; mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); border-bottom: 1px solid var(--line); background: var(--surface-1); scrollbar-width: none; }
 .nav-item { display: flex; flex: none; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; font-size: 14px; line-height: 20px; color: var(--ink-2); transition: color .15s, background-color .15s; }
 .nav-item:hover { color: var(--ink); background: var(--surface-2); }
 .nav-item[aria-current] { padding-block: 9px; font-weight: 700; color: var(--signal); background: var(--signal-soft); }
 .nav-count { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; height: 20px; min-width: 20px; padding: 0 7px; border-radius: 9999px; background: var(--surface-2); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-2); }
-.nav-count.alert { background: var(--bad); color: #fff; }
+.nav-count.bad { background: var(--bad); color: #fff; }
+.nav-count.warn { background: var(--warn); color: #fff; }
 @media (min-width: 1024px) {
   .section { scroll-margin-top: 69px; }
-  .side-nav { order: 2; top: 53px; flex: none; flex-direction: column; align-self: flex-start; width: 245px; height: calc(100vh - 53px); padding: 18px 12px; overflow-y: auto; border-bottom: 0; border-left: 1px solid var(--line); background: var(--surface-1); }
+  .side-nav { order: 2; top: 53px; flex: none; flex-direction: column; align-self: flex-start; width: 245px; height: calc(100vh - 53px); padding: 18px 12px; overflow-y: auto; border-bottom: 0; border-left: 1px solid var(--line); background: var(--surface-1); mask-image: none; }
 }
 
 /* The event feed: a rail with one mark per event. */
@@ -282,6 +282,9 @@ button.wf-row:hover { background: var(--surface-2); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: var(--surface); }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 9999px; }
+
+/* Only colours fade: a border in transition flickers. */
+html.theme-fade, html.theme-fade * { transition: background-color .15s, color .15s !important; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

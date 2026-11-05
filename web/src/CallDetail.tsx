@@ -1,15 +1,19 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { Copy, X } from 'lucide-react'
 
-import { dur, resultOf, time } from './format.ts'
+import type { WebSnapshot } from '../../types/index'
+
+import { agentNames, dur, resultOf, time, whoOf } from './format.ts'
 import type { Labels } from './labels.ts'
 import { copyText } from './Palette.tsx'
 import { set, useStore } from './store.ts'
 import { Pill } from './ui/Pill.tsx'
 
-export function CallDetail({ l }: { l: Labels | undefined }) {
+export function CallDetail({ l, s }: { l: Labels | undefined; s: WebSnapshot | undefined }) {
   const { call } = useStore()
   if (!call || !l) return null
+  const ms = call.ms ?? s?.trace?.find(c => c.id === call.id)?.ms
+  const who = whoOf(call, agentNames(s?.agents ?? []))
   const p = l.page
   const r = resultOf(call.result, l)
   return (
@@ -23,10 +27,10 @@ export function CallDetail({ l }: { l: Labels | undefined }) {
           </div>
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
             <Pill text={r.text} tone={r.tone} />
-            <b>{call.who}</b>
+            <b>{who}</b>
             <span className="text-ink-3 tabular-nums">{time(call.at)}</span>
             <span className="text-ink-3">{l.cat[call.view] ?? call.view}</span>
-            {call.ms === undefined ? null : <span className="text-ink-3 tabular-nums">{dur(call.ms)}</span>}
+            {ms === undefined ? null : <span className="text-ink-3 tabular-nums">{dur(ms)}</span>}
           </div>
           <span className="eyebrow">{p.what}</span>
           <pre className="mt-1 mb-3 rounded-lg bg-surface-1 p-3 font-mono text-xs break-words whitespace-pre-wrap">{call.what}</pre>

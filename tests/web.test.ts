@@ -101,6 +101,26 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   expect(keys(snap.labels.page as object)).toEqual([...SHAPE.page].sort())
 })
 
+test('a subagent\'s calls carry its id, and its reads and edits reach the files list', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('tool.call', () => ({ result: {} }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn({ prompt: 'p', description: 'Review: a.ts', subagentType: 'general-purpose', tool_use_id: 't1' } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/w/a.ts', agentId: 'a1' })
+  await $.tool.call({ tool: 'Edit', file_path: '/w/b.ts', old_string: 'a', new_string: 'b', agentId: 'a1' })
+  await clock.advance(600)
+  await clock.settle()
+  const body = JSON.parse(onlyPosts(sent).at(-1)!.body!) as WebSnapshot
+  expect(body.files.read).toEqual(['/w/a.ts'])
+  expect(body.files.edited).toEqual(['/w/b.ts'])
+  expect(body.trace?.map(c => c.agentId)).toEqual(['a1', 'a1'])
+  expect(body.agents[0]).toMatchObject({ callId: 't1', prompt: 'p', task: 'Review: a.ts' })
+})
+
 test('a full session stays under the size the server takes', () => {
   const text = 'x'.repeat(300)
   const snap = toSnapshot({

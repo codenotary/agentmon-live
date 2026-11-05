@@ -24,10 +24,10 @@ export function TurnClock({ s, l }: { s: WebSnapshot; l: Labels }) {
           const summary = parts.map(k => `${name(k)} ${dur(t.buckets[k])}`).join(' · ')
           return (
             <div key={t.startedAt} className="grid grid-cols-[66px_minmax(0,1fr)_72px] items-center gap-2.5 text-xs">
-              <span className={`whitespace-nowrap tabular-nums ${t.isLive ? 'rec text-signal-bright' : 'text-ink-3'}`} title={t.isLive ? p.running : undefined}>{t.isLive ? '●' : hhmm(t.startedAt)}</span>
+              <span className={`whitespace-nowrap tabular-nums ${t.isLive ? 'text-signal-bright' : 'text-ink-3'}`} title={t.isLive ? p.running : undefined}>{hhmm(t.startedAt)}</span>
               <Tooltip.Root>
                 <Tooltip.Trigger asChild>
-                  <div className="flex h-3.5 overflow-hidden rounded bg-surface-2 transition-[width] duration-500" role="img" aria-label={summary} style={{ width: `${Math.max(2, (t.wallMs / longest) * 100)}%` }}>
+                  <div className={`flex h-3.5 overflow-hidden rounded bg-surface-2 transition-[width] duration-500 ${t.isLive ? 'rec' : ''}`} role="img" aria-label={summary} style={{ width: `${Math.max(2, (t.wallMs / longest) * 100)}%` }}>
                     {parts.map(k => <i key={k} className="block h-full min-w-px transition-[width] duration-500" style={{ width: `${((t.buckets[k] ?? 0) / used) * 100}%`, background: rampColour(ranked, k) }} />)}
                   </div>
                 </Tooltip.Trigger>

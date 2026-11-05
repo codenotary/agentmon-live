@@ -68,11 +68,12 @@ export function pushPoint(list: readonly number[], value: number, cap: number): 
   return list.at(-1) === value ? [...list] : [...list, value].slice(-cap)
 }
 
-export function titleFor(focus: readonly { tag: string; text: string; isUrgent: boolean }[]): string {
+export function titleFor(focus: readonly { key?: string; tag: string; text: string; isUrgent: boolean }[]): string {
   const first = focus.find(f => f.isUrgent)
   if (!first) return 'AgentMon Live'
   const what = `${first.tag} ${first.text}`
-  return `✖ ${what.length > 40 ? `${what.slice(0, 39)}…` : what} · AgentMon`
+  // A wait is not a failure.
+  return `${first.key?.startsWith('ask:') ? '⏸' : '✖'} ${what.length > 40 ? `${what.slice(0, 39)}…` : what} · AgentMon`
 }
 
 // Largest buckets take the ramp in order and the rest share the grey tail, as the dashboard's charts do.

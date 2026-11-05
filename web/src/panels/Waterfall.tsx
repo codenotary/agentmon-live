@@ -13,7 +13,7 @@ const msText = (ms: number | undefined) => (ms === undefined ? '' : ms < 1000 ? 
 
 export function openTrace(call: TraceCall): void {
   const result = call.isFailed ? 'failed' : call.ms === undefined ? 'running' : 'ok'
-  set({ call: { at: call.at, who: call.who, view: call.tool, what: call.what, result, ...(call.error ? { error: call.error } : {}), ...(call.ms === undefined ? {} : { ms: call.ms }) } })
+  set({ call: { id: call.id, ...(call.agentId === undefined ? {} : { agentId: call.agentId }), at: call.at, who: call.who, view: call.tool, what: call.what, result, ...(call.error ? { error: call.error } : {}), ...(call.ms === undefined ? {} : { ms: call.ms }) } })
 }
 
 function Bar({ row, from, to }: { row: Row; from: number; to: number }) {

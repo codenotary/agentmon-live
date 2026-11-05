@@ -66,7 +66,7 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
       <div className="flex flex-wrap items-center gap-x-4 lg:flex-nowrap gap-y-1.5 px-4 py-2.5 sm:px-6">
         <span className="font-display text-[15px] font-extrabold whitespace-nowrap">AgentMon Live</span>
         {live?.build ? <span className="font-mono text-[11px] whitespace-nowrap text-ink-3" data-testid="build">{live.build}</span> : null}
-        <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold tracking-[.09em] uppercase ${state.cls}`} role="status">
+        <span className={`inline-flex min-w-[88px] items-center gap-1.5 text-[11px] font-bold tracking-[.09em] uppercase ${state.cls}`} role="status">
           <i className={`size-2 rounded-full ${isLive && !st.isDown ? 'rec' : ''}`} style={{ background: state.dot }} aria-hidden />
           {state.text}
         </span>
