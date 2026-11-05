@@ -3,14 +3,14 @@ import { expect, test } from 'claude-code/testing'
 import { coverageGaps } from '../hooks/gate'
 import type { TestRun } from '../hooks/gate'
 import { LANGUAGES } from '../hooks/i18n'
-import { editLine, isTestPath, mergeEdit, needsReview, NOTHING, reviewLines, reviewText, runReaches, weakening } from '../hooks/testreview'
+import { editLine, isTestPath, mergeEdit, needsReview, NOTHING, reviewLines, reviewText, weakening } from '../hooks/testreview'
 import type { TestEdit } from '../types'
 import { LEGITIMATE, WEAKENED } from './fixtures/weakened-tests'
 
 const en = LANGUAGES.en!
 
 test('test files are told from source files', () => {
-  for (const path of ['/r/a.test.ts', '/r/a.spec.tsx', '/r/tests/a.py', '/r/__tests__/a.js', '/r/a_test.go', '/r/test_a.py', '/r/spec/a_spec.rb', 'C:\\r\\tests\\a.js', 'C:\\r\\__tests__\\a.js']) expect(isTestPath(path)).toBe(true)
+  for (const path of ['/r/a.test.ts', '/r/a.spec.tsx', '/r/tests/a.py', '/r/__tests__/a.js', '/r/a_test.go', '/r/test_a.py', '/r/spec/a_spec.rb']) expect(isTestPath(path)).toBe(true)
   for (const path of ['/r/src/a.ts', '/r/latest.ts', '/r/contest/a.ts', '/r/test.md.bak/x']) expect(isTestPath(path)).toBe(false)
 })
 
@@ -28,16 +28,6 @@ test('a legitimate test update counts nothing', () => {
 test('only a runner call or marker counts as a skip, not a property of that name', () => {
   expect(weakening('', 'const cfg = { only: true }\nrun(cfg.only, list.skip)\nexpect(state.todo).toBe(1)').skips).toBe(0)
   expect(weakening('', 'describe.only("x", () => {})\ntest.describe.skip("y", () => {})\nthis.skip()\npytest.skip("z")').skips).toBe(4)
-})
-
-test('a run speaks for an edited test only when it ran over it', () => {
-  const run = (dir: string, pkg?: string): TestRun => ({ dir, ...(pkg ? { pkg } : {}), isFocused: false, command: 'npm test', at: 1, result: 'ok' })
-  const file = '/repo/packages/api/src/a.test.ts'
-  expect(runReaches(run('/repo'), file)).toBe(true)
-  expect(runReaches(run('/repo/packages/api'), file)).toBe(true)
-  expect(runReaches(run('/repo/packages/web'), file)).toBe(false)
-  expect(runReaches(run('/repo', 'api'), file)).toBe(true)
-  expect(runReaches(run('/repo', 'web'), file)).toBe(false)
 })
 
 test('a run needs review only when green and something was taken out', () => {

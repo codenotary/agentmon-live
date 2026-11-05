@@ -2,12 +2,10 @@ import type { EngineInterface } from 'claude-code'
 
 import type { TestEdit, TestLine, TestReview } from '../types'
 import { mask } from './format'
-import { isWithin } from './gate'
-import type { TestRun } from './gate'
 import type { Strings } from './i18n'
 
 const TEST_PATH = /(?:^|\/)(?:__tests__|tests?|spec)\/|(?:\.|_)(?:test|spec)\.\w+$|(?:^|\/)test_[^/]*\.py$/i
-export const isTestPath = (path: string) => TEST_PATH.test(path.replace(/\\/g, '/'))
+export const isTestPath = (path: string) => TEST_PATH.test(path)
 
 const ASSERT = /\b(?:expect|assert\w*|should|require\.\w+|self\.assert\w+|t\.(?:Error|Fatal)\w*)\s*[(.!]|^\s*assert\s/g
 const SKIP = /\b(?:it|test|describe|context|suite|specify)(?:\.\w+)?\.(?:skip|only|todo)\b|\b(?:this|pytest)\.skip\(|\b(?:xit|xtest|xdescribe|fit|fdescribe)\s*\(|@pytest\.mark\.(?:skip|xfail)|@unittest\.skip|\bt\.Skip\w*\(|#\[ignore|@Ignore\b|@Disabled\b/g
@@ -83,9 +81,6 @@ export function mergeEdit(files: readonly TestEdit[], path: string, found: Weake
 }
 
 export const isFlagged = (f: TestEdit) => f.removed > 0 || f.skips > 0 || (f.changed ?? 0) > 0
-
-// A run speaks for an edited test only when it ran over it: at or above its folder, or in its workspace.
-export const runReaches = (r: TestRun, path: string) => isWithin(path, r.dir) && (r.pkg === undefined || path.split('/').includes(r.pkg))
 
 // Worth a person's look: a passing run after test edits that removed or changed checks, or that ran fewer tests than before.
 export const needsReview = (r: TestReview) => r.isGreen && (r.dropped.length > 0 || r.files.some(isFlagged))

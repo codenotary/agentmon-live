@@ -805,6 +805,40 @@ test('a passing run in another package leaves the review off Focus until a run r
   await ui.unmount()
 })
 
+test('a workspace run counts for its own package, not for a folder of the same name in another', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test -w api': 'Tests:       40 passed, 40 total', 'npm test -w web': 'Tests:       40 passed, 40 total' })
+  monorepo(on)
+  const item = /Green run after test edits/
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the client', turnId: 'm1' })
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/packages/web/src/api/client.test.ts', old_string: WEAKENED[0]!.old, new_string: WEAKENED[0]!.new })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test -w api' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: item })).toBe(undefined)
+  await $.tool.call({ tool: 'Bash', command: 'npm test -w web' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: item })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a passing run in a folder known only at run time still counts for the edited test', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'cd $PKG && npm test': 'Tests:       40 passed, 40 total' })
+  monorepo(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
+  await $.tool.call({ tool: 'Edit', file_path: FILE, old_string: WEAKENED[0]!.old, new_string: WEAKENED[0]!.new })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'cd $PKG && npm test' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Green run after test edits/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('the review outlasts the turn until x puts it away, and the same edit later shows again', async ($, on) => {
   const clock = mock.clock(on)
   engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })

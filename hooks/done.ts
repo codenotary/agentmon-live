@@ -4,12 +4,12 @@ import type { EngineInterface } from 'claude-code'
 import type { Check, Task } from '../types'
 import { PROMPT_CHURN_EDITS } from './bench'
 import { addNote, consult } from './advisor'
-import { coverageGaps, doneGaps, droppedRuns, isDoc, isWithin, testCfg } from './gate'
+import { coverageGaps, doneGaps, droppedRuns, isDoc, isWithin, reaches, testCfg } from './gate'
 import type { Target, TestRun } from './gate'
 import { relPath, SOURCE } from './sizeguard'
-import { mergeEdit, runReaches } from './testreview'
+import { mergeEdit } from './testreview'
 import type { Weakening } from './testreview'
-import { mask } from './format'
+import { mask, UNKNOWN_DIR } from './format'
 import { notePrompt } from './learning'
 import { cfg, INIT, isLive } from './state'
 
@@ -51,12 +51,15 @@ export async function noteTestEdit($: EngineInterface, turn: Turn, path: string,
 }
 
 const isTestEdited = (turn: Turn) => turn.testEdits.size > 0
+const projectRoot = (turn: Turn) => turn.root.replace(/\/+$/, '') || '/'
 
-// shortcut: only a run over an edited test counts, and one stands for all of them; upgrade when edits in two packages mislead.
+// shortcut: a run in an edited test's package, or in a folder not known, counts, and one stands for all of them; upgrade when edits in two packages mislead.
 export async function noteTestRun($: EngineInterface, turn: Turn) {
   const dropped = isTestEdited(turn) ? droppedRuns(turn.tests, turn.lastCodeEditAt) : []
+  const root = projectRoot(turn)
+  const dirs = await Promise.all((await read($, testReview)).files.map(f => packageRoot($, f.path.slice(0, f.path.lastIndexOf('/')) || '/', root)))
   await update($, testReview, r => {
-    const last = turn.tests.filter(run => run.result !== 'running' && r.files.some(f => runReaches(run, f.path))).at(-1)
+    const last = turn.tests.filter(run => run.result !== 'running' && (run.dir === UNKNOWN_DIR || dirs.some(dir => reaches(run, dir)))).at(-1)
     return {
       ...r,
       dropped: [...new Map([...r.dropped, ...dropped].map(d => [JSON.stringify(d), d])).values()],
@@ -81,7 +84,7 @@ async function packageRoot($: EngineInterface, dir: string, root: string): Promi
 
 // Where each file edited this turn must be tested: the first `.agentmon-tests` rule its path matches, else a source file's nearest package root.
 export async function targetsOf($: EngineInterface, turn: Turn): Promise<Target[]> {
-  const root = turn.root.replace(/\/+$/, '') || '/'
+  const root = projectRoot(turn)
   const byDir = new Map<string, Target>()
   for (const path of turn.edited) {
     const rel = relPath(path, root)
