@@ -25,6 +25,33 @@ function Name({ row, status }: { row: Row; status: string | undefined }) {
   )
 }
 
+// One row per call and subagent; an agent's own row in the table draws its calls with this too.
+export function WaterfallRows({ rows, span, l }: { rows: readonly Row[]; span: { from: number; to: number }; l: Labels }) {
+  const p = l.page
+  return (
+    <>
+    {rows.map(row => {
+      const asked = row.state === 'asking' ? l.status.waiting : undefined
+      const inner = (
+        <>
+          <Name row={row} status={asked} />
+          <span className="wf-track"><Bar row={row} from={span.from} to={span.to} /></span>
+          <span className={`text-right font-mono text-[11px] tabular-nums ${row.isSlowest ? 'font-bold text-signal' : 'text-ink-3'}`}>{msText(row.ms)}</span>
+        </>
+      )
+      const { call } = row
+      if (!call) return <div key={row.key} className="wf-row">{inner}</div>
+      const result = call.isFailed ? 'failed' : call.ms === undefined ? 'running' : 'ok'
+      return (
+        <button key={row.key} type="button" className="wf-row row-in" aria-label={`${p.details}: ${call.tool} ${call.what} ${resultOf(result, l).text}`} onClick={() => set({ call: { at: call.at, who: call.who, view: call.tool, what: call.what, result, ...(call.error ? { error: call.error } : {}), ...(call.ms === undefined ? {} : { ms: call.ms }) } })}>
+          {inner}
+        </button>
+      )
+    })}
+    </>
+  )
+}
+
 export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const now = useClock(s)
@@ -74,24 +101,7 @@ export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
             <span />
           </div>
           <div ref={box} className="flex max-h-[460px] flex-col overflow-auto" data-testid="waterfall">
-            {rows.map(row => {
-              const asked = row.state === 'asking' ? l.status.waiting : undefined
-              const inner = (
-                <>
-                  <Name row={row} status={asked} />
-                  <span className="wf-track"><Bar row={row} from={span.from} to={span.to} /></span>
-                  <span className={`text-right font-mono text-[11px] tabular-nums ${row.isSlowest ? 'font-bold text-signal' : 'text-ink-3'}`}>{msText(row.ms)}</span>
-                </>
-              )
-              const { call } = row
-              if (!call) return <div key={row.key} className="wf-row">{inner}</div>
-              const result = call.isFailed ? 'failed' : call.ms === undefined ? 'running' : 'ok'
-              return (
-                <button key={row.key} type="button" className="wf-row row-in" aria-label={`${p.details}: ${call.tool} ${call.what} ${resultOf(result, l).text}`} onClick={() => set({ call: { at: call.at, who: call.who, view: call.tool, what: call.what, result, ...(call.error ? { error: call.error } : {}), ...(call.ms === undefined ? {} : { ms: call.ms }) } })}>
-                  {inner}
-                </button>
-              )
-            })}
+            <WaterfallRows rows={rows} span={span} l={l} />
           </div>
         </div>
       )}

@@ -23,6 +23,8 @@ export type State = {
   isDown: boolean
   downAt: number
   onlyFailures: boolean
+  // The agent Tool calls is narrowed to, by the name it shows; the agent table sets it too.
+  whoFilter: string | null
   theme: Theme
   call: Detail | null
   isPaletteOpen: boolean
@@ -53,6 +55,7 @@ let state: State = {
   isDown: false,
   downAt: 0,
   onlyFailures: false,
+  whoFilter: null,
   theme: savedTheme === 'dark' || savedTheme === 'auto' ? savedTheme : 'light',
   call: null,
   isPaletteOpen: false,
@@ -73,7 +76,7 @@ export const currentOf = (st: State): WebSnapshot | undefined => (st.picked ? st
 
 export function pick(id: string): void {
   save(PICK_KEY, id)
-  set({ picked: id })
+  set({ picked: id, whoFilter: null })
 }
 
 export function setTheme(theme: Theme): void {

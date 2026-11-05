@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { nextEvents } from '../../web/src/events.ts'
 import { agentNames, countWord, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
@@ -131,6 +132,58 @@ test('following stays on the newest turn with calls until a new one has its firs
   assert.equal(followedTurn({ ...empty, trace: [call('y', MAIN, 100)] }, [old, fresh], MAIN, 101), fresh)
   assert.equal(followedTurn(empty, [old, fresh], MAIN, 101), fresh)
   assert.equal(followedTurn(empty, [], MAIN, 101), undefined)
+})
+
+const agent = (id, more = {}) => ({ id, type: 't', task: id, model: 'm', effort: '', status: 'done', files: 0, tools: 1, input: 100, output: 0, startedAt: 0, endedAt: 100, ...more })
+
+test('the dots rate an agent against the session', () => {
+  const median = { ms: 100, tokens: 100 }
+  const pips = more => pipsOf(agent('a', more), median, 1000, false)
+  assert.equal(pips({ endedAt: 100 }).duration, 0)
+  assert.equal(pips({ endedAt: 150 }).duration, 0)
+  assert.equal(pips({ endedAt: 151 }).duration, 1)
+  assert.equal(pips({ endedAt: 301 }).duration, 2)
+  assert.equal(pips({ input: 151 }).tokens, 1)
+  assert.equal(pips({ input: 301 }).tokens, 2)
+  assert.equal(pipsOf(agent('a', { input: 1_000_001 }), { ms: 0, tokens: 2_000_000 }, 1000, false).tokens, 2)
+  assert.equal(pips({ errors: 0 }).errors, 0)
+  assert.equal(pips({ errors: 1 }).errors, 1)
+  assert.equal(pips({ errors: 2 }).errors, 2)
+  assert.equal(pipsOf(agent('a'), median, 1000, true).errors, 2)
+  assert.equal(pipsOf(agent('a', { status: 'running', endedAt: undefined }), { ms: 0, tokens: 0 }, 300_001, false).duration, 2)
+  assert.equal(medianOf([]), 0)
+  assert.equal(medianOf([1, 3, 2]), 2)
+  assert.equal(medianOf([1, 2]), 1.5)
+})
+
+test('a last call that failed counts against the agent', () => {
+  const lines = linesOf([agent('a'), agent('b')], [call('1', 't', 1, { agentId: 'a', isFailed: true }), call('2', 't', 2, { agentId: 'b', isFailed: true }), call('3', 't', 3, { agentId: 'b' })], 200)
+  assert.deepEqual(lines.map(l => l.pips.errors), [2, 0])
+})
+
+test('running agents lead, then the worst, until a column is picked', () => {
+  const lines = linesOf([agent('fine', { startedAt: 1 }), agent('bad', { errors: 2, startedAt: 2 }), agent('live', { status: 'running', endedAt: undefined, startedAt: 3, tools: 9 })], [], 100)
+  assert.deepEqual(sortLines(lines, null, 100).map(l => l.a.id), ['live', 'bad', 'fine'])
+  assert.deepEqual(sortLines(lines, { key: 'calls', isDesc: false }, 100).map(l => l.a.id), ['fine', 'bad', 'live'])
+  assert.deepEqual(sortLines(lines, { key: 'health', isDesc: true }, 100).map(l => l.a.id), ['bad', 'fine', 'live'])
+})
+
+test('more than eight with one prefix fold into a row, eight stay apart', () => {
+  const many = n => Array.from({ length: n }, (_, i) => agent(`a${i}`, { task: `Review: f${i}`, tools: 2, errors: i === 0 ? 2 : 0 }))
+  const other = agent('x', { task: 'Other' })
+  assert.deepEqual(groupLines(linesOf([...many(8), other], [], 200), 200).map(i => i.kind), Array(9).fill('agent'))
+  const items = groupLines(linesOf([other, ...many(9)], [], 200), 200)
+  assert.deepEqual(items.map(i => i.kind), ['agent', 'group'])
+  assert.equal(items[1].prefix, 'Review: ')
+  assert.equal(items[1].lines.length, 9)
+  assert.equal(items[1].calls, 18)
+  assert.equal(items[1].errors, 2)
+  assert.equal(items[1].pips.errors, 2)
+})
+
+test('the totals count what the table shows', () => {
+  const totals = totalsOf([agent('a', { usd: 0.5, output: 10 }), agent('b', { status: 'running' }), agent('c', { status: 'error' }), agent('d', { tests: 'FAIL' })])
+  assert.deepEqual(totals, { count: 4, running: 1, failed: 2, tokens: 410, usd: 0.5 })
 })
 
 test('positions stay on the track', () => {

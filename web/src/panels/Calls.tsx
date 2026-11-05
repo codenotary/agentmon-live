@@ -15,10 +15,9 @@ const ROWS_SHOWN = 8
 
 export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
-  const { onlyFailures } = useStore()
+  const { onlyFailures, whoFilter: who } = useStore()
   const [sorting, setSorting] = useState<SortingState>([{ id: 'at', desc: true }])
   const [text, setText] = useState('')
-  const [who, setWho] = useState<string | null>(null)
   const [isAll, setAll] = useState(false)
 
   const names = useMemo(() => agentNames(s.agents), [s.agents])
@@ -46,8 +45,8 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
       <button type="button" className="chip" aria-pressed={onlyFailures} onClick={() => set({ onlyFailures: !onlyFailures })}>{p.onlyFailures}</button>
       {people.length > 1 ? (
         <>
-          <button type="button" className="chip" aria-pressed={who === null} onClick={() => setWho(null)}>{p.everyone}</button>
-          {people.map(name => <button key={name} type="button" className="chip" aria-pressed={who === name} onClick={() => setWho(who === name ? null : name)}>{name}</button>)}
+          <button type="button" className="chip" aria-pressed={who === null} onClick={() => set({ whoFilter: null })}>{p.everyone}</button>
+          {people.map(name => <button key={name} type="button" className="chip" aria-pressed={who === name} onClick={() => set({ whoFilter: who === name ? null : name })}>{name}</button>)}
         </>
       ) : null}
     </>

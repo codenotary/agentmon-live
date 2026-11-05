@@ -1,9 +1,9 @@
-import { Bot, CheckCircle2, Circle, Cpu, FileText, Gauge, ListChecks, Loader, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Circle, Cpu, FileText, Gauge, ListChecks, Loader, ShieldCheck } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, countWord, dur, kilo, resultOf, short, time, tone, whoOf } from '../format.ts'
+import { agentNames, dur, kilo, resultOf, short, time, whoOf } from '../format.ts'
 import type { Labels, Page } from '../labels.ts'
 import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -109,31 +109,6 @@ export function Tasks({ s, l }: { s: WebSnapshot; l: Labels }) {
           </li>
         ))}
       </ul>
-    </Panel>
-  )
-}
-
-export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
-  const p = l.page
-  const now = useClock(s)
-  return (
-    <Panel id="agents" title={p.subagents} help={p.helpAgents} icon={Bot}>
-      {s.agents.length === 0 ? <Empty text={p.none} /> : (
-        <ul className="flex flex-col gap-2">
-          <AnimatePresence initial={false}>
-            {[...s.agents].reverse().map(a => (
-              <motion.li key={a.id} {...ROW} className="rounded-lg border border-line-soft bg-surface-1 p-2.5 text-[13px]">
-                <div className="flex items-baseline justify-between gap-2">
-                  <b className="min-w-0 truncate font-semibold">{a.type}</b>
-                  <Pill text={a.tests === 'FAIL' ? 'FAIL' : (l.status[a.status] ?? a.status)} tone={a.tests === 'FAIL' ? 'bad' : tone(a.status)} />
-                </div>
-                <p className="mt-0.5 text-ink-2 [overflow-wrap:anywhere]" title={a.testsWhy}>{a.task}</p>
-                <p className="mt-1 font-mono text-[11px] text-ink-3">{a.model}{a.effort ? ` ${a.effort}` : ''} · {countWord(a.tools, p)} · {kilo(a.input + a.output)} {p.tokens} · {dur((a.endedAt ?? now) - a.startedAt)}</p>
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </ul>
-      )}
     </Panel>
   )
 }

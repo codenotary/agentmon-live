@@ -20,6 +20,7 @@ const shots = [
   ['phone', 'dark', 390],
   ['palette', 'dark', 1440, page => page.keyboard.press('Control+k')],
   ['drawer', 'dark', 1440, page => page.click('#calls tbody tr')],
+  ['agents', 'dark', 1440, async page => { for (const row of await page.locator('[data-testid=agents] tr[data-line]').all()) await row.click() }],
 ]
 const problems = []
 for (const [name, colorScheme, width, act] of shots) {
@@ -35,7 +36,7 @@ for (const [name, colorScheme, width, act] of shots) {
   if (overflow > 0) problems.push(`${name}: the page scrolls sideways by ${overflow} px`)
   await act?.(page)
   await page.waitForTimeout(act ? 400 : 900)
-  await page.screenshot({ path: join(out, `web-${name}.png`), fullPage: !act })
+  await page.screenshot({ path: join(out, `web-${name}.png`), fullPage: !act || name === 'agents' })
   await page.close()
 }
 
