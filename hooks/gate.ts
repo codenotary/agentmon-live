@@ -1,4 +1,4 @@
-import type { Card, Check, Task } from '../types'
+import type { Card, Check, Task, TestReview } from '../types'
 import type { TestScope } from './format'
 import type { Strings } from './i18n'
 import { globToRegExp, reasonedLines } from './sizeguard'
@@ -30,20 +30,28 @@ function reaches(r: TestRun, t: Target): { isPart: boolean } | undefined {
   return isWithin(r.dir, t.dir) ? { isPart: true } : undefined
 }
 
+// The same command ran fewer tests, or skipped more, after the edit than before it: tests were deleted or skipped.
+// The baseline is the latest such run before the last edit, so tests added and then removed are caught.
+// shortcut: the baseline is from this turn only, upgrade when a dropped test across turns matters.
+export function droppedRuns(runs: readonly TestRun[], lastCodeEditAt: number | undefined): TestReview['dropped'] {
+  if (lastCodeEditAt === undefined) return []
+  const fresh = runs.filter(r => r.at >= lastCodeEditAt && r.result === 'ok' && r.ran !== undefined)
+  return [...new Map(fresh.map(r => [`${r.dir}\0${r.command}`, r])).values()].flatMap(last => {
+    const base = runs.filter(r => r.at < lastCodeEditAt && r.ran !== undefined && r.result !== 'running' && r.dir === last.dir && r.command === last.command).at(-1)
+    if (!base || (last.ran! >= base.ran! && (last.skipped ?? 0) <= (base.skipped ?? 0))) return []
+    return [{ command: last.command, ran: base.ran!, skipped: base.skipped ?? 0, ranNow: last.ran!, skippedNow: last.skipped ?? 0 }]
+  })
+}
+
 // Runs after the last code edit that executed nothing or fewer tests than before it, targets whose latest run failed, and targets no run covered.
 // The checks keep one row per kind, so a target's failure is reported here: a later pass elsewhere replaces its row.
 // `isOldFail`: the tests already failed at the prompt, so a failure is not this turn's. An unread summary is taken as tests run.
-export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined, isOldFail = false): string[] {
+export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: readonly Target[], lastCodeEditAt: number | undefined, isOldFail = false, isTestEdited = false): string[] {
   if (lastCodeEditAt === undefined) return []
   const fresh = runs.filter(r => r.at >= lastCodeEditAt && r.result !== 'running')
   const gaps = fresh.filter(r => r.result === 'ok' && r.ran === 0).map(r => t.gapEmpty(r.command))
-  // The same command ran fewer tests, or skipped more, after the edit than before it: tests were deleted or skipped.
-  // The baseline is the latest such run before the last edit, so tests added and then removed are caught.
-  // shortcut: the baseline is from this turn only, upgrade when a dropped test across turns matters.
-  for (const last of new Map(fresh.filter(r => r.result === 'ok' && r.ran !== undefined).map(r => [`${r.dir}\0${r.command}`, r])).values()) {
-    const base = runs.filter(r => r.at < lastCodeEditAt && r.ran !== undefined && r.result !== 'running' && r.dir === last.dir && r.command === last.command).at(-1)
-    if (base && (last.ran! < base.ran! || (last.skipped ?? 0) > (base.skipped ?? 0))) gaps.push(t.gapDropped(last.command, base.ran!, base.skipped ?? 0, last.ran!, last.skipped ?? 0))
-  }
+  // A task that edited tests may have changed them on purpose: that is a review item (`testreview.ts`), not a send-back.
+  if (!isTestEdited) for (const d of droppedRuns(runs, lastCodeEditAt)) gaps.push(t.gapDropped(d.command, d.ran, d.skipped, d.ranNow, d.skippedNow))
   for (const target of targets) {
     if (!target.isDeclared && fresh.length === 0) continue
     const hits = fresh.flatMap(r => {
@@ -65,7 +73,7 @@ export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: read
 // `before` is the checks as they stood when the prompt came in; `codeEditAt` and `lastCodeEditAt` the turn's first and last edit of a file that is not a doc.
 // `answer` is Claude's final answer, to catch a claim that checks pass with nothing run to back it.
 // `runs` and `targets` say which edited parts a test reached.
-export type GateInput = { checks: readonly Check[]; before: readonly Check[]; tasks: readonly Task[]; agents: readonly Card[]; since: number; codeEditAt?: number; lastCodeEditAt?: number; answer?: string; runs?: readonly TestRun[]; targets?: readonly Target[] }
+export type GateInput = { checks: readonly Check[]; before: readonly Check[]; tasks: readonly Task[]; agents: readonly Card[]; since: number; codeEditAt?: number; lastCodeEditAt?: number; answer?: string; runs?: readonly TestRun[]; targets?: readonly Target[]; isTestEdited?: boolean }
 
 // Prose cannot break a test, lint, typecheck or build.
 const DOC = /\.(md|mdx|markdown|txt|rst|adoc)$/i
@@ -90,7 +98,7 @@ export function claimOf(answer: string): string | undefined {
 
 // What visibly is not finished when Claude is about to stop: facts the session recorded, no model involved.
 // `since` is when the turn started; only this turn's checks and subagents count, open todos always do.
-export function doneGaps(t: Strings, { checks, before, tasks, agents, since, codeEditAt, lastCodeEditAt, answer = '', runs = [], targets = [] }: GateInput): string[] {
+export function doneGaps(t: Strings, { checks, before, tasks, agents, since, codeEditAt, lastCodeEditAt, answer = '', runs = [], targets = [], isTestEdited = false }: GateInput): string[] {
   const gaps: string[] = []
   for (const c of checks) {
     if (c.at < since || c.result === 'running') continue
@@ -100,7 +108,7 @@ export function doneGaps(t: Strings, { checks, before, tasks, agents, since, cod
     else if ((lastCodeEditAt ?? 0) > c.at) gaps.push(t.gapStale(t.check[c.kind], c.command))
   }
   const isOldFail = before.some(b => b.kind === 'test' && b.result === 'failed')
-  for (const gap of coverageGaps(t, runs, targets, lastCodeEditAt, isOldFail)) if (!gaps.includes(gap)) gaps.push(gap)
+  for (const gap of coverageGaps(t, runs, targets, lastCodeEditAt, isOldFail, isTestEdited)) if (!gaps.includes(gap)) gaps.push(gap)
   // Code changed, the answer says the checks pass, and nothing ran after the change: the claim has no evidence.
   const claim = lastCodeEditAt === undefined || gaps.length > 0 ? undefined : claimOf(answer)
   if (claim && !checks.some(c => c.at >= lastCodeEditAt! && c.result !== 'running' && c.result !== 'failed')) gaps.push(t.gapClaim(claim))

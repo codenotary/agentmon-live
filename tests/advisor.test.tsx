@@ -2,6 +2,7 @@ import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { claimOf } from '../hooks/gate'
+import { FILE, LEGITIMATE, WEAKENED } from './fixtures/weakened-tests'
 import { settingsWith, withOptions } from './options-helper'
 
 // The kit declares the hook-adding `on` without exporting its type.
@@ -699,4 +700,66 @@ test('after a failed answer Fable is left alone for five minutes', async ($, on)
   await clock.advance(5 * 60_000)
   await turn('m3')
   expect(calls).toBe(2)
+})
+
+// A task edits a test, then the run passes. The gate sends nothing back; what it took out is left for a person.
+async function greenAfterTestEdit($: Parameters<TestBody>[0], clock: { advance: (ms: number) => Promise<unknown>; settle: () => Promise<unknown> }, edit: { old: string; new: string }) {
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Edit', file_path: FILE, old_string: edit.old, new_string: edit.new })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.settle()
+  return (await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block
+}
+
+for (const w of WEAKENED) {
+  test(`a task that ${w.name} and gets a green run is left for review, not sent back`, async ($, on) => {
+    const clock = mock.clock(on)
+    engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })
+    monorepo(on)
+    expect(await greenAfterTestEdit($, clock, w)).toBe(undefined)
+    const ui = await $.ui.mount(PANE)
+    expect(await ui.find({ type: 'Text', text: /Green run after test edits: parser\.test\.ts/ })).toBeTruthy()
+    await ui.unmount()
+  })
+}
+
+test('a legitimate test update is listed beside the result, with no Focus item', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': 'Tests:       40 passed, 40 total' })
+  monorepo(on)
+  expect(await greenAfterTestEdit($, clock, LEGITIMATE)).toBe(undefined)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Green run after test edits/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /parser\.test\.ts: test edited/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('fewer tests after the task edited tests is a review item; a failing run is not green', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, { 'npm test': ['Tests:       40 passed, 40 total', 'Tests:       38 passed, 2 skipped, 40 total'] })
+  monorepo(on)
+  expect(await greenAfterTestEdit($, clock, LEGITIMATE)).toBe(undefined)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /npm test ran 38 tests and skipped 2/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a failing run after a weakened test shows no review item and is still sent back', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  monorepo(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
+  await $.tool.call({ tool: 'Edit', file_path: FILE, old_string: WEAKENED[0]!.old, new_string: WEAKENED[0]!.new })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test fail' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'Done.' })).block).toBeTruthy()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Green run after test edits/ })).toBe(undefined)
+  await ui.unmount()
 })

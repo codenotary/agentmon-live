@@ -1,10 +1,10 @@
-import { atom, read } from 'claude-code'
+import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
-import type { Check, Task } from '../types'
+import type { Check, Task, TestEdit } from '../types'
 import { PROMPT_CHURN_EDITS } from './bench'
 import { addNote, consult } from './advisor'
-import { coverageGaps, doneGaps, isDoc, isWithin, testCfg } from './gate'
+import { coverageGaps, doneGaps, droppedRuns, isDoc, isWithin, testCfg } from './gate'
 import type { Target, TestRun } from './gate'
 import { relPath, SOURCE } from './sizeguard'
 import { mask } from './format'
@@ -15,6 +15,7 @@ const agents = atom({ plugin: 'agentmon-live', key: 'agents' } as const, INIT.ag
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
 const files = atom({ plugin: 'agentmon-live', key: 'files' } as const, INIT.files)
 const tasks = atom({ plugin: 'agentmon-live', key: 'tasks' } as const, INIT.tasks)
+const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const, INIT.testReview)
 
 // A finished turn with fewer main-loop tool calls, no edit and no subagent is too small to be worth a Fable call.
 export const MIN_TOOLS_FOR_DONE_CHECK = 3
@@ -24,7 +25,7 @@ const REQUEST_ROOM = 2000
 
 // `before` holds the checks as they stood at the prompt; `codeEditAt` and `lastCodeEditAt` are the turn's first and last edit of a file that is not a doc.
 // `docs` are the doc files the main loop read this turn; `edits` counts the edits per code file; `tests` every test run; `root` the project.
-export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number; tests: TestRun[]; root: string }
+export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number; tests: TestRun[]; root: string; testEdits: Map<string, TestEdit> }
 
 // A new prompt, or `/agentmon clear` mid-turn: everything the turn gathered goes, the prompt and its start stay.
 export function resetTurn(turn: Turn, before: Check[]) {
@@ -35,9 +36,18 @@ export function resetTurn(turn: Turn, before: Check[]) {
   turn.edits = new Map()
   turn.docs = new Set()
   turn.tests = []
+  turn.testEdits = new Map()
   turn.before = before
   turn.codeEditAt = undefined
   turn.lastCodeEditAt = undefined
+}
+
+// What a person should look at beside the passing result: the turn's test edits, and runs that shrank.
+export async function syncTestReview($: EngineInterface, turn: Turn) {
+  const files = [...turn.testEdits.values()]
+  const last = turn.tests.filter(r => r.result !== 'running').at(-1)
+  const isGreen = files.length > 0 && last?.result === 'ok' && files.every(f => last.at >= f.at)
+  await update($, testReview, () => ({ files, dropped: files.length > 0 ? droppedRuns(turn.tests, turn.lastCodeEditAt) : [], isGreen }))
 }
 
 const MANIFESTS = ['package.json', 'pyproject.toml', 'Cargo.toml', 'go.mod']
@@ -104,7 +114,7 @@ export async function openGaps($: EngineInterface, turn: Turn, answer: string): 
   const t = cfg.t
   const [checked, planned, list] = await Promise.all([read($, checks), read($, tasks), read($, agents)])
   const targets = await targetsOf($, turn)
-  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer, runs: turn.tests, targets })
+  const lines = doneGaps(t, { checks: checked, before: turn.before, tasks: planned, agents: list, since: turn.startedAt, codeEditAt: turn.codeEditAt, lastCodeEditAt: turn.lastCodeEditAt, answer, runs: turn.tests, targets, isTestEdited: turn.testEdits.size > 0 })
   if (lines.length > 0 || cfg.advisorMode !== 'all') return { lines, judged: true }
   const v = await consult($, t.askDone, `${await material($, turn)}${answer ? `\n\n${t.finalAnswer}:\n${mask(answer.slice(-8000)).slice(-4000)}` : ''}`)
   // Fable read untrusted tool output; what it says goes to Claude as a claim, never as a fact.
@@ -118,7 +128,7 @@ export async function benchPrompt($: EngineInterface, turn: Turn, blockAt: numbe
   const after = checked.filter(c => c.at >= (turn.lastCodeEditAt ?? Infinity) && c.result !== 'running')
   notePrompt({
     edit: turn.lastCodeEditAt !== undefined,
-    verified: after.length > 0 && after.every(c => c.result === 'ok') && coverageGaps(cfg.t, turn.tests, targets, turn.lastCodeEditAt, turn.before.some(b => b.kind === 'test' && b.result === 'failed')).length === 0,
+    verified: after.length > 0 && after.every(c => c.result === 'ok') && coverageGaps(cfg.t, turn.tests, targets, turn.lastCodeEditAt, turn.before.some(b => b.kind === 'test' && b.result === 'failed'), turn.testEdits.size > 0).length === 0,
     churn: [...turn.edits.values()].some(n => n >= PROMPT_CHURN_EDITS),
     ms: turn.tools > 0 ? now - turn.startedAt : 0,
     block: blockAt !== undefined,

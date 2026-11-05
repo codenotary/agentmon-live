@@ -220,6 +220,10 @@ export type Task = { id: string; subject: string; activeForm?: string; status: '
 // A skill or prompt command whose text the session loaded: how often, by whom last, and when.
 export type SkillUse = { name: string; count: number; who: string; at: number }
 
+// Test files this turn edited, what the edits took out, and test runs that shrank, for a person to look at beside a passing run.
+export type TestEdit = { path: string; removed: number; skips: number; at: number }
+export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: number; skipped: number; ranNow: number; skippedNow: number }[]; isGreen: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
     'agentmon-live': {
@@ -230,6 +234,7 @@ declare module 'claude-code' {
       advisor: Advisor
       stats: Stats
       calls: Call[]
+      testReview: TestReview
       view: View
       active: Active[]
       checks: Check[]

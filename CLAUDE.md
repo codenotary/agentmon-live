@@ -21,6 +21,7 @@ npx -p typescript tsc --noEmit -p .
 - `hooks/insights.ts`: Focus rules and thresholds.
 - `hooks/learn.ts` (pure rules, `parseTranscript`), `hooks/learning.ts` (store, `/agentmon learn|memory|bench`), `hooks/bench.ts` (self benchmark: per-prompt numbers, transcript parse, report).
 - `hooks/gate.ts`, `hooks/advisor.ts`: done-gate facts and the Fable call.
+- `hooks/testreview.ts`: spots test-file edits that take checks out, for a review item beside the green run; fixtures in `tests/fixtures/weakened-tests.ts`.
 - `hooks/i18n.ts` (English), `hooks/lang/<code>.ts` (de, fr, es, zh, ja), `hooks/learn-strings.ts` (learning and bench text, all six).
 - `skills/agentmon-config/SKILL.md`: tells Claude how to change the options from chat; keep its table in step with `applyOptions` in `hooks/options.ts`.
 - `types/index.d.ts`: state contract. `SessionRecord`, `Bench`, `BenchRow`, `Learned` live here.

@@ -8,6 +8,7 @@ import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
+import { droppedLines, editLine } from './testreview'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -27,6 +28,7 @@ const flow = atom({ plugin: 'agentmon-live', key: 'flow' } as const, INIT.flow)
 const layout = atom({ plugin: 'agentmon-live', key: 'layout' } as const, INIT.layout)
 const insights = atom({ plugin: 'agentmon-live', key: 'insights' } as const, INIT.insights)
 const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.learned)
+const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const, INIT.testReview)
 // Insights shown in Focus with details off; the rest wait for `d`.
 const FOCUS_SHOWN = 3
 
@@ -62,7 +64,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
   const { Box, Button, Text } = $.ui.resolve(e)
-  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt] = await Promise.all([
+  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt, reviewed] = await Promise.all([
     read($, main),
     read($, tools),
     read($, agents),
@@ -85,6 +87,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, flow),
     read($, insights),
     read($, learned),
+    read($, testReview),
   ])
   const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
@@ -180,7 +183,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Below what needs the person: what is worth a look, most important first.
   const learnedFocus = learnedItems(learnt, { percent: usage.context.percent, window: usage.context.window, model: m.model, effort: m.effort, calls: ins.turnCalls })
   const isCurrent = (n: Note) => n.at !== undefined && n.at >= (m.turnAt ?? 0)
-  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, tokens: usage.context.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited }).filter(x => !dismissed.has(x.key))
+  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, tokens: usage.context.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited, testReview: reviewed }).filter(x => !dismissed.has(x.key))
   const insightItems: Item[] = found.slice(0, lay.isDetailed ? found.length : FOCUS_SHOWN).map(x => ({
     key: x.key,
     row: (
@@ -345,6 +348,10 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           <Text dimColor>{cut(`${c.ran !== undefined ? `${t.testsRan(c.ran, c.skipped ?? 0)} · ` : ''}${c.dir ? `${c.dir}: ` : ''}${c.command}`, whatRoom)}</Text>
         </Text>
       ))}
+      {reviewed.files.map(f => (
+        <Text color={f.removed > 0 || f.skips > 0 ? 'yellow' : undefined} dimColor={f.removed === 0 && f.skips === 0}>{cut(editLine(t, f), whatRoom + 20)}</Text>
+      ))}
+      {reviewed.isGreen && droppedLines(t, reviewed).map(line => <Text color="yellow">{cut(line, whatRoom + 20)}</Text>)}
     </Box>
   )
 
