@@ -38,6 +38,7 @@
       "learning": "Across sessions",
       "sessions": "Sessions",
       "calls": "Calls",
+      "call": "Call",
       "errors": "Errors",
       "none": "Nothing yet.",
       "live": "live",
@@ -70,7 +71,7 @@
       "assertsRemoved": "assertions removed",
       "assertsChanged": "assertions changed",
       "skipsAdded": "skips added",
-      "helpInstruments": "Context: how full this session's context window is; near full, Claude compacts the conversation. 5-hour and 7-day quota: how much of your plan's limits is used. Gauges turn yellow at 60% and red at 80%. Session cost: spend so far, with its trend since you opened this page. Turns: prompts answered. Cache hit: share of input tokens read from the prompt cache; higher is cheaper. Tokens: sent in and out, subagents included.",
+      "helpInstruments": "Context: how full this session's context window is; near full, Claude compacts the conversation. 5-hour and 7-day quota: how much of your plan's limits is used. Gauges turn yellow at 60% and red at 80%. Session cost: spend so far, with its trend since you opened this page. Turns: prompts answered. Cache hit: share of the main session's input tokens read from the prompt cache; higher is cheaper. Tokens: sent in and out, subagents included.",
       "helpWaterfall": "Every tool call of one turn, in the order it started. A bar shows when the call ran and for how long; a subagent's calls sit under it. Gaps are time the model spent thinking. The slowest call is marked, failures are red and running calls are striped. Click a call for its details; the arrows go to earlier turns.",
       "helpEvents": "What needs you, such as a waiting approval or a failed test. An item that goes away stays here, marked cleared with its time. The history starts when you open this page.",
       "helpRunning": "Each tool call running right now, who runs it and for how long.",
@@ -262,14 +263,16 @@
       "who": "Explore",
       "view": "mcp",
       "what": "codegraph_search toSnapshot",
-      "result": "ok"
+      "result": "ok",
+      "agentId": "ag1"
     },
     {
       "at": 1793801650000,
       "who": "Explore",
       "view": "mcp",
       "what": "codegraph_callers publish",
-      "result": "ok"
+      "result": "ok",
+      "agentId": "ag1"
     },
     {
       "at": 1793801800000,
@@ -284,21 +287,24 @@
       "view": "shell",
       "what": "node --test tests/web",
       "result": "failed",
-      "error": "server.test.mjs: 1 failing"
+      "error": "server.test.mjs: 1 failing",
+      "agentId": "ag2"
     },
     {
       "at": 1793802040000,
       "who": "tester",
       "view": "shell",
       "what": "node --test tests/web",
-      "result": "ok"
+      "result": "ok",
+      "agentId": "ag2"
     },
     {
       "at": 1793802120000,
       "who": "reviewer",
       "view": "git",
       "what": "git log -5 --oneline",
-      "result": "ok"
+      "result": "ok",
+      "agentId": "ag3"
     },
     {
       "at": 1793802280000,
@@ -319,7 +325,8 @@
       "who": "reviewer",
       "view": "mcp",
       "what": "codegraph_impact toSnapshot",
-      "result": "ok"
+      "result": "ok",
+      "agentId": "ag3"
     },
     {
       "at": 1793802580000,
@@ -340,7 +347,8 @@
       "who": "tester",
       "view": "shell",
       "what": "npx playwright test",
-      "result": "ok"
+      "result": "ok",
+      "agentId": "ag2"
     },
     {
       "at": 1793802870000,
@@ -355,7 +363,8 @@
       "who": "tester",
       "view": "shell",
       "what": "node --test tests/web/page.test.mjs",
-      "result": "ok"
+      "result": "ok",
+      "agentId": "ag2"
     },
     {
       "at": 1793802950000,
@@ -377,7 +386,8 @@
       "who": "Explore",
       "view": "mcp",
       "what": "mcp__codegraph__codegraph_search a very long argument that has to wrap on a narrow phone screen without a horizontal page scroll",
-      "result": "ok"
+      "result": "ok",
+      "agentId": "ag1"
     },
     {
       "at": 1793802990000,
@@ -462,19 +472,22 @@
       "at": 1793801000000,
       "who": "Explore",
       "what": "Find the session atoms",
-      "result": "started"
+      "result": "started",
+      "agentId": "ag1"
     },
     {
       "at": 1793801100000,
       "who": "Explore",
       "what": "Find the session atoms",
-      "result": "done"
+      "result": "done",
+      "agentId": "ag1"
     },
     {
       "at": 1793802900000,
       "who": "tester",
       "what": "Run the server tests",
-      "result": "started"
+      "result": "started",
+      "agentId": "ag2"
     },
     {
       "at": 1793802950000,
@@ -524,9 +537,7 @@
       "mainCached": 380000,
       "agentsIn": 9000,
       "agentsOut": 1200
-    },
-    "cacheRead": 380000,
-    "cacheTotal": 420000
+    }
   },
   "learned": {
     "sessions": 12,
@@ -555,7 +566,36 @@
   },
   "isPaneOpen": true,
   "build": "0.26.0 · b888ede",
-  "testReview": { "files": [{ "path": "/home/dev/github/agent-radar/tests/parser.test.ts", "removed": 1, "skips": 1, "at": 1, "changed": 1, "lines": [{ "before": "expect(parse('b')).toBe(2)", "after": "expect(parse('b')).toBe(3)" }, { "before": "expect(parse('c')).toThrow()" }] }, { "path": "/home/dev/github/agent-radar/tests/web.test.ts", "removed": 0, "skips": 0, "at": 1 }], "dropped": ["npm test ran 38 tests and skipped 2 after the edit, 40 and 0 before it"], "isGreen": true },
+  "testReview": {
+    "files": [
+      {
+        "path": "/home/dev/github/agent-radar/tests/parser.test.ts",
+        "removed": 1,
+        "skips": 1,
+        "at": 1,
+        "changed": 1,
+        "lines": [
+          {
+            "before": "expect(parse('b')).toBe(2)",
+            "after": "expect(parse('b')).toBe(3)"
+          },
+          {
+            "before": "expect(parse('c')).toThrow()"
+          }
+        ]
+      },
+      {
+        "path": "/home/dev/github/agent-radar/tests/web.test.ts",
+        "removed": 0,
+        "skips": 0,
+        "at": 1
+      }
+    ],
+    "dropped": [
+      "npm test ran 38 tests and skipped 2 after the edit, 40 and 0 before it"
+    ],
+    "isGreen": true
+  },
   "trace": [
     {
       "id": "t1",
@@ -613,7 +653,8 @@
       "who": "tester",
       "tool": "Read",
       "what": "tests/web.test.ts",
-      "ms": 120
+      "ms": 120,
+      "agentId": "ag2"
     },
     {
       "id": "t8",
@@ -621,7 +662,8 @@
       "who": "tester",
       "tool": "Bash",
       "what": "claude plugin test .",
-      "ms": 21000
+      "ms": 21000,
+      "agentId": "ag2"
     },
     {
       "id": "t9",
@@ -629,7 +671,8 @@
       "who": "tester",
       "tool": "Edit",
       "what": "tests/web.test.ts",
-      "ms": 200
+      "ms": 200,
+      "agentId": "ag2"
     },
     {
       "id": "a1",

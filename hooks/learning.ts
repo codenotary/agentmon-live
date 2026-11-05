@@ -176,12 +176,12 @@ export function noteCompact(tokens: number | undefined) {
 }
 
 // The end of each main turn: the session's record so far replaces its earlier one in the store.
-export async function saveTurn($: EngineInterface, u: { tokens?: number; window?: number; mcpTools?: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number }) {
+export async function saveTurn($: EngineInterface, u: { tokens?: number; window?: number; mcpTools?: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number; totalUsd?: number }) {
   if (!rec) return
   const r = rec
   // Session totals; the larger one survives a reload or `/agentmon clear`, which start them again from 0.
   const b = r.bench ?? emptyBench(true, true)
-  r.bench = { ...b, mod: true, live: true, outTokens: Math.max(b.outTokens, u.outTokens), fable: Math.max(b.fable, u.fable), usd: Math.max(b.usd ?? 0, u.usd ?? 0) || undefined }
+  r.bench = { ...b, mod: true, live: true, outTokens: Math.max(b.outTokens, u.outTokens), fable: Math.max(b.fable, u.fable), usd: Math.max(b.usd ?? 0, u.usd ?? 0) || undefined, totalUsd: Math.max(b.totalUsd ?? 0, u.totalUsd ?? 0) || undefined }
   r.turns += 1
   r.peak = Math.max(r.peak, u.tokens ?? 0)
   r.window = u.window ?? r.window

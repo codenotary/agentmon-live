@@ -22,6 +22,13 @@ export type Card = {
   lastAt?: number
   // Calls that did more than read or search.
   others?: number
+  // The Agent call that started it, and its prompt, masked and cut short.
+  callId?: string
+  prompt?: string
+  // Input read from the prompt cache, its cost so far, and its failed calls.
+  cached?: number
+  usd?: number
+  errors?: number
 }
 
 // Where a main-loop turn's wall time went, in ms per bucket: `model` (requests streaming),
@@ -90,6 +97,8 @@ export type Bench = {
   // Tool calls per prompt that used tools (missing in older rows), and the main loop's cost, each request priced from its usage (missing when no model had a price).
   turnCalls?: number[]
   usd?: number
+  // The whole session's cost as the engine counts it, subagents included. `usd` stays the main loop's: the bench compares it with transcripts of sessions without the mod.
+  totalUsd?: number
 }
 
 // One prompt's part of a Bench.
@@ -157,7 +166,7 @@ export type Insights = {
   lastTokens?: number
 }
 
-export type LogLine = { at: number; who: string; what: string; result: string }
+export type LogLine = { at: number; who: string; what: string; result: string; agentId?: string }
 
 // `ok` is missing on notes kept by older versions, which kept only objections.
 // `ref` names the request a note is about. `text` holds the gaps, one per line; `fix` what would settle them.
@@ -167,10 +176,10 @@ export type Note = { kind: 'done' | 'check'; ok?: boolean; text: string; fix?: s
 export type View = 'git' | 'shell' | 'mcp'
 
 // `result` is `running` from the moment the call starts until it reports back; `error` holds its error text.
-export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string }
+export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string; agentId?: string }
 
 // Every tool call of the session, for the web view's waterfall; `ms` once it reported back.
-export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; ms?: number; isFailed?: boolean; error?: string }
+export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; ms?: number; isFailed?: boolean; error?: string; agentId?: string }
 
 export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
@@ -214,7 +223,7 @@ export type Advisor = {
 }
 
 // A tool call that has started and not yet finished; `isAsking` while it waits for the person's approval.
-export type Active = { id: string; who: string; model?: string; tool: string; what: string; startedAt: number; isAsking?: boolean }
+export type Active = { id: string; who: string; model?: string; tool: string; what: string; startedAt: number; isAsking?: boolean; agentId?: string }
 
 // The session's own task list (TaskCreate/TaskUpdate or TodoWrite), as the calls left it.
 // `at` is when a call last changed it.
@@ -260,7 +269,7 @@ export type WebSnapshot = {
   files: Files
   log: LogLine[]
   tasks: Task[]
-  insights: Pick<Insights, 'slow' | 'big' | 'tokens' | 'cacheRead' | 'cacheTotal'>
+  insights: Pick<Insights, 'slow' | 'big' | 'tokens'>
   learned: { sessions: number; bench: BenchRow[] }
 }
 

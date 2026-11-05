@@ -105,7 +105,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     files: { ...p.files, read: p.files.read.slice(-KEEP_FILES), edited: p.files.edited.slice(-KEEP_FILES) },
     log: p.log,
     tasks: p.tasks,
-    insights: { slow: ins.slow, big: ins.big, tokens: ins.tokens, cacheRead: ins.cacheRead, cacheTotal: ins.cacheTotal },
+    insights: { slow: ins.slow, big: ins.big, tokens: ins.tokens },
     learned: { sessions: p.learned.sessions.length, bench: p.learned.bench.slice(-KEEP_BENCH_ROWS) },
   }
 }

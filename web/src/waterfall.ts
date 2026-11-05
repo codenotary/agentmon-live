@@ -1,7 +1,9 @@
 import type { Active, Card, TraceCall, WebTurn } from '../../types/index'
 
+import { agentNames } from './format.ts'
+
 export type BarState = 'ok' | 'failed' | 'running' | 'asking'
-export type Row = { key: string; name: string; what: string; depth: number; from: number; to: number; ms?: number; state: BarState; isAgent: boolean; isSlowest: boolean; call?: TraceCall }
+export type Row = { key: string; name: string; full?: string; what: string; depth: number; from: number; to: number; ms?: number; state: BarState; isAgent: boolean; isSlowest: boolean; call?: TraceCall }
 export type WaterfallInput = { trace?: TraceCall[]; agents: Card[]; active: Active[] }
 
 // A subagent's own row stands for the call that started it.
@@ -22,22 +24,24 @@ export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, ma
     const end = c.ms !== undefined ? c.at + c.ms : live ? now : c.at
     return { key: c.id, name: c.tool, what: c.what, depth, from: c.at, to: end, ...(c.ms === undefined ? {} : { ms: c.ms }), state, isAgent: false, isSlowest: false, call: c }
   }
+  const names = agentNames(d.agents)
   const agents = d.agents.filter(a => a.startedAt <= to && (a.endedAt ?? now) >= from)
   const nested = new Map<string, TraceCall[]>(agents.map(a => [a.id, []]))
   const blocks: { at: number; rows: Row[] }[] = []
   for (const c of d.trace ?? []) {
     if (c.at < from || c.at > to) continue
-    if (c.who === mainName) {
+    if (c.agentId === undefined && c.who === mainName) {
       if (!STARTS_AGENT.test(c.tool)) blocks.push({ at: c.at, rows: [callRow(c, 0)] })
       continue
     }
-    const owner = agents.filter(a => a.type === c.who && a.startedAt <= c.at && (a.endedAt ?? now) >= c.at).at(-1)
+    // Parallel agents of one type all fit the type and time, so those only serve a session of an older version.
+    const owner = c.agentId !== undefined ? agents.find(a => a.id === c.agentId) : agents.filter(a => a.type === c.who && a.startedAt <= c.at && (a.endedAt ?? now) >= c.at).at(-1)
     if (owner) nested.get(owner.id)?.push(c)
     else blocks.push({ at: c.at, rows: [callRow(c, 1)] })
   }
   for (const a of agents) {
     const end = a.endedAt ?? now
-    const head: Row = { key: `agent:${a.id}`, name: a.type, what: a.task, depth: 0, from: a.startedAt, to: end, ms: end - a.startedAt, state: a.status === 'error' ? 'failed' : a.endedAt === undefined ? 'running' : 'ok', isAgent: true, isSlowest: false }
+    const head: Row = { key: `agent:${a.id}`, name: names.get(a.id)?.short ?? a.type, full: names.get(a.id)?.full, what: a.type, depth: 0, from: a.startedAt, to: end, ms: end - a.startedAt, state: a.status === 'error' ? 'failed' : a.endedAt === undefined ? 'running' : 'ok', isAgent: true, isSlowest: false }
     blocks.push({ at: a.startedAt, rows: [head, ...(nested.get(a.id) ?? []).map(c => callRow(c, 1))] })
   }
   const rows = blocks.sort((a, b) => a.at - b.at).flatMap(b => b.rows)

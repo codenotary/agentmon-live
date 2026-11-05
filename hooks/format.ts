@@ -26,6 +26,14 @@ export function percent(part: number, whole: number): string {
   return p >= 99 ? (Math.floor(p * 10) / 10).toFixed(1).replace('.', cfg.t.decimal) : String(Math.round(p))
 }
 
+// The page's `dur`, so a log line and a subagent's row read the same.
+export function took(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
+  return `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`
+}
+
 export function kilo(n: number): string {
   return Math.abs(n) >= 1000 ? `${decimal(n / 1000)}k` : String(n)
 }

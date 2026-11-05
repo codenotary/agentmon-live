@@ -24,8 +24,9 @@ export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: T
   const rate = (kind: string) => s.usage.rate.find(r => r.kind === kind)?.pct
   const five = rate('five_hour')
   const seven = rate('seven_day')
-  const { cacheRead, cacheTotal, tokens } = s.insights
-  const cache = cacheTotal > 0 ? Math.round((cacheRead / cacheTotal) * 100) : undefined
+  const { tokens } = s.insights
+  // Counts up over the session, so it never falls back to a dash; the per-turn figure starts over at every prompt.
+  const cache = tokens.mainIn > 0 ? Math.round((tokens.mainCached / tokens.mainIn) * 100) : undefined
   const parts = [
     <Gauge key="ctx" label={p.context} pct={s.usage.ctxPct} tone={levelOf(s.usage.ctxPct)} />,
     <Gauge key="five" label={p.quota5h} pct={five} tone={levelOf(five)} />,

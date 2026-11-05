@@ -37,7 +37,7 @@ export function shapeInsights(v: Partial<Insights> | undefined): Insights {
 export const PANE = 'agentmon-live'
 export const VIEWS: View[] = ['git', 'shell', 'mcp']
 // Finished agent cards kept; running and waiting ones are never dropped.
-const MAX_FINISHED = 12
+const MAX_FINISHED = 60
 
 // Set from the options at session start and at each prompt.
 export const cfg = { t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true, debugLog: true, hidden: [] as string[], refreshMs: 0, isClassic: false, baseMinutes: 5, isFetching: false, sizeLimit: undefined as unknown, sizeExclude: undefined as unknown, sizeExceptions: [] as string[], version: '', release: undefined as { version: string; notes: string } | undefined, base: undefined as BaseDrift | undefined, web: true, webPort: 47311, webOpenOnStart: false, webUrl: undefined as string | undefined }

@@ -1,8 +1,8 @@
 import { ScrollText } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { time, tone } from '../format.ts'
+import { agentNames, time, tone, whoOf } from '../format.ts'
 import type { Page } from '../labels.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { toneVar } from '../ui/Pill.tsx'
@@ -21,7 +21,8 @@ export function Log({ s, p }: { s: WebSnapshot; p: Page }) {
   const [follow, setFollow] = useState(true)
   const box = useRef<HTMLDivElement>(null)
   const q = query.toLowerCase()
-  const rows = s.log.filter(x => !q || `${x.who} ${x.what} ${x.result}`.toLowerCase().includes(q))
+  const names = useMemo(() => agentNames(s.agents), [s.agents])
+  const rows = s.log.filter(x => !q || `${whoOf(x, names)} ${x.what} ${x.result}`.toLowerCase().includes(q))
 
   useEffect(() => {
     if (follow && box.current) box.current.scrollTop = box.current.scrollHeight
@@ -46,9 +47,9 @@ export function Log({ s, p }: { s: WebSnapshot; p: Page }) {
           }}
         >
           {rows.map(x => (
-            <div key={`${x.at}:${x.who}:${x.what}`} className="row-in grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 rounded px-1 py-0.5 sm:grid-cols-[84px_110px_minmax(0,1fr)_auto]">
+            <div key={`${x.at}:${x.who}:${x.what}`} className="row-in grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 rounded px-1 py-0.5 sm:grid-cols-[84px_190px_minmax(0,1fr)_auto]">
               <span className="whitespace-nowrap text-ink-3">{time(x.at)}</span>
-              <span className="truncate text-signal"><Marked text={x.who} q={q} /></span>
+              <span className="truncate text-signal" title={x.agentId === undefined ? undefined : names.get(x.agentId)?.full}><Marked text={whoOf(x, names)} q={q} /></span>
               <span className="max-sm:col-start-2 [overflow-wrap:anywhere]"><Marked text={x.what} q={q} /></span>
               <span className="max-sm:col-start-2" style={{ color: toneVar(tone(x.result)) }}><Marked text={x.result} q={q} /></span>
             </div>

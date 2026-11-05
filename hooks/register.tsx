@@ -13,7 +13,7 @@ import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { build, checkRelease, refreshBase, watchBase } from './release'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
-import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf } from './format'
+import { brief, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
@@ -36,6 +36,7 @@ const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.call
 const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
 const KEEP_TRACE = 200
 const TRACE_TEXT = 300
+const AGENT_PROMPT = 500
 const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
@@ -229,7 +230,7 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
     // The turn is learned from even when the engine gives no usage: the tallies and gaps are the session's own.
     const m = await read($, main)
     const fable = (await read($, advisor)).calls
-    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined })
+    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined, totalUsd: u?.cost?.usd })
   })
 }
 
@@ -531,6 +532,7 @@ export const register: Register = on => {
         : {}),
       ...(!isMain ? { tokens: { ...v.tokens, agentsIn: v.tokens.agentsIn + total, agentsOut: v.tokens.agentsOut + u.output_tokens } } : {}),
     })))
+    if (u && !isMain) $.clock.after(0, () => update($, agents, list => list.map(a => (a.id === agentId ? { ...a, input: a.input + total, output: a.output + u.output_tokens, cached: (a.cached ?? 0) + u.cache_read_input_tokens, usd: (a.usd ?? 0) + (priceUsd(e.model, u) ?? 0) } : a))))
     return r
   }).catch(async function* ($, e, next) {
     logFailure($, 'turn.step', next.error)
@@ -582,9 +584,9 @@ export const register: Register = on => {
     await Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
-      update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => (tick($), pulse($))),
-      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
-      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT) }].slice(-KEEP_TRACE)),
+      update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt, ...(id === undefined ? {} : { agentId: id }) }]).then(() => (tick($), pulse($))),
+      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
+      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...(id === undefined ? {} : { agentId: id }) }].slice(-KEEP_TRACE)),
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
@@ -693,6 +695,7 @@ export const register: Register = on => {
             errors: r.isError ? { ...v.errors, [cat]: (v.errors[cat] ?? 0) + 1 } : v.errors,
             streak: isMain ? (r.isError ? (v.streak ?? 0) + 1 : 0) : v.streak,
           })),
+        failed && e.agentId !== undefined && update($, agents, all => all.map(a => (a.id === e.agentId ? { ...a, errors: (a.errors ?? 0) + 1 } : a))),
         update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
         update($, flow, all => [...all, { cat, at }].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
@@ -801,6 +804,8 @@ export const register: Register = on => {
       model: r.model,
       effort: effort ?? m.effort,
       task: mask(e.description),
+      callId: e.tool_use_id,
+      prompt: mask(e.prompt).slice(0, AGENT_PROMPT),
       status: 'running',
       files: 0,
       tools: 0,
@@ -812,7 +817,7 @@ export const register: Register = on => {
     await update($, agents, list => trimAgents([...list, card]))
     tick($)
     pulse($)
-    await addLog($, { who: e.subagentType, what: card.task, result: t.started })
+    await addLog($, { who: e.subagentType, what: card.task, result: t.started, agentId: r.agentId })
     await refreshStatus($)
     return r
   }).catch(($, e, next) => failOpen($, 'agent.spawn', next.error, () => next(e)))
@@ -846,9 +851,9 @@ export const register: Register = on => {
       const card = list.find(a => a.id === id)
       if (card) {
         if (tests) {
-          await addLog($, { who: card.type, what: tests.startsWith('PASS') ? t.testsPassed : t.testsFailed, result: `${tests} (${t.reported})` })
+          await addLog($, { who: card.type, what: tests.startsWith('PASS') ? t.testsPassed : t.testsFailed, result: `${tests} (${t.reported})`, agentId: id })
         }
-        await addLog($, { who: card.type, what: t.doneAfter(decimal(e.durationMs / 1000)), result: t.filesTools(card.files, card.tools) })
+        await addLog($, { who: card.type, what: t.doneAfter(took(e.durationMs)), result: t.filesTools(card.files, card.tools), agentId: id })
       }
       await refreshStatus($)
     } else {

@@ -270,11 +270,11 @@ test('running agents are never trimmed', async ($, on) => {
   on('turn.complete', (_, e) => ({ text: e.answer }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 65; i++) {
     await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}` })
     if (i > 0) await $.turn.complete({ ...DONE, agentId: `a${i}` })
   }
-  expect(status()).toMatch(/subagents \[1\/13\]/)
+  expect(status()).toMatch(/subagents \[1\/61\]/)
 })
 
 test('clear keeps running agents and drops history', async ($, on) => {

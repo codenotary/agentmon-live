@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Terminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import type { Call, WebSnapshot } from '../../../types/index'
-import { resultOf, time } from '../format.ts'
+import { agentNames, resultOf, time, whoOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { set, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -18,18 +18,19 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const [text, setText] = useState('')
   const [who, setWho] = useState<string | null>(null)
 
+  const names = useMemo(() => agentNames(s.agents), [s.agents])
   const columns = useMemo(() => [
     column.accessor('at', { header: p.when, cell: c => <span className="whitespace-nowrap text-ink-3 tabular-nums">{time(c.getValue())}</span> }),
-    column.accessor('who', { header: p.who, cell: c => <span className="whitespace-nowrap">{c.getValue()}</span> }),
+    column.accessor(c => whoOf(c, names), { id: 'who', header: p.who, cell: c => { const { agentId } = c.row.original; return <span className="whitespace-nowrap" title={agentId === undefined ? undefined : names.get(agentId)?.full}>{c.getValue()}</span> } }),
     column.accessor('what', { header: p.what, cell: c => <span className="font-mono text-xs [overflow-wrap:anywhere]">{c.getValue()}</span> }),
     column.accessor('result', { header: p.result, cell: c => { const r = resultOf(c.getValue(), l); return <Pill text={r.text} tone={r.tone} /> } }),
-  ], [p, l])
+  ], [p, l, names])
 
-  const people = useMemo(() => [...new Set(s.calls.map(c => c.who))], [s.calls])
+  const people = useMemo(() => [...new Set(s.calls.map(c => whoOf(c, names)))], [s.calls, names])
   const rows = useMemo(() => {
     const q = text.toLowerCase()
-    return s.calls.filter(c => (!who || c.who === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${c.who} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
-  }, [s.calls, text, who, onlyFailures, l])
+    return s.calls.filter(c => (!who || whoOf(c, names) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
+  }, [s.calls, text, who, onlyFailures, l, names])
 
   const table = useReactTable({ data: rows, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), getRowId: c => c.id ?? `${c.at}:${c.who}:${c.what}` })
 

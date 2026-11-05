@@ -2,7 +2,7 @@ import { ChartNoAxesGantt, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { dur, hhmm, resultOf } from '../format.ts'
+import { countWord, dur, hhmm, resultOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { set, useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -20,7 +20,7 @@ function Bar({ row, from, to }: { row: Row; from: number; to: number }) {
 function Name({ row, status }: { row: Row; status: string | undefined }) {
   return (
     <span className="wf-name" style={{ paddingLeft: `${row.depth * 14}px` }}>
-      <b className={row.isAgent ? 'text-signal' : row.state === 'failed' ? 'text-bad' : 'text-ink-2'}>{row.name}</b>
+      <b className={row.isAgent ? 'min-w-0 truncate text-signal' : row.state === 'failed' ? 'text-bad' : 'text-ink-2'} title={row.full}>{row.name}</b>
       {status ? <span className="text-warn">{status}</span> : null}
       <span className="truncate text-ink-3" title={row.what}>{row.what}</span>
     </span>
@@ -51,7 +51,7 @@ export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   }
   const aside = turn ? (
     <>
-      <span className="font-mono text-[11px] text-ink-3 tabular-nums">{calls} {p.calls}{failed ? <span className="text-bad"> · {failed} {p.errors}</span> : null} · {dur(span.to - span.from)}</span>
+      <span className="font-mono text-[11px] text-ink-3 tabular-nums">{countWord(calls, p)}{failed ? <span className="text-bad"> · {failed} {failed === 1 ? p.error : p.errors}</span> : null} · {dur(span.to - span.from)}</span>
       <div className="flex items-center gap-1">
         <button type="button" className="icon-btn !h-[26px] !min-w-[26px] !p-0" aria-label={p.prevTurn} title={p.prevTurn} disabled={at <= 0} onClick={() => goTo(at - 1)}><ChevronLeft size={13} aria-hidden /></button>
         <span className="min-w-11 text-center font-mono text-[11px] tabular-nums">{hhmm(turn.startedAt)}</span>

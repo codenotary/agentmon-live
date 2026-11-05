@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { nextEvents } from '../../web/src/events.ts'
-import { pushPoint, resultOf, sessionNames, stateOf, titleFor } from '../../web/src/format.ts'
+import { agentNames, countWord, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { rowsOf, spanOf, xOf } from '../../web/src/waterfall.ts'
 import { sourceHash } from '../../web/source-hash.mjs'
@@ -42,6 +42,46 @@ test('two subagents of one type keep their own calls', () => {
   const agents = [{ id: 'g1', type: 't', task: 'a', status: 'done', startedAt: 0, endedAt: 10 }, { id: 'g2', type: 't', task: 'b', status: 'done', startedAt: 20, endedAt: 30 }]
   const rows = rowsOf({ ...empty, agents, trace: [call('x', 't', 5, { ms: 1 }), call('y', 't', 25, { ms: 1 })] }, { from: 0, to: 40 }, MAIN, 40)
   assert.deepEqual(rows.map(r => r.key), ['agent:g1', 'x', 'agent:g2', 'y'])
+})
+
+test('parallel subagents of one type keep their own calls, by id', () => {
+  const agents = [{ id: 'g1', type: 't', task: 'a', status: 'running', startedAt: 0 }, { id: 'g2', type: 't', task: 'b', status: 'running', startedAt: 1 }]
+  const trace = [call('x', 't', 5, { ms: 1, agentId: 'g1' }), call('y', 't', 6, { ms: 1, agentId: 'g2' })]
+  const rows = rowsOf({ ...empty, agents, trace }, { from: 0, to: 40 }, MAIN, 40)
+  assert.deepEqual(rows.map(r => r.key), ['agent:g1', 'x', 'agent:g2', 'y'])
+  assert.deepEqual(rows.filter(r => r.isAgent).map(r => [r.name, r.what]), [['a', 't'], ['b', 't']])
+})
+
+test('a subagent goes by its description; a shared prefix drops, a long name keeps its end', () => {
+  const names = agentNames([
+    { id: 'a', type: 'general-purpose', task: 'Refactor review: policy.go' },
+    { id: 'b', type: 'general-purpose', task: 'Refactor review: cmd/server/internal/handlers/main.go' },
+    { id: 'c', type: 'general-purpose', task: 'Docs: only one here' },
+    { id: 'd', type: 'Explore', task: '' },
+  ])
+  assert.equal(names.get('a').short, 'policy.go')
+  assert.equal(names.get('a').full, 'Refactor review: policy.go')
+  assert.equal(names.get('b').short, tailOf('cmd/server/internal/handlers/main.go'))
+  assert.ok(names.get('b').short.startsWith('…') && names.get('b').short.endsWith('main.go'))
+  assert.equal(names.get('b').short.length, 32)
+  assert.equal(names.get('c').short, 'Docs: only one here')
+  assert.equal(names.get('d').short, 'Explore')
+  assert.equal(whoOf({ who: 'general-purpose', agentId: 'a' }, names), 'policy.go')
+  assert.equal(whoOf({ who: 'general-purpose', agentId: 'gone' }, names), 'general-purpose')
+  assert.equal(whoOf({ who: 'main session' }, names), 'main session')
+})
+
+test('one word for one call', () => {
+  assert.equal(countWord(1, PAGE_EN), '1 Call')
+  assert.equal(countWord(2, PAGE_EN), '2 Calls')
+})
+
+test('the session under way costs what the header says; a past row prefers the whole session', () => {
+  const s = { session: { id: 'now' }, usage: { usd: 4.75 } }
+  assert.equal(rowUsd({ id: 'now', usd: 0.59, totalUsd: 4 }, s), 4.75)
+  assert.equal(rowUsd({ id: 'old', usd: 0.59, totalUsd: 4 }, s), 4)
+  assert.equal(rowUsd({ id: 'old', usd: 0.59 }, s), 0.59)
+  assert.equal(rowUsd({ id: 'old' }, s), undefined)
 })
 
 test('states: a running call reaches now, an approval shows, a failure shows, a lost call stays still', () => {
