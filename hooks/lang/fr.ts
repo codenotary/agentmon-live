@@ -52,7 +52,7 @@ export const fr: Strings = {
       flowNow: 'maintenant',
       spawned: 'lancé',
       handedBack: 'rendu',
-      helpFlow: 'Une piste pour la session principale et une par sous-agent, un point par appel. Les courbes montrent qui a lancé qui et quand un agent a rendu la main. Les appels en échec sont en rouge, un appel qui vous attend a un anneau orange, et des pointillés marquent les tests, lint, typecheck et builds. Faites glisser sur la bande du haut pour choisir une période ; la cascade dessous montre la même période, et Suivre reste au présent. Cliquez sur un point pour ses détails et sur un nom pour ouvrir cet agent et y filtrer les appels d\'outils. Touches, graphique actif : les flèches déplacent la période, [ et ] la réduisent et l\'agrandissent, Début va au départ, Fin suit.',
+      helpFlow: 'Une piste pour la session principale et une par sous-agent, un point par appel. Les courbes montrent qui a lancé qui et quand un agent a rendu la main. Les appels en échec sont en rouge, un appel qui vous attend a un anneau orange, et des pointillés marquent les tests, lint, typecheck et builds. Faites glisser sur la bande du haut pour choisir une période ; la cascade dessous montre la même période, et Suivre reste au présent. Cliquez sur un point pour ses détails et sur un nom pour ouvrir cet agent et y filtrer les appels d\'outils. Touches, graphique actif : les flèches déplacent la période, [ et ] la réduisent et l\'agrandissent, Début va au départ, Fin suit. Il reste replié tant qu\'aucun sous-agent ne tourne ; la flèche l\'ouvre.',
       agentColumn: 'Agent',
       elapsed: 'Durée',
       costColumn: 'Coût',

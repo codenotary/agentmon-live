@@ -141,6 +141,11 @@ async function ensureServer($: EngineInterface): Promise<void> {
 }
 
 // The flag keeps a pane the person hid closed when a module reload runs session.start again.
+// `/agentmon clear`: the page's turns go with the session's history.
+export function forgetTurns(): void {
+  turnRing = []
+}
+
 export async function setPane($: EngineInterface, isOpen: boolean): Promise<void> {
   await update($, layout, l => ({ ...l, isPaneHidden: !isOpen }))
   if (isOpen) await $.ui.open({ id: PANE, title: 'AgentMon Live' })

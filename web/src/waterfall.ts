@@ -1,6 +1,7 @@
 import type { Active, Card, TraceCall, WebTurn } from '../../types/index'
 
 import { agentNames } from './format.ts'
+import type { Detail } from './store.ts'
 
 export type BarState = 'ok' | 'failed' | 'running' | 'asking'
 export type Row = { key: string; name: string; full?: string; what: string; depth: number; from: number; to: number; ms?: number; state: BarState; isAgent: boolean; isSlowest: boolean; call?: TraceCall }
@@ -8,6 +9,27 @@ export type WaterfallInput = { trace?: TraceCall[]; agents: Card[]; active: Acti
 
 // A subagent's own row stands for the call that started it.
 const STARTS_AGENT = /^(Agent|Task)$/
+
+// Every tool call for the table, so an agent's row and its calls agree. `calls` holds only git, shell and MCP, with the longer error text; a session of an older version sends only that.
+export function tableRows(d: { trace?: TraceCall[]; calls: readonly (Omit<Detail, 'view'> & { view: string })[]; active: readonly { id: string }[] }): Detail[] {
+  if (!d.trace) return [...d.calls]
+  const running = new Set(d.active.map(a => a.id))
+  const fuller = new Map(d.calls.map(c => [c.id, c.error]))
+  return d.trace.map(c => {
+    const error = fuller.get(c.id) ?? c.error
+    return {
+      id: c.id,
+      at: c.at,
+      who: c.who,
+      view: c.tool,
+      what: c.what,
+      result: c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : running.has(c.id) ? 'running' : 'unknown',
+      ...(c.ms === undefined ? {} : { ms: c.ms }),
+      ...(error ? { error } : {}),
+      ...(c.agentId === undefined ? {} : { agentId: c.agentId }),
+    }
+  })
+}
 
 export const spanOf = (t: WebTurn, now: number) => ({ from: t.startedAt, to: t.isLive ? now : t.startedAt + t.wallMs })
 

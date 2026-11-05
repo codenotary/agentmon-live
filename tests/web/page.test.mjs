@@ -9,7 +9,7 @@ import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
 import { agentNames, countWord, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
-import { rowsOf, spanOf, ticksOf, xOf } from '../../web/src/waterfall.ts'
+import { rowsOf, spanOf, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
 import { BUILT, builtHash, sourceHash } from '../../web/source-hash.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -235,6 +235,22 @@ test('what needs you comes first, the rest in time order; a wait is amber, a fai
   assert.equal(alertOf([ev('note', 1)]), undefined)
   assert.ok(titleFor([{ key: 'ask:1', tag: 'approval', text: 'x', isUrgent: true }]).startsWith('⏸'))
   assert.ok(titleFor([{ key: 'check:x', tag: 'failed', text: 'x', isUrgent: true }]).startsWith('✖'))
+})
+
+test('the calls table lists every tool, so an agent that only read still has rows', () => {
+  const trace = [
+    call('r', 't', 1, { tool: 'Read', ms: 5, agentId: 'a' }),
+    call('e', 't', 2, { tool: 'Edit', ms: 5, isFailed: true, error: 'short', agentId: 'a' }),
+    call('live', MAIN, 3),
+    call('lost', MAIN, 4),
+  ]
+  const rows = tableRows({ trace, calls: [{ id: 'e', at: 2, who: 't', view: 'shell', what: 'x', result: 'failed', error: 'the longer text' }], active: [{ id: 'live' }] })
+  assert.deepEqual(rows.map(r => [r.id, r.view, r.result]), [['r', 'Read', 'ok'], ['e', 'Edit', 'failed'], ['live', 'Bash', 'running'], ['lost', 'Bash', 'unknown']])
+  assert.equal(rows[0].agentId, 'a')
+  assert.equal(rows[0].ms, 5)
+  assert.equal(rows[1].error, 'the longer text')
+  const old = [{ id: 'g', at: 1, who: MAIN, view: 'git', what: 'git status', result: 'ok' }]
+  assert.deepEqual(tableRows({ calls: old, active: [] }), old)
 })
 
 test('positions stay on the track', () => {

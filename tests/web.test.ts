@@ -121,6 +121,77 @@ test('a subagent\'s calls carry its id, and its reads and edits reach the files 
   expect(body.agents[0]).toMatchObject({ callId: 't1', prompt: 'p', task: 'Review: a.ts' })
 })
 
+const lastSnapshot = (sent: { method?: string; url: string; body?: string }[]) => JSON.parse(onlyPosts(sent).at(-1)!.body!) as WebSnapshot
+const AGENT_USAGE = (input: number) => ({ input_tokens: input, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'claude-haiku-5-5' })
+const agentStep = async ($: Parameters<TestBody>[0], index: number) => {
+  for await (const _ of $.turn.step({ turnId: 'a', index, model: 'claude-haiku-5-5', messageCount: 1, agentId: 'a1' } as never)) void _
+}
+
+test('a resumed subagent runs again from where it was: no old end, its numbers add up', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  on('tool.call', () => ({ result: {} }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  let input = 500
+  on('turn.step', async function* (_, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: AGENT_USAGE(input) }
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.agent.spawn({ prompt: 'p', description: 'Review', subagentType: 'general-purpose', tool_use_id: 't1' } as never)
+  await agentStep($, 0)
+  await $.tool.call({ tool: 'Read', file_path: '/w/a.ts', agentId: 'a1' })
+  await clock.settle()
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'a', reason: 'answer', agentId: 'a1', usage: AGENT_USAGE(500) } as never)
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).agents[0]!.endedAt).toBeDefined()
+
+  await $.turn.start({ text: 'one more thing', turnId: 'a', agentId: 'a1' } as never)
+  await clock.advance(600)
+  await clock.settle()
+  const resumed = lastSnapshot(sent).agents[0]!
+  expect(resumed.status).toBe('running')
+  expect(resumed.endedAt).toBeUndefined()
+
+  input = 10
+  await agentStep($, 1)
+  await $.tool.call({ tool: 'Read', file_path: '/w/b.ts', agentId: 'a1' })
+  await clock.settle()
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'a', reason: 'answer', agentId: 'a1', usage: AGENT_USAGE(10) } as never)
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).agents[0]).toMatchObject({ input: 510, output: 20, files: 2, status: 'done' })
+})
+
+test('/agentmon clear empties what the page draws from', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('tool.call', () => ({ result: {} }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'work', turnId: 'm1' } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/w/a.ts' })
+  await clock.advance(1000)
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' } as never)
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).trace).toHaveLength(1)
+  expect(lastSnapshot(sent).turns).toHaveLength(1)
+  await $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'clear' } as never)
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).trace).toEqual([])
+  expect(lastSnapshot(sent).turns).toEqual([])
+  expect(lastSnapshot(sent).turnCount).toBe(0)
+})
+
 test('a full session stays under the size the server takes', () => {
   const text = 'x'.repeat(300)
   const snap = toSnapshot({

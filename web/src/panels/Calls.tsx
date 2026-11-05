@@ -2,14 +2,15 @@ import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, use
 import { ArrowDown, ArrowUp, Terminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import type { Call, WebSnapshot } from '../../../types/index'
+import type { WebSnapshot } from '../../../types/index'
 import { agentNames, resultOf, time, whoOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
-import { set, useStore } from '../store.ts'
+import { set, useStore, type Detail } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill } from '../ui/Pill.tsx'
+import { tableRows } from '../waterfall.ts'
 
-const column = createColumnHelper<Call>()
+const column = createColumnHelper<Detail>()
 // A scroller of its own would catch the wheel on its way down the page.
 const ROWS_SHOWN = 8
 
@@ -24,15 +25,16 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const columns = useMemo(() => [
     column.accessor('at', { header: p.when, cell: c => <span className="whitespace-nowrap text-ink-3 tabular-nums">{time(c.getValue())}</span> }),
     column.accessor(c => whoOf(c, names), { id: 'who', header: p.who, cell: c => { const { agentId } = c.row.original; return <span className="whitespace-nowrap" title={agentId === undefined ? undefined : names.get(agentId)?.full}>{c.getValue()}</span> } }),
-    column.accessor('what', { header: p.what, cell: c => <span className="font-mono text-xs [overflow-wrap:anywhere]">{c.getValue()}</span> }),
+    column.accessor('what', { header: p.what, cell: c => <span className="font-mono text-xs [overflow-wrap:anywhere]"><span className="text-ink-3">{c.row.original.view} </span>{c.getValue()}</span> }),
     column.accessor('result', { header: p.result, cell: c => { const r = resultOf(c.getValue(), l); return <Pill text={r.text} tone={r.tone} /> } }),
   ], [p, l, names])
 
-  const people = useMemo(() => [...new Set(s.calls.map(c => whoOf(c, names)))], [s.calls, names])
+  const list = useMemo(() => tableRows(s), [s])
+  const people = useMemo(() => [...new Set(list.map(c => whoOf(c, names)))], [list, names])
   const rows = useMemo(() => {
     const q = text.toLowerCase()
-    return s.calls.filter(c => (!who || whoOf(c, names) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
-  }, [s.calls, text, who, onlyFailures, l, names])
+    return list.filter(c => (!who || whoOf(c, names) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.view} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
+  }, [list, text, who, onlyFailures, l, names])
 
   const table = useReactTable({ data: rows, columns, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel(), getRowId: c => c.id ?? `${c.at}:${c.who}:${c.what}` })
 
@@ -53,8 +55,8 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   )
 
   return (
-    <Panel id="calls" title={p.toolCalls} help={p.helpCalls} icon={Terminal} aside={s.calls.length ? filters : undefined}>
-      {s.calls.length === 0 ? <Empty text={p.none} /> : rows.length === 0 ? <Empty text={p.noMatch} /> : (
+    <Panel id="calls" title={p.toolCalls} help={p.helpCalls} icon={Terminal} aside={list.length ? filters : undefined}>
+      {list.length === 0 ? <Empty text={p.none} /> : rows.length === 0 ? <Empty text={p.noMatch} /> : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px] tabular-nums">
             <thead className="bg-surface-1">

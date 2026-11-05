@@ -112,7 +112,7 @@
       "flowNow": "now",
       "spawned": "spawned",
       "handedBack": "handed back",
-      "helpFlow": "One lane for the main session and one per subagent, a dot per call. Curves show who started whom and when an agent handed back. Failed calls are red, a call waiting for you has an amber ring, and dashed lines mark test, lint, typecheck and build runs. Drag on the strip on top to choose a time; the waterfall below shows the same time, and Follow keeps it at the present. Click a dot for its details and a name to open that agent and filter Tool calls to it. Keys, with the chart focused: arrows move the time, [ and ] shrink and grow it, Home goes to the start, End follows.",
+      "helpFlow": "One lane for the main session and one per subagent, a dot per call. Curves show who started whom and when an agent handed back. Failed calls are red, a call waiting for you has an amber ring, and dashed lines mark test, lint, typecheck and build runs. Drag on the strip on top to choose a time; the waterfall below shows the same time, and Follow keeps it at the present. Click a dot for its details and a name to open that agent and filter Tool calls to it. Keys, with the chart focused: arrows move the time, [ and ] shrink and grow it, Home goes to the start, End follows. It stays folded while no subagent runs; the arrow opens it.",
       "nothingRunning": "Nothing running.",
       "needsAttention": "Needs attention",
       "noFilesEdited": "No files edited yet"

@@ -52,7 +52,7 @@ export const es: Strings = {
       flowNow: 'ahora',
       spawned: 'iniciado',
       handedBack: 'devuelto',
-      helpFlow: 'Un carril para la sesión principal y uno por subagente, un punto por llamada. Las curvas muestran quién inició a quién y cuándo devolvió un agente. Las llamadas fallidas van en rojo, una llamada que te espera lleva un anillo ámbar y las líneas discontinuas marcan pruebas, lint, typecheck y builds. Arrastra en la franja superior para elegir un tiempo; la cascada de abajo muestra el mismo tiempo y Seguir se queda en el presente. Haz clic en un punto para ver sus detalles y en un nombre para abrir ese agente y filtrar a él las llamadas a herramientas. Teclas, con el gráfico activo: las flechas mueven el tiempo, [ y ] lo reducen y amplían, Inicio va al principio, Fin sigue.',
+      helpFlow: 'Un carril para la sesión principal y uno por subagente, un punto por llamada. Las curvas muestran quién inició a quién y cuándo devolvió un agente. Las llamadas fallidas van en rojo, una llamada que te espera lleva un anillo ámbar y las líneas discontinuas marcan pruebas, lint, typecheck y builds. Arrastra en la franja superior para elegir un tiempo; la cascada de abajo muestra el mismo tiempo y Seguir se queda en el presente. Haz clic en un punto para ver sus detalles y en un nombre para abrir ese agente y filtrar a él las llamadas a herramientas. Teclas, con el gráfico activo: las flechas mueven el tiempo, [ y ] lo reducen y amplían, Inicio va al principio, Fin sigue. Sigue plegado mientras no corre ningún subagente; la flecha lo abre.',
       agentColumn: 'Agente',
       elapsed: 'Duración',
       costColumn: 'Coste',

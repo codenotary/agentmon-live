@@ -21,7 +21,7 @@ import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize
 import { drawBand, drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadOptions } from './options'
-import { openBrowser, setPane, startWeb, stopWeb } from './web'
+import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
 import type { View } from '../types'
 
 
@@ -404,6 +404,7 @@ export const register: Register = on => {
     }
     if (CLEAR_ARGS.includes(arg)) {
       forgetSizes()
+      forgetTurns()
       // History goes; running and waiting agents and calls in flight stay.
       await Promise.all([
         update($, tools, () => ({})),
@@ -411,6 +412,7 @@ export const register: Register = on => {
         update($, log, () => []),
         update($, stats, () => ({ errors: {}, compactions: 0, streak: 0 })),
         update($, calls, () => []),
+        update($, trace, () => []),
         update($, checks, () => []),
         update($, files, () => ({ read: [], edited: [], editedAt: 0 })),
         update($, lastCall, () => null),
@@ -470,7 +472,7 @@ export const register: Register = on => {
       // A finished agent that gets a new message runs again.
       const id = e.agentId
       const startedAt = await $.clock.now()
-      await update($, agents, list => list.map(a => (a.id === id && !isLive(a) ? { ...a, status: 'running' as const, startedAt, tests: undefined, testsWhy: undefined } : a)))
+      await update($, agents, list => list.map(a => (a.id === id && !isLive(a) ? { ...a, status: 'running' as const, startedAt, endedAt: undefined, tests: undefined, testsWhy: undefined } : a)))
     }
     return next(e)
   }).catch(($, e, next) => failOpen($, 'turn.start', next.error, () => next(e)))
@@ -827,22 +829,18 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId !== undefined) {
       const id = e.agentId
-      const u = e.usage
       const tests = testsOf(e.answer)
       const why = tests === 'FAIL' ? mask(failLine(e.answer) ?? '') || undefined : undefined
       const endedAt = await $.clock.now()
       turn.delegated += 1
       const status: Card['status'] = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'cancelled' : 'error'
       seenStep.delete(id)
-      filesByAgent.delete(id)
       const list = await update($, agents, all =>
         trimAgents(all.map(a =>
           a.id === id
             ? {
                 ...a,
                 status,
-                input: u ? u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens : a.input,
-                output: u?.output_tokens ?? a.output,
                 tests: tests ?? a.tests,
                 testsWhy: tests ? why : a.testsWhy,
                 endedAt,

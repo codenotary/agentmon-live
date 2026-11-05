@@ -1,9 +1,10 @@
-import { Workflow } from 'lucide-react'
+import { ChevronRight, Workflow } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
+import { isRunning } from '../agents.ts'
 import { agentNames, dur, stateOf, time } from '../format.ts'
-import { clampView, flowOf, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
+import { clampView, DEFAULT_VIEW, flowOf, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
 import type { Labels } from '../labels.ts'
 import { set, useClock, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -83,6 +84,15 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const now = useClock(s)
   const { flowView: view, openAgents } = useStore()
+  const anyRunning = s.agents.some(isRunning)
+  // Open while a subagent runs. A click holds until the next agent starts or the last one ends.
+  const [pickedOpen, setPickedOpen] = useState<boolean | null>(null)
+  const isOpen = pickedOpen ?? anyRunning
+  useEffect(() => setPickedOpen(null), [anyRunning])
+  // The waterfall follows this chart's time: folded, nothing on screen could bring back a time picked here.
+  useEffect(() => {
+    if (!isOpen) set({ flowView: DEFAULT_VIEW })
+  }, [isOpen])
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [hideFinished, setHideFinished] = useState(false)
@@ -159,10 +169,12 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
     e.preventDefault()
   }
 
-  const aside = (
+  const fold = <button type="button" className="icon-btn !h-[26px] !min-w-[26px] !p-0" aria-label={p.flow} title={p.flow} aria-expanded={isOpen} data-testid="flow-fold" onClick={() => setPickedOpen(!isOpen)}><ChevronRight size={14} className={`chevron ${isOpen ? 'open' : ''}`} aria-hidden /></button>
+  const aside = !isOpen ? fold : (
     <>
       {s.agents.length ? <button type="button" className="chip" aria-pressed={hideFinished} onClick={() => setHideFinished(!hideFinished)}>{p.hideFinished}</button> : null}
       <button type="button" className="chip" aria-pressed={view.at === null} onClick={() => setView({ ms: view.ms, at: null })}>{p.follow}</button>
+      {fold}
     </>
   )
   const arcPath = (a: Arc) => {
@@ -176,9 +188,9 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
   }
 
   return (
-    <Panel id="flow" title={p.flow} help={p.helpFlow} icon={Workflow} aside={aside}>
-      {!s.trace?.length ? <Empty text={p.none} /> : null}
-      <div ref={box} className="relative outline-offset-2" tabIndex={0} onKeyDown={onKey} data-testid="flow" style={s.trace?.length ? undefined : { display: 'none' }}>
+    <Panel id="flow" title={p.flow} help={p.helpFlow} icon={Workflow} aside={aside} className={isOpen ? '' : '[&>header]:mb-0'}>
+      {isOpen && !s.trace?.length ? <Empty text={p.none} /> : null}
+      <div ref={box} className="relative outline-offset-2" tabIndex={0} onKeyDown={onKey} data-testid="flow" style={isOpen && s.trace?.length ? undefined : { display: 'none' }}>
         {width > 0 ? (
           <>
             <Brush whole={whole} span={span} width={width} colourOf={colourOf} lanes={id => (id === undefined ? undefined : dotLane.get(id))} s={s} view={view} setView={setView} p={p} />
