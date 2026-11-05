@@ -1,6 +1,7 @@
 import { ChevronRight } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useRef, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 
 import type { WebSnapshot } from '../../types/index'
 
@@ -132,9 +133,9 @@ export function App() {
       } else if (!isTyping(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key === '/') {
           e.preventDefault()
-          setCollapsed('log', false)
-          // After the opened section has drawn: a hidden field takes no focus.
-          setTimeout(() => document.getElementById('q')?.focus())
+          // Drawn at once: a hidden field takes no focus.
+          flushSync(() => setCollapsed('log', false))
+          document.getElementById('q')?.focus()
         }
       }
     }

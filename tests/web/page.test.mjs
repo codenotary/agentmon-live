@@ -68,6 +68,9 @@ test('a subagent goes by its description; a shared prefix drops, a long name kee
   assert.equal(names.get('b').short.length, 32)
   assert.equal(names.get('c').short, 'Docs: only one here')
   assert.equal(names.get('d').short, 'Explore')
+  const same = agentNames([{ id: '1', type: 't', task: 'Audit: x' }, { id: '2', type: 't', task: 'Audit: x' }, { id: '3', type: 't', task: 'Audit: y' }])
+  assert.deepEqual([...same.values()].map(n => n.short), ['x #1', 'x #2', 'y'])
+  assert.equal(same.get('2').full, 'Audit: x')
   assert.equal(whoOf({ who: 'general-purpose', agentId: 'a' }, names), 'policy.go')
   assert.equal(whoOf({ who: 'general-purpose', agentId: 'gone' }, names), 'general-purpose')
   assert.equal(whoOf({ who: 'main session' }, names), 'main session')
@@ -193,7 +196,7 @@ test('the totals count what the table shows', () => {
 })
 
 const flowInput = (more = {}) => ({ trace: [], agents: [], active: [], turns: [], checks: [], ...more })
-const OPEN = { openGroups: new Set(), hideFinished: false }
+const OPEN = { hideFinished: false }
 
 test('the flow draws a lane per agent, arcs each way, and calls on their own lane', () => {
   const agents = [agent('a', { startedAt: 20, endedAt: 60, callId: 'spawn' }), agent('b', { startedAt: 30, endedAt: undefined, status: 'running' })]
@@ -208,18 +211,18 @@ test('the flow draws a lane per agent, arcs each way, and calls on their own lan
   assert.deepEqual([of('ask:z').fromLane, of('ask:z').toLane], ['b', 'main'])
 })
 
-test('lanes sharing a prefix fold past eight and open on request; finished lanes can hide', () => {
-  const agents = Array.from({ length: 9 }, (_, i) => agent(`a${i}`, { task: `Review: f${i}`, startedAt: i, endedAt: i === 8 ? undefined : 50 + i, status: i === 8 ? 'running' : 'done' }))
+test('every agent has its own lane, however many share a task; finished lanes can hide', () => {
+  const agents = Array.from({ length: 10 }, (_, i) => agent(`a${i}`, { task: 'Review the code', startedAt: i, endedAt: i === 9 ? undefined : 50 + i, status: i === 9 ? 'running' : 'done' }))
   const trace = [call('x', 't', 5, { agentId: 'a1' })]
-  const folded = flowOf(flowInput({ agents, trace }), MAIN, 100, OPEN)
-  assert.deepEqual(folded.lanes.map(l => l.id), ['main', 'group:Review: '])
-  assert.equal(folded.lanes[1].isRunning, true)
-  assert.equal(folded.dots[0].lane, 'group:Review: ')
-  assert.equal(folded.arcs.filter(a => a.kind === 'spawn').length, 1)
-  assert.equal(folded.arcs.filter(a => a.kind === 'handback').length, 1)
-  assert.equal(flowOf(flowInput({ agents }), MAIN, 100, { ...OPEN, openGroups: new Set(['Review: ']) }).lanes.length, 10)
-  const live = flowOf(flowInput({ agents, trace }), MAIN, 100, { ...OPEN, hideFinished: true })
-  assert.deepEqual(live.lanes.map(l => l.id), ['main', 'a8'])
+  const { lanes, dots, arcs } = flowOf(flowInput({ agents, trace }), MAIN, 100, OPEN)
+  assert.deepEqual(lanes.map(l => l.id), ['main', ...agents.map(a => a.id)])
+  assert.equal(new Set(lanes.map(l => l.name)).size, 11)
+  assert.equal(lanes[1].name, 'Review the code #1')
+  assert.equal(dots[0].lane, 'a1')
+  assert.equal(arcs.filter(a => a.kind === 'spawn').length, 10)
+  assert.equal(arcs.filter(a => a.kind === 'handback').length, 9)
+  const live = flowOf(flowInput({ agents, trace }), MAIN, 100, { hideFinished: true })
+  assert.deepEqual(live.lanes.map(l => l.id), ['main', 'a9'])
   assert.deepEqual(live.dots, [])
 })
 

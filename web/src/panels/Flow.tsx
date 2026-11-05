@@ -24,7 +24,7 @@ const laneColour = (i: number, isMain: boolean) => (isMain ? 'var(--ink-3)' : `v
 
 type Drag = { mode: 'move' | 'left' | 'right' | 'new'; startX: number; view: FlowView; to: number }
 
-function Brush({ whole, span, width, colourOf, lanes, s, view, setView, p }: { whole: Span; span: Span; width: number; colourOf: Map<string, string>; lanes: (id: string | undefined) => string | undefined; s: WebSnapshot; view: FlowView; setView: (v: FlowView) => void; p: Labels['page'] }) {
+function Brush({ whole, span, width, colourOf, s, view, setView, p }: { whole: Span; span: Span; width: number; colourOf: Map<string, string>; s: WebSnapshot; view: FlowView; setView: (v: FlowView) => void; p: Labels['page'] }) {
   const drag = useRef<Drag | null>(null)
   const length = Math.max(1, whole.to - whole.from)
   const xOf = (t: number) => ((t - whole.from) / length) * width
@@ -55,7 +55,7 @@ function Brush({ whole, span, width, colourOf, lanes, s, view, setView, p }: { w
   return (
     <svg width={width} height={BRUSH_H} className="flow-brush block touch-none" role="img" aria-label={`${time(whole.from)} – ${p.flowNow}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} data-testid="flow-brush">
       <rect x={0} y={0} width={width} height={BRUSH_H} fill="var(--surface-1)" />
-      {(s.trace ?? []).map(c => <rect key={c.id} x={xOf(c.at)} y={8} width={1} height={BRUSH_H - 16} fill={colourOf.get(lanes(c.agentId) ?? MAIN_LANE) ?? 'var(--ink-3)'} />)}
+      {(s.trace ?? []).map(c => <rect key={c.id} x={xOf(c.at)} y={8} width={1} height={BRUSH_H - 16} fill={colourOf.get(c.agentId ?? MAIN_LANE) ?? 'var(--ink-3)'} />)}
       <rect x={left} y={0.5} width={Math.max(2, right - left)} height={BRUSH_H - 1} rx={3} fill="var(--signal-soft)" fillOpacity={0.6} stroke="var(--signal-bright)" className="cursor-grab" />
       <text x={3} y={BRUSH_H - 2} className="flow-brush-text">{time(whole.from)}</text>
       <text x={width - 3} y={BRUSH_H - 2} textAnchor="end" className="flow-brush-text">{p.flowNow}</text>
@@ -96,7 +96,6 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [hideFinished, setHideFinished] = useState(false)
-  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set())
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null)
   const [hotArc, setHotArc] = useState<string | null>(null)
 
@@ -110,7 +109,7 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
   const whole = wholeOf(s, now)
   const setView = (v: FlowView) => set({ flowView: clampView(v, whole) })
   const span = windowOf(view, s, now, stateOf(s) !== 'idle')
-  const { lanes, dots, arcs } = flowOf(s, l.main, now, { openGroups, hideFinished })
+  const { lanes, dots, arcs } = flowOf(s, l.main, now, { hideFinished })
   const isNarrow = width < NARROW_PX
   const label = isNarrow ? NARROW_LABEL : WIDE_LABEL
   const plot = Math.max(1, width - label - RIGHT_PAD)
@@ -123,7 +122,6 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
   const colourOf = new Map(lanes.map((x, i) => [x.id, laneColour(i, x.isMain)]))
   const names = agentNames(s.agents)
   const marks = mergeDots(dots, span, plot)
-  const dotLane = new Map(dots.filter(d => d.call.agentId !== undefined).map(d => [d.call.agentId as string, d.lane]))
   const nameOfAgent = (id: string) => names.get(id)?.short ?? id
 
   const placeTip = (e: { clientX: number; clientY: number }, text: string) => {
@@ -148,13 +146,6 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
 
   const pickLane = (lane: Lane) => {
     if (lane.isMain) return set({ whoFilter: l.main })
-    if (lane.isGroup) {
-      const prefix = `${lane.name}: `
-      const next = new Set(openGroups)
-      if (next.has(prefix)) next.delete(prefix)
-      else next.add(prefix)
-      return setOpenGroups(next)
-    }
     if (lane.agentId) set({ whoFilter: names.get(lane.agentId)?.short ?? null, openAgents: new Set(openAgents).add(lane.agentId) })
   }
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -193,7 +184,7 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
       <div ref={box} className="relative outline-offset-2" tabIndex={0} onKeyDown={onKey} data-testid="flow" style={isOpen && s.trace?.length ? undefined : { display: 'none' }}>
         {width > 0 ? (
           <>
-            <Brush whole={whole} span={span} width={width} colourOf={colourOf} lanes={id => (id === undefined ? undefined : dotLane.get(id))} s={s} view={view} setView={setView} p={p} />
+            <Brush whole={whole} span={span} width={width} colourOf={colourOf} s={s} view={view} setView={setView} p={p} />
             <div className="relative mt-2 max-h-[320px] overflow-y-auto">
               <svg width={width} height={height} className="block" role="img" aria-label={p.flow}>
                 {lanes.map(lane => {

@@ -37,9 +37,17 @@ export function agentNames(agents: readonly { id: string; type: string; task: st
   const fulls = agents.map(a => ({ id: a.id, full: a.task || a.type }))
   const shared = new Map<string, number>()
   for (const { full } of fulls) shared.set(prefixOf(full), (shared.get(prefixOf(full)) ?? 0) + 1)
+  const sameWords = new Map<string, number>()
+  for (const { full } of fulls) sameWords.set(full, (sameWords.get(full) ?? 0) + 1)
+  const seen = new Map<string, number>()
   return new Map(fulls.map(({ id, full }) => {
     const prefix = prefixOf(full)
-    return [id, { full, short: tailOf(prefix && (shared.get(prefix) ?? 0) > 1 ? full.slice(prefix.length) : full) }]
+    const short = tailOf(prefix && (shared.get(prefix) ?? 0) > 1 && full.length > prefix.length ? full.slice(prefix.length) : full)
+    // Agents started on one task share its words, and the filter and the lanes go by this name: a number keeps them apart.
+    if ((sameWords.get(full) ?? 0) < 2) return [id, { full, short }]
+    const nth = (seen.get(full) ?? 0) + 1
+    seen.set(full, nth)
+    return [id, { full, short: `${short} #${nth}` }]
   }))
 }
 // A session of an older version sends no `agentId`, and an old finished agent may be gone: `who` still names them.
