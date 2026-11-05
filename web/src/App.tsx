@@ -6,9 +6,9 @@ import type { WebSnapshot } from '../../types/index'
 
 import { CallDetail } from './CallDetail.tsx'
 import type { FeedEvent } from './events.ts'
-import { titleFor } from './format.ts'
+import { nextRow, SECTION_KEYS, titleFor } from './format.ts'
 import { labelsOf, pageOf, type Labels, type Page } from './labels.ts'
-import { Nav, sectionsOf, type Section } from './Nav.tsx'
+import { jumpTo, Nav, sectionsOf, type Section } from './Nav.tsx'
 import { Palette } from './Palette.tsx'
 import { Calls } from './panels/Calls.tsx'
 import { Events } from './panels/Events.tsx'
@@ -103,6 +103,7 @@ export function App() {
   const events = s ? (st.events.get(s.session.id) ?? []) : []
   const sections = s && l ? sectionsOf(s, p, events) : []
   const isFirstDraw = useRef(true)
+  const wasG = useRef(false)
 
   // The first draw comes after the page loaded, too late for the browser to follow a link's hash.
   useEffect(() => {
@@ -130,7 +131,17 @@ export function App() {
         e.preventDefault()
         set({ isPaletteOpen: true })
       } else if (!isTyping(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (e.key === '/') {
+        if (wasG.current) {
+          wasG.current = false
+          const section = SECTION_KEYS[e.key]
+          if (section) jumpTo(section)
+        } else if (e.key === 'g') {
+          wasG.current = true
+        } else if (e.key === 'j' || e.key === 'k') {
+          e.preventDefault()
+          const rows = [...document.querySelectorAll<HTMLElement>('main tr[tabindex]')].filter(el => el.offsetParent !== null)
+          rows[nextRow(rows.indexOf(document.activeElement as HTMLElement), rows.length, e.key === 'j' ? 1 : -1)]?.focus()
+        } else if (e.key === '/') {
           e.preventDefault()
           // Drawn at once: a hidden field takes no focus.
           flushSync(() => setCollapsed('log', false))

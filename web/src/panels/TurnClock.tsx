@@ -2,7 +2,7 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import { Timer } from 'lucide-react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { dur, hhmm, RAMP_STEPS, rampColour, rankBuckets } from '../format.ts'
+import { dur, firstLine, hhmm, RAMP_STEPS, rampColour, rankBuckets } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 
@@ -31,7 +31,7 @@ export function TurnClock({ s, l }: { s: WebSnapshot; l: Labels }) {
                     {parts.map(k => <i key={k} className="block h-full min-w-px transition-[width] duration-500" style={{ width: `${((t.buckets[k] ?? 0) / used) * 100}%`, background: rampColour(ranked, k) }} />)}
                   </div>
                 </Tooltip.Trigger>
-                <Tooltip.Portal><Tooltip.Content className="pop" sideOffset={6}>{summary}</Tooltip.Content></Tooltip.Portal>
+                <Tooltip.Portal><Tooltip.Content className="pop" sideOffset={6}>{t.prompt ? <b className="block font-semibold">{firstLine(t.prompt)}</b> : null}{summary}</Tooltip.Content></Tooltip.Portal>
               </Tooltip.Root>
               <span className="text-right text-ink-3 tabular-nums">{dur(t.wallMs)}</span>
             </div>

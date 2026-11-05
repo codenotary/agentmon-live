@@ -72,14 +72,14 @@
       "assertsRemoved": "assertions removed",
       "assertsChanged": "assertions changed",
       "skipsAdded": "skips added",
-      "helpInstruments": "Context: how full this session's context window is; near full, Claude compacts the conversation. 5-hour and 7-day quota: how much of your plan's limits is used. Gauges turn yellow at 60% and red at 80%. Session cost: spend so far, with its trend since you opened this page. Turns: prompts answered. Cache hit: share of the main session's input tokens read from the prompt cache; higher is cheaper. Tokens: sent in and out, subagents included.",
+      "helpInstruments": "Context: how full this session's context window is; near full, Claude compacts the conversation. 5-hour and 7-day quota: how much of your plan's limits is used. Gauges turn yellow at 60% and red at 80%. Session cost: spend so far, with its trend since you opened this page. Turns: prompts answered. Cache hit: share of the main session's input tokens read from the prompt cache; higher is cheaper. Tokens: sent in and out, subagents included. Click Context to see what fills it. Blocked on you: the time turns waited for your approval.",
       "helpWaterfall": "Every tool call in the time chosen in the agent flow, in the order it started. A bar shows when the call ran and for how long; a subagent's calls sit under it. Gaps are time the model spent thinking. The slowest call is marked, failures are red and running calls are striped. Click a call for its details.",
       "helpEvents": "What needs you, such as a waiting approval or a failed test. An item that goes away stays here, marked cleared with its time. The history starts when you open this page.",
       "helpRunning": "Each tool call running right now, who runs it and for how long.",
       "helpTurns": "One bar per recent turn, showing where its time went: the model, each kind of tool, and waiting for you. The longest turn sets the scale.",
       "helpCalls": "The session's recent tool calls: when, who, what and the result. Click a column head to sort, filter with the box and the buttons, and click a row for its details.",
-      "helpInsights": "The calls worth a look: those that took longest, and those whose results were largest in tokens, since large results fill the context.",
-      "helpVerification": "The last test, lint, typecheck and build command and how each ended. A dash means it has not run yet. A number is how many tests ran, with (−n) skipped. Hover for the whole command. Test files edited are listed below, with the changed lines. The list stays until you press x on its item in the pane. Some updates are right, so check them.",
+      "helpInsights": "The calls worth a look: those that took longest, and those whose results were largest in tokens, since large results fill the context. Approvals asked more than once are listed too.",
+      "helpVerification": "The last test, lint, typecheck and build command and how each ended. A dash means it has not run yet. A number is how many tests ran, with (−n) skipped. Hover for the whole command. Test files edited are listed below, with the changed lines. The list stays until you press x on its item in the pane. Some updates are right, so check them. A count says how many files changed after the last passing test run.",
       "helpTasks": "Claude's to-do list for this session, and how many items are done.",
       "helpAgents": "One row per subagent: what it does, its type and model, how long it ran, its calls, tokens, cost, errors and files edited. The three dots show its duration, tokens and errors against the session's other subagents: green is fine, amber worth a look, red needs a look. Agents with the worst dots come first, running ones on top; click a column head to sort. More than eight sharing a name before a colon fold into one row. Click a row for the prompt and its calls. Keys: arrows move, Enter opens, Esc closes, f shows the agent's tool calls. FAIL means it reported failing tests; hover for why.",
       "helpFiles": "The files this session edited and read, the last eight of each, from successful calls only. Hover for the whole path.",
@@ -114,7 +114,17 @@
       "helpFlow": "One lane for the main session and one per subagent, a dot per call. Curves show who started whom and when an agent handed back. Failed calls are red, a call waiting for you has an amber ring, and dashed lines mark test, lint, typecheck and build runs. Drag on the strip on top to choose a time; the waterfall below shows the same time, and Follow keeps it at the present. Click a dot for its details and a name to open that agent and filter Tool calls to it. Keys, with the chart focused: arrows move the time, [ and ] shrink and grow it, Home goes to the start, End follows. It stays folded while no subagent runs; the arrow opens it.",
       "nothingRunning": "Nothing running.",
       "needsAttention": "Needs attention",
-      "noFilesEdited": "No files edited yet"
+      "noFilesEdited": "No files edited yet",
+      "blockedOnYou": "Blocked on you",
+      "contextParts": "What fills the context",
+      "mcpTools": "MCP tools",
+      "memoryFiles": "Memory files",
+      "repeatedApprovals": "Repeated approvals",
+      "gatePassed": "Done gate passed",
+      "gateSent": "Done gate sent it back",
+      "gateOpen": "Done gate: open items",
+      "you": "You",
+      "editsAfterGreen": "Files changed after the last passing test run"
     },
     "status": {
       "running": "running",
@@ -678,7 +688,11 @@
       "/home/dev/github/agent-radar/hooks/web.ts",
       "/home/dev/github/agent-radar/server/web.mjs"
     ],
-    "editedAt": 1793802900000
+    "editedAt": 1793802900000,
+    "editedTimes": {
+      "/home/dev/github/agent-radar/hooks/web.ts": 1793802980000,
+      "/home/dev/github/agent-radar/server/web.mjs": 1793802980000
+    }
   },
   "log": [
     {
@@ -750,6 +764,33 @@
       "mainCached": 380000,
       "agentsIn": 9000,
       "agentsOut": 1200
+    },
+    "breakdown": [
+      {
+        "name": "Messages",
+        "tokens": 312000
+      },
+      {
+        "name": "System tools",
+        "tokens": 41000
+      },
+      {
+        "name": "CLAUDE.md",
+        "tokens": 15600
+      }
+    ],
+    "mcpTokens": 22000,
+    "memoryTokens": 4100,
+    "session": {
+      "model": 900000,
+      "you": 134000,
+      "shell": 300000
+    },
+    "sessionWall": 1500000,
+    "askedAll": {
+      "Bash git push": 12,
+      "Bash npm publish": 3,
+      "Edit /x/y.ts": 1
     }
   },
   "learned": {
@@ -932,5 +973,11 @@
       "tool": "Bash",
       "what": "npm test"
     }
-  ]
+  ],
+  "gate": {
+    "ok": false,
+    "text": "tests failed: npm test",
+    "isSent": true,
+    "at": 1793802970000
+  }
 }

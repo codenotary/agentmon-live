@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
+import type { Card, Check, CheckKind, Files, LogLine, Task, TurnTime } from '../types'
 import { addNote } from './advisor'
 import { isDoc, parseTestRules, testCfg } from './gate'
 import { book, newClock, snapshot } from './clock'
@@ -65,6 +65,12 @@ let reconciledAt = 0
 let isBaseWatched = false
 // How often the redraw loop asks the engine which agents still run.
 const RECONCILE_MS = 5000
+
+function editedFiles(f: Files, path: string, at: number): Files {
+  const edited = [...f.edited.filter(p => p !== path), path].slice(-200)
+  const times = { ...f.editedTimes, [path]: at }
+  return { ...f, edited, editedAt: at, editedTimes: Object.fromEntries(edited.flatMap(p => (times[p] === undefined ? [] : [[p, times[p]]]))) }
+}
 
 function category(tool: string, call: object): Category {
   if (tool === 'Bash' && gitCommand(String((call as { command?: unknown }).command ?? ''))) return 'git'
@@ -710,7 +716,7 @@ export const register: Register = on => {
         touched &&
           update($, files, f =>
             cat === 'edit'
-              ? { ...f, edited: [...f.edited.filter(p => p !== touched), touched].slice(-200), editedAt: at }
+              ? editedFiles(f, touched, at)
               : { ...f, read: [...f.read.filter(p => p !== touched), touched].slice(-200) },
           ),
         update($, insights, v => {
@@ -761,7 +767,7 @@ export const register: Register = on => {
         asking.isAsking = true
       }
       const askKey = `${e.tool} ${brief((e.input ?? {}) as object)}`.trim().slice(0, 60)
-      await update($, insights, s => ({ ...s, asked: bump(s.asked, askKey) }))
+      await update($, insights, s => ({ ...s, asked: bump(s.asked, askKey), askedAll: bump(s.askedAll ?? {}, askKey) }))
     }
     return v
   }).catch(($, e, next) => failOpen($, 'tool.check', next.error, () => next(e)))
@@ -888,6 +894,7 @@ export const register: Register = on => {
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
     const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
     if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
+    if (found.judged) await addLog($, { who: t.gateLog.who, what: workRef(), result: found.lines.length === 0 ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
     void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
     // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
     void saveDebugLog($)

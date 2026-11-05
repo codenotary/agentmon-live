@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, SessionUsage } from 'claude-code'
 
-import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main, Task, TestReview, TraceCall, TurnTime, WebFocus, WebSnapshot, WebTurn } from '../types'
+import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main, Note, Task, TestReview, TraceCall, TurnTime, WebFocus, WebSnapshot, WebTurn } from '../types'
 import { debug } from './debuglog'
 import type { Strings } from './i18n'
 import type { Insight } from './insights'
@@ -24,6 +24,7 @@ const layout = atom({ plugin: 'agentmon-live', key: 'layout' } as const, INIT.la
 const tasks = atom({ plugin: 'agentmon-live', key: 'tasks' } as const, INIT.tasks)
 const insights = atom({ plugin: 'agentmon-live', key: 'insights' } as const, INIT.insights)
 const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.learned)
+const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
 
 const PUBLISH_MS = 500
 // Well inside the server's 90 s, so a quiet session is not taken for a crashed one.
@@ -32,6 +33,7 @@ const ENSURE_EVERY_MS = 60_000
 const KEEP_TURNS = 50
 const KEEP_FILES = 50
 const KEEP_BENCH_ROWS = 10
+const KEEP_ASKED = 10
 
 export type SnapshotParts = {
   session: WebSnapshot['session']
@@ -57,6 +59,7 @@ export type SnapshotParts = {
   build: string
   testReview: TestReview
   trace: TraceCall[]
+  notes?: Note[]
 }
 
 // The pane's list of what needs the person, in its order and with its keys, so a dismissal holds on both surfaces.
@@ -71,6 +74,11 @@ function urgentItems(p: SnapshotParts): WebFocus[] {
       .map(a => ({ key: `agent:${a.id}:${a.endedAt ?? 0}`, tag: a.tests === 'FAIL' ? 'FAIL' : t.status.error, text: `${a.type} ${a.testsWhy ?? a.task}`, isUrgent: true })),
   ]
   return items.filter(x => !p.dismissed.includes(x.key))
+}
+
+function lastGate(notes: readonly Note[]): WebSnapshot['gate'] {
+  const note = notes.filter(n => n.kind === 'done').at(-1)
+  return note ? { ok: note.ok ?? false, text: note.text, isSent: note.isSent ?? false, at: note.at ?? 0 } : null
 }
 
 // Pure, and the one place that knows both shapes: the test holds its keys to the fixture the page is drawn from.
@@ -105,7 +113,18 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     files: { ...p.files, read: p.files.read.slice(-KEEP_FILES), edited: p.files.edited.slice(-KEEP_FILES) },
     log: p.log,
     tasks: p.tasks,
-    insights: { slow: ins.slow, big: ins.big, tokens: ins.tokens },
+    insights: {
+      slow: ins.slow,
+      big: ins.big,
+      tokens: ins.tokens,
+      breakdown: ins.breakdown ?? [],
+      mcpTokens: ins.mcpTokens ?? 0,
+      memoryTokens: ins.memoryTokens ?? 0,
+      session: ins.session,
+      sessionWall: ins.sessionWall,
+      askedAll: Object.fromEntries(Object.entries(ins.askedAll ?? {}).sort((a, b) => b[1] - a[1]).slice(0, KEEP_ASKED)),
+    },
+    gate: lastGate(p.notes ?? []),
     learned: { sessions: p.learned.sessions.length, bench: p.learned.bench.slice(-KEEP_BENCH_ROWS) },
   }
 }
@@ -159,7 +178,7 @@ async function takePaneRequest($: EngineInterface, id: string): Promise<void> {
 }
 
 async function publish($: EngineInterface): Promise<void> {
-  const [id, usage, now, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, insStored, learnt, panes, traced, reviewed] = await Promise.all([
+  const [id, usage, now, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, insStored, learnt, panes, traced, reviewed, adv] = await Promise.all([
     $.session.id(),
     $.session.usage(),
     $.clock.now(),
@@ -179,6 +198,7 @@ async function publish($: EngineInterface): Promise<void> {
     $.ui.panes().catch(() => []),
     read($, trace),
     read($, testReview),
+    read($, advisor),
   ])
   if (id === endedId) return
   await takePaneRequest($, id)
@@ -213,6 +233,7 @@ async function publish($: EngineInterface): Promise<void> {
     build: cfg.build,
     testReview: reviewed,
     trace: traced,
+    notes: adv.notes,
   })
   // `now` moves on every read; the rest says whether anything changed.
   const json = JSON.stringify({ ...snapshot, now: 0 })

@@ -59,6 +59,8 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
   const now = live ? stateOf(live) : 'idle'
   const isLive = now === 'active'
   const state = st.isDown ? { text: <X size={12} aria-label={p.disconnected} />, cls: 'text-bad', dot: 'var(--bad)' } : live && now === 'waiting' ? { text: stateWord(live, p), cls: 'text-signal', dot: 'var(--signal-bright)' } : isLive ? { text: p.live, cls: 'text-good', dot: 'var(--good)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
+  // A result from before this prompt says nothing about the turn under way.
+  const gate = live?.gate && live.gate.at >= (live.main.turnAt ?? 0) ? live.gate : undefined
   const themeLabel = { auto: p.themeAuto, dark: p.themeDark, light: p.themeLight }[st.theme]
   const ThemeIcon = { auto: Monitor, dark: Moon, light: Sun }[st.theme]
   return (
@@ -72,6 +74,7 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
         </span>
         {live ? <span className="text-[13px] font-bold text-signal">{live.main.model}{live.main.effort ? ` (${live.main.effort})` : ''}</span> : null}
         {s && st.sessions.size > 1 ? <SessionPicker s={s} p={p} sessions={st.sessions} /> : s ? <span className="min-w-0 font-mono text-xs text-ink-2 [overflow-wrap:anywhere] lg:truncate">{whereOf(s)}</span> : null}
+        {gate ? <span className={`font-mono text-[11px] whitespace-nowrap ${gate.ok ? 'text-good' : 'text-warn'}`} title={gate.text || undefined} data-testid="gate-chip">{gate.ok ? p.gatePassed : gate.isSent ? p.gateSent : p.gateOpen}</span> : null}
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {live?.isPaneOpen === undefined ? null : (
             <button type="button" className="icon-btn" aria-pressed={live.isPaneOpen} aria-label={live.isPaneOpen ? p.paneHide : p.paneShow} title={live.isPaneOpen ? p.paneHide : p.paneShow} data-testid="pane-toggle" onClick={() => requestPane(live.session.id, !live.isPaneOpen)}>

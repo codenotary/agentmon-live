@@ -192,6 +192,34 @@ test('/agentmon clear empties what the page draws from', async ($, on) => {
   expect(lastSnapshot(sent).turnCount).toBe(0)
 })
 
+test('approvals over the session, edit times and the done gate reach the page', async ($, on) => {
+  withOptions(on, { advisorMode: 'gate' })
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('tool.call', () => ({ result: {} }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.check', (_, e) => ({ decision: e.tool === 'Bash' ? ('ask' as const) : ('allow' as const) }))
+  on('classic.Stop', () => ({}))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  for (const turnId of ['m1', 'm2']) {
+    await $.turn.start({ text: 'work', turnId } as never)
+    await $.tool.check({ tool: 'Bash', input: { command: 'git push' }, tool_use_id: `c${turnId}` } as never)
+  }
+  await clock.advance(5000)
+  await $.tool.call({ tool: 'Edit', file_path: '/w/a.ts', old_string: 'a', new_string: 'b' })
+  await clock.settle()
+  await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'done' })
+  await clock.advance(600)
+  await clock.settle()
+  const body = lastSnapshot(sent)
+  expect(Object.values(body.insights.askedAll ?? {})).toEqual([2])
+  expect(Object.keys(body.files.editedTimes ?? {})).toEqual(['/w/a.ts'])
+  expect(body.log.some(x => x.who === LANGUAGES.en!.gateLog.who)).toBe(true)
+  expect(body.gate).toMatchObject({ ok: expect.any(Boolean), isSent: expect.any(Boolean) })
+})
+
 test('a full session stays under the size the server takes', () => {
   const text = 'x'.repeat(300)
   const snap = toSnapshot({

@@ -2,7 +2,7 @@ import { CheckCircle2, Circle, Cpu, FileText, Gauge, ListChecks, Loader, ShieldC
 import { useMemo } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, countWord, dur, kilo, resultOf, short, time, whoOf } from '../format.ts'
+import { agentNames, countWord, dur, editsSinceGreen, kilo, resultOf, short, time, whoOf } from '../format.ts'
 import type { Labels, Page } from '../labels.ts'
 import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -63,6 +63,7 @@ function TestEdits({ s, l }: { s: WebSnapshot; l: Labels }) {
 
 export function Checks({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
+  const stale = editsSinceGreen(s.files, s.checks)
   return (
     <Panel id="verification" title={p.verification} help={p.helpVerification} icon={ShieldCheck}>
       <div className="grid grid-cols-2 gap-2">
@@ -82,6 +83,7 @@ export function Checks({ s, l }: { s: WebSnapshot; l: Labels }) {
           )
         })}
       </div>
+      {stale ? <p className="mt-3 text-xs text-warn" data-testid="edits-after-green">{p.editsAfterGreen}: {stale}</p> : null}
       <TestEdits s={s} l={l} />
     </Panel>
   )
@@ -152,13 +154,15 @@ function Bars({ label, rows }: { label: string; rows: { key: string; text: strin
 
 export function Insights({ s, p }: { s: WebSnapshot; p: Page }) {
   const { slow, big } = s.insights
-  const isEmpty = slow.length === 0 && big.length === 0
+  const asked = Object.entries(s.insights.askedAll ?? {}).filter(([, n]) => n > 1)
+  const isEmpty = slow.length === 0 && big.length === 0 && asked.length === 0
   return (
     <Panel id="insights" title={p.insights} help={p.helpInsights} icon={Gauge}>
       {isEmpty ? <Empty text={p.none} /> : (
         <div className="flex flex-col gap-3">
           <Bars label={p.slow} rows={slow.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.what}`, value: c.ms, shown: dur(c.ms) }))} />
           <Bars label={p.big} rows={big.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.what}`, value: c.tokens, shown: kilo(c.tokens) }))} />
+          <Bars label={p.repeatedApprovals} rows={asked.map(([what, n]) => ({ key: what, text: what, value: n, shown: `×${n}` }))} />
         </div>
       )}
     </Panel>

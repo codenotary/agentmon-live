@@ -138,6 +138,8 @@ export type Insights = {
   turnCalls: number
   // Approval prompts per call.
   asked: Record<string, number>
+  // Approvals over the session: `asked` starts over at each prompt.
+  askedAll?: Record<string, number>
   // The main loop's context per model request, oldest first; a drop is a compaction.
   ctx: number[]
   cacheRead: number
@@ -190,7 +192,8 @@ export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 export type Check = { kind: CheckKind; command: string; who: string; at: number; result: 'running' | 'ok' | 'failed' | 'unknown'; dir?: string; ran?: number; skipped?: number }
 
 // Files the session read and edited successfully; `editedAt` is the last successful edit, to tell stale checks.
-export type Files = { read: string[]; edited: string[]; editedAt: number }
+// `editedTimes` says when each edited path last changed; missing in state from older versions.
+export type Files = { read: string[]; edited: string[]; editedAt: number; editedTimes?: Record<string, number> }
 
 // `model` is the one the caller ran on, when known.
 export type LastCall = { tool: string; what: string; who: string; model?: string; at: number }
@@ -271,7 +274,10 @@ export type WebSnapshot = {
   files: Files
   log: LogLine[]
   tasks: Task[]
-  insights: Pick<Insights, 'slow' | 'big' | 'tokens'>
+  // All but the first three are absent from a session of an older version.
+  insights: Pick<Insights, 'slow' | 'big' | 'tokens'> & Partial<Pick<Insights, 'breakdown' | 'mcpTokens' | 'memoryTokens' | 'session' | 'sessionWall' | 'askedAll'>>
+  // The last done gate result. Absent from a session of an older version.
+  gate?: { ok: boolean; text: string; isSent: boolean; at: number } | null
   learned: { sessions: number; bench: BenchRow[] }
 }
 

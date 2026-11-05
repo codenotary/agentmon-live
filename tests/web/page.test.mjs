@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
-import { agentNames, callTime, countWord, parseIds, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
+import { agentNames, blockedOf, callTime, countWord, editsSinceGreen, firstLine, nextRow, SECTION_KEYS, withPrompts, parseIds, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
@@ -88,6 +88,39 @@ test('a call under a second keeps its milliseconds', () => {
   assert.equal(callTime(1500), '2s')
   assert.equal(callTime(61_000), '1m 1s')
   assert.equal(callTime(undefined), '')
+})
+
+test('time blocked on you counts the session and the turn under way', () => {
+  const turns = [{ wallMs: 100, buckets: { you: 50 }, isLive: true }]
+  assert.deepEqual(blockedOf({ insights: { session: { you: 150 }, sessionWall: 300 }, turns }), { ms: 200, pct: 50 })
+  assert.deepEqual(blockedOf({ insights: { session: { you: 150 }, sessionWall: 300 }, turns: [{ wallMs: 100, buckets: { you: 50 } }] }), { ms: 150, pct: 50 })
+  assert.deepEqual(blockedOf({ insights: {}, turns: [] }), { ms: 0, pct: 0 })
+})
+
+test('edits since the last passing test run', () => {
+  const files = { editedTimes: { a: 10, b: 30, c: 40 } }
+  assert.equal(editsSinceGreen(files, [{ kind: 'test', at: 20, result: 'ok' }]), 2)
+  assert.equal(editsSinceGreen(files, [{ kind: 'lint', at: 50, result: 'ok' }, { kind: 'test', at: 50, result: 'ok' }]), 0)
+  assert.equal(editsSinceGreen(files, [{ kind: 'test', at: 20, result: 'failed' }]), undefined)
+  assert.equal(editsSinceGreen(files, []), undefined)
+  assert.equal(editsSinceGreen({}, [{ kind: 'test', at: 20, result: 'ok' }]), 0)
+})
+
+test('the log shows each turn\'s prompt, in time order, first line only', () => {
+  const log = [{ at: 5, who: 'x', what: 'early', result: 'ok' }, { at: 20, who: 'x', what: 'late', result: 'ok' }]
+  const rows = withPrompts(log, [{ startedAt: 10, prompt: 'fix it\nplease' }, { startedAt: 15 }], 'You')
+  assert.deepEqual(rows.map(r => r.what), ['early', 'fix it', 'late'])
+  assert.equal(rows[1].who, 'You')
+  assert.equal(firstLine('a\nb'), 'a')
+})
+
+test('j and k stay on the rows; g keys name sections', () => {
+  assert.equal(nextRow(-1, 3, 1), 0)
+  assert.equal(nextRow(0, 3, 1), 1)
+  assert.equal(nextRow(2, 3, 1), 2)
+  assert.equal(nextRow(0, 3, -1), 0)
+  assert.equal(nextRow(-1, 0, 1), -1)
+  assert.equal(SECTION_KEYS.a, 'agents')
 })
 
 test('one word for one call', () => {

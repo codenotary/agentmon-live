@@ -23,6 +23,33 @@ export function parseIds(text: string | null): string[] {
   }
 }
 
+// What the turns waited on you, over the session and in the turn under way, and its share of their time.
+export function blockedOf(s: { insights: { session?: Record<string, number>; sessionWall?: number }; turns: readonly { wallMs: number; buckets: Record<string, number>; isLive?: boolean }[] }): { ms: number; pct: number } {
+  const live = s.turns.at(-1)?.isLive ? s.turns.at(-1) : undefined
+  const ms = (s.insights.session?.you ?? 0) + (live?.buckets.you ?? 0)
+  const wall = (s.insights.sessionWall ?? 0) + (live?.wallMs ?? 0)
+  return { ms, pct: wall > 0 ? Math.round((ms / wall) * 100) : 0 }
+}
+
+// Edited after the last test run that passed: what a reviewer wants to know before merging. Undefined while no passing run is known.
+export function editsSinceGreen(files: { editedTimes?: Record<string, number> }, checks: readonly { kind: string; at: number; result: string }[]): number | undefined {
+  const test = checks.find(c => c.kind === 'test')
+  if (test?.result !== 'ok') return undefined
+  return Object.values(files.editedTimes ?? {}).filter(at => at > test.at).length
+}
+
+// The log with the prompt that started each turn, in time order. Page only: the pane's log stays as it is.
+export function withPrompts<T extends { at: number; who: string; what: string; result: string }>(log: readonly T[], turns: readonly { startedAt: number; prompt?: string }[], you: string): (T | { at: number; who: string; what: string; result: string })[] {
+  const asked = turns.flatMap(t => (t.prompt ? [{ at: t.startedAt, who: you, what: firstLine(t.prompt), result: '' }] : []))
+  return [...log, ...asked].sort((a, b) => a.at - b.at)
+}
+export const firstLine = (text: string) => text.split('\n')[0] ?? ''
+
+// `g` then a letter goes to a section.
+export const SECTION_KEYS: Readonly<Record<string, string>> = { o: 'overview', c: 'calls', v: 'verification', a: 'agents', f: 'files', l: 'log' }
+// The row `j` or `k` moves to; from no row, the first.
+export const nextRow = (at: number, length: number, step: 1 | -1) => (length === 0 ? -1 : at < 0 ? 0 : Math.min(length - 1, Math.max(0, at + step)))
+
 export const countWord = (n: number, p: { call: string; calls: string }) => `${n} ${n === 1 ? p.call : p.calls}`
 
 // The end of a long name is what tells it apart: `Refactor review: cmd/server/main.go`.

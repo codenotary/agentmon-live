@@ -141,6 +141,20 @@ await page.keyboard.press('/')
 await page.waitForTimeout(50)
 if (await page.evaluate(() => document.activeElement?.id) !== 'q') problems.push('sections: / did not open the log and reach its search')
 
+// The top bar says how the done gate ended, the Context gauge opens what fills it, and the keys reach rows and sections.
+if (!await page.locator('[data-testid=gate-chip]').isVisible()) problems.push('gate: no chip in the top bar')
+await page.locator('[data-testid=context-gauge]').click()
+if (!await page.locator('[data-testid=context-parts]').isVisible()) problems.push('context: the gauge did not open what fills it')
+await page.locator('[data-testid=context-gauge]').click()
+await page.locator('body').click({ position: { x: 5, y: 5 } })
+await page.keyboard.press('g')
+await page.keyboard.press('a')
+await page.waitForTimeout(150)
+if (Math.abs(await topOf('#section-agents') - 69) > 2) problems.push('keys: g a did not reach Subagents')
+await page.keyboard.press('j')
+if (!await page.evaluate(() => document.activeElement?.matches('main tr[tabindex]'))) problems.push('keys: j did not reach a row')
+await page.keyboard.press('Tab')
+
 // A column head sorts Tool calls, and a copy says how it went.
 await page.click('#sort-what')
 if (await page.$eval('#calls th:has(#sort-what)', th => th.getAttribute('aria-sort')) !== 'ascending') problems.push('calls: a column head did not sort')

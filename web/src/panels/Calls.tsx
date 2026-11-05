@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Terminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, resultOf, time, whoOf } from '../format.ts'
+import { agentNames, firstLine, resultOf, time, whoOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { set, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -19,14 +19,16 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const [sort, setSort] = useState<CallSort>({ id: 'at', isDesc: true })
   const [text, setText] = useState('')
   const [isAll, setAll] = useState(false)
+  const [tool, setTool] = useState<string | null>(null)
 
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const list = useMemo(() => tableRows(s), [s])
+  const tools = useMemo(() => [...new Set(list.map(c => c.view))].sort(), [list])
   const people = useMemo(() => [...new Set(list.map(c => whoOf(c, names)))], [list, names])
   const rows = useMemo(() => {
     const q = text.toLowerCase()
-    return list.filter(c => (!who || whoOf(c, names) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.view} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
-  }, [list, text, who, onlyFailures, l, names])
+    return list.filter(c => (!tool || c.view === tool) && (!who || whoOf(c, names) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.view} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
+  }, [list, text, tool, who, onlyFailures, l, names])
 
   const all = useMemo(() => sortCalls(rows, sort, c => whoOf(c, names)), [rows, sort, names])
   const shown = isAll ? all : all.slice(0, ROWS_SHOWN)
@@ -37,6 +39,7 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
     <>
       <input className="field !h-[26px] !w-40" type="search" aria-label={p.filterCalls} placeholder={p.filterCalls} value={text} onChange={e => setText(e.target.value)} />
       <button type="button" className="chip" aria-pressed={onlyFailures} onClick={() => set({ onlyFailures: !onlyFailures })}>{p.onlyFailures}</button>
+      {tools.length > 1 ? tools.map(name => <button key={name} type="button" className="chip font-mono" aria-pressed={tool === name} onClick={() => setTool(tool === name ? null : name)}>{name}</button>) : null}
       {people.length > 1 ? (
         <>
           <button type="button" className="chip" aria-pressed={who === null} onClick={() => set({ whoFilter: null })}>{p.everyone}</button>
@@ -74,7 +77,7 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
                   <tr key={c.id ?? `${c.at}:${c.who}:${c.what}`} className="row-in cursor-pointer border-t border-line-soft hover:bg-surface-1" tabIndex={0} aria-label={`${p.details}: ${c.what}`} onClick={open} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } }}>
                     <td className={CELL}><span className="whitespace-nowrap text-ink-3 tabular-nums">{time(c.at)}</span></td>
                     <td className={`${CELL} max-sm:hidden`}><span className="whitespace-nowrap" title={c.agentId === undefined ? undefined : names.get(c.agentId)?.full}>{whoOf(c, names)}</span></td>
-                    <td className={CELL}><span className="font-mono text-xs [overflow-wrap:anywhere]"><span className="text-ink-3">{c.view} </span>{c.what}</span></td>
+                    <td className={CELL}><span className="font-mono text-xs [overflow-wrap:anywhere]"><span className="text-ink-3">{c.view} </span>{c.what}</span>{c.result === 'failed' && c.error ? <div className="mt-0.5 font-mono text-[11px] break-words text-bad">{firstLine(c.error)}</div> : null}</td>
                     <td className={CELL}><Pill text={r.text} tone={r.tone} /></td>
                   </tr>
                 )
