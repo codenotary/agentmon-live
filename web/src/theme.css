@@ -212,7 +212,7 @@ button.wf-row:hover { background: var(--surface-2); }
 .flow-dot { transition: cx .25s ease-in-out; transform-box: fill-box; transform-origin: center; animation: dot-in .2s ease-out; }
 .flow-mark { transition: x .25s ease-in-out; }
 .flow-count { font: 400 8px var(--font-mono); fill: var(--surface); pointer-events: none; }
-.flow-arc { stroke-width: 1.5; stroke-opacity: .35; stroke-dasharray: 1; animation: arc-in .3s ease-out; transition: stroke-opacity .15s; }
+.flow-arc { stroke-width: 1.5; stroke-opacity: .6; stroke-dasharray: 1; animation: arc-in .3s ease-out; transition: stroke-opacity .15s; }
 .flow-arc.hot { stroke-opacity: 1; }
 .flow-running { stroke-dasharray: 6 4; animation: flow-march 1.4s linear infinite; }
 @keyframes dot-in { from { transform: scale(0); } 70% { transform: scale(1.6); } }

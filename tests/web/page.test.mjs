@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url'
 
 import { elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
-import { agentNames, countWord, parseIds, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
+import { agentNames, callTime, countWord, parseIds, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
-import { clampView, DEFAULT_VIEW, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
+import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
 import { BUILT, builtHash, sourceHash } from '../../web/source-hash.mjs'
 
@@ -80,6 +80,14 @@ test('kept section ids survive whatever the browser holds', () => {
   assert.deepEqual(parseIds('not json'), [])
   assert.deepEqual(parseIds('{"a":1}'), [])
   assert.deepEqual(parseIds('["log",1,null]'), ['log'])
+})
+
+test('a call under a second keeps its milliseconds', () => {
+  assert.equal(callTime(476), '476 ms')
+  assert.equal(callTime(476.4), '476 ms')
+  assert.equal(callTime(1500), '2s')
+  assert.equal(callTime(61_000), '1m 1s')
+  assert.equal(callTime(undefined), '')
 })
 
 test('one word for one call', () => {
@@ -222,6 +230,16 @@ test('every agent has its own lane, however many share a task; finished lanes ca
   const live = flowOf(flowInput({ agents, trace }), MAIN, 100, { hideFinished: true })
   assert.deepEqual(live.lanes.map(l => l.id), ['main', 'a9'])
   assert.deepEqual(live.dots, [])
+})
+
+test('a drag on the strip moves, resizes or draws by where it starts; a tiny window only moves', () => {
+  assert.equal(dragMode(100, 100, 300, 6), 'left')
+  assert.equal(dragMode(299, 100, 300, 6), 'right')
+  assert.equal(dragMode(200, 100, 300, 6), 'move')
+  assert.equal(dragMode(50, 100, 300, 6), 'new')
+  assert.equal(dragMode(101, 100, 104, 6), 'move')
+  assert.equal(dragMode(96, 100, 104, 6), 'move')
+  assert.equal(dragMode(80, 100, 104, 6), 'new')
 })
 
 test('dots closer than four pixels merge into one mark, and the worst state shows', () => {

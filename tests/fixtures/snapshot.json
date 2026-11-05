@@ -541,7 +541,7 @@
       "cached": 410000,
       "usd": 0.17,
       "errors": 0,
-      "prompt": "Review cmd/server/internal/handlers/main.go for refactoring chances.",
+      "prompt": "Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server",
       "startedAt": 1793802583000,
       "endedAt": 1793802656000
     },

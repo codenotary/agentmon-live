@@ -90,6 +90,14 @@ export function mergeDots(dots: readonly Dot[], span: Span, widthPx: number): Ma
   return marks
 }
 
+// Near an edge resizes, inside moves, elsewhere draws a new window. In a long session two minutes are a few pixels wide: all of that moves, or no drag could ever move it.
+export function dragMode(x: number, left: number, right: number, edgePx: number): 'move' | 'left' | 'right' | 'new' {
+  if (right - left < edgePx * 3) return x >= left - edgePx && x <= right + edgePx ? 'move' : 'new'
+  if (Math.abs(x - left) <= edgePx) return 'left'
+  if (Math.abs(x - right) <= edgePx) return 'right'
+  return x > left && x < right ? 'move' : 'new'
+}
+
 export function wholeOf(d: FlowInput, now: number): Span {
   const from = Math.min(now - MIN_WINDOW_MS, ...(d.trace ?? []).map(c => c.at), ...d.turns.map(t => t.startedAt), ...d.agents.map(a => a.startedAt))
   return { from, to: now }

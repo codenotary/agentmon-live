@@ -6,6 +6,9 @@ import type { Page } from '../labels.ts'
 import { Panel } from '../ui/Panel.tsx'
 import { Sparkline } from '../ui/Sparkline.tsx'
 
+// With fewer, the area chart is a wedge that says nothing.
+const MIN_TREND_POINTS = 4
+
 export function Learning({ s, p }: { s: WebSnapshot; p: Page }) {
   const { sessions, bench } = s.learned
   if (sessions === 0 && bench.length === 0) return null
@@ -13,7 +16,7 @@ export function Learning({ s, p }: { s: WebSnapshot; p: Page }) {
   const heads = [p.when, p.turns, p.calls, p.errors, p.cost]
   return (
     <Panel id="learning" title={p.learning} help={p.helpLearning} icon={History} aside={<span className="text-xs text-ink-3">{p.sessions}: {sessions}</span>}>
-      {costs.length > 1 ? <Sparkline points={costs} label={p.cost} className="mb-2 h-8 w-full" /> : null}
+      {costs.length >= MIN_TREND_POINTS ? <Sparkline points={costs} label={p.cost} className="mb-2 h-8 w-full" /> : null}
       {bench.length === 0 ? null : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-[13px] tabular-nums">

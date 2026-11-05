@@ -6,6 +6,8 @@ export function dur(ms: number | undefined): string {
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`
   return `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`
 }
+// A call under a second keeps its milliseconds: `dur` would say 0s.
+export const callTime = (ms: number | undefined) => (ms === undefined ? '' : ms < 1000 ? `${Math.round(ms)} ms` : dur(ms))
 export const time = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 export const hhmm = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 export const day = (at: number) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })

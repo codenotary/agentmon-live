@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 import type { WebSnapshot } from '../../../types/index'
 import { isRunning } from '../agents.ts'
 import { agentNames, dur, stateOf, time } from '../format.ts'
-import { clampView, DEFAULT_VIEW, flowOf, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
+import { clampView, DEFAULT_VIEW, dragMode, flowOf, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
 import type { Labels } from '../labels.ts'
 import { set, useClock, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -19,8 +19,10 @@ const RIGHT_PAD = 8
 const MIN_LANE = 24
 const MAX_LANE = 50
 const CHART_LANES_H = 150
+const DOT_HIT_R = 8
 
-const laneColour = (i: number, isMain: boolean) => (isMain ? 'var(--ink-3)' : `var(--ramp-${(i % 5) + 1})`)
+// The ramp's palest step is too faint for a dot on white.
+const laneColour = (i: number, isMain: boolean) => (isMain ? 'var(--ink-2)' : `var(--ramp-${(i % 4) + 1})`)
 
 type Drag = { mode: 'move' | 'left' | 'right' | 'new'; startX: number; view: FlowView; to: number }
 
@@ -36,8 +38,7 @@ function Brush({ whole, span, width, colourOf, s, view, setView, p }: { whole: S
   const down = (e: PointerEvent<SVGSVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId)
     const x = xIn(e)
-    const mode = Math.abs(x - left) <= EDGE_PX ? 'left' : Math.abs(x - right) <= EDGE_PX ? 'right' : x > left && x < right ? 'move' : 'new'
-    drag.current = { mode, startX: x, view, to: span.to }
+    drag.current = { mode: dragMode(x, left, right, EDGE_PX), startX: x, view, to: span.to }
   }
   const move = (e: PointerEvent<SVGSVGElement>) => {
     const d = drag.current
@@ -56,18 +57,18 @@ function Brush({ whole, span, width, colourOf, s, view, setView, p }: { whole: S
     <svg width={width} height={BRUSH_H} className="flow-brush block touch-none" role="img" aria-label={`${time(whole.from)} – ${p.flowNow}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} data-testid="flow-brush">
       <rect x={0} y={0} width={width} height={BRUSH_H} fill="var(--surface-1)" />
       {(s.trace ?? []).map(c => <rect key={c.id} x={xOf(c.at)} y={8} width={1} height={BRUSH_H - 16} fill={colourOf.get(c.agentId ?? MAIN_LANE) ?? 'var(--ink-3)'} />)}
-      <rect x={left} y={0.5} width={Math.max(2, right - left)} height={BRUSH_H - 1} rx={3} fill="var(--signal-soft)" fillOpacity={0.6} stroke="var(--signal-bright)" className="cursor-grab" />
+      <rect x={left} y={0.5} width={Math.max(2, right - left)} height={BRUSH_H - 1} rx={3} fill="var(--signal-soft)" fillOpacity={0.6} stroke="var(--signal-bright)" className="cursor-grab" data-testid="flow-window" />
       <text x={3} y={BRUSH_H - 2} className="flow-brush-text">{time(whole.from)}</text>
       <text x={width - 3} y={BRUSH_H - 2} textAnchor="end" className="flow-brush-text">{p.flowNow}</text>
     </svg>
   )
 }
 
-function MarkDot({ m, x, y, isNarrow, onTip, leave }: { m: Mark; x: number; y: number; isNarrow: boolean; onTip: (e: { clientX: number; clientY: number }, m: Mark) => void; leave: () => void }) {
+function MarkDot({ m, x, y, colour, isNarrow, onTip, leave }: { m: Mark; x: number; y: number; colour: string | undefined; isNarrow: boolean; onTip: (e: { clientX: number; clientY: number }, m: Mark) => void; leave: () => void }) {
   const first = m.dots[0]
   if (!first) return null
   const open = () => openTrace(first.call)
-  const fill = m.state === 'failed' ? 'var(--bad)' : m.state === 'asking' ? 'var(--surface)' : 'var(--ink-2)'
+  const fill = m.state === 'failed' ? 'var(--bad)' : m.state === 'asking' ? 'var(--surface)' : colour
   const stroke = m.state === 'asking' ? 'var(--warn)' : undefined
   if (m.count > 1) {
     return (
@@ -77,7 +78,13 @@ function MarkDot({ m, x, y, isNarrow, onTip, leave }: { m: Mark; x: number; y: n
       </g>
     )
   }
-  return <circle className={`flow-dot cursor-pointer ${m.state === 'asking' ? 'rec' : ''}`} cx={x} cy={y} r={first.isBig ? 3.5 : 2.5} fill={fill} stroke={stroke} strokeWidth={stroke ? 2 : undefined} onClick={open} onMouseEnter={e => onTip(e, m)} onMouseMove={e => onTip(e, m)} onMouseLeave={leave} />
+  return (
+    <g className="cursor-pointer" onClick={open} onMouseEnter={e => onTip(e, m)} onMouseMove={e => onTip(e, m)} onMouseLeave={leave}>
+      {/* A dot this small is hard to land on; the mark that takes the pointer is wider than the one you see. */}
+      <circle cx={x} cy={y} r={DOT_HIT_R} fill="transparent" />
+      <circle className={`flow-dot ${m.state === 'asking' ? 'rec' : ''}`} cx={x} cy={y} r={first.isBig ? 3.5 : 2.5} fill={fill} stroke={stroke} strokeWidth={stroke ? 2 : undefined} />
+    </g>
+  )
 }
 
 export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
@@ -213,7 +220,7 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
                     </g>
                   )
                 })}
-                {marks.map(m => <MarkDot key={m.key} m={m} x={xOf(m.at)} y={yOf.get(m.lane) ?? 0} isNarrow={isNarrow} onTip={markTip} leave={leave} />)}
+                {marks.map(m => <MarkDot key={m.key} m={m} x={xOf(m.at)} y={yOf.get(m.lane) ?? 0} colour={colourOf.get(m.lane)} isNarrow={isNarrow} onTip={markTip} leave={leave} />)}
                 {inWindow(now) ? <line x1={xOf(now)} x2={xOf(now)} y1={0} y2={height} stroke="var(--signal-bright)" strokeWidth={1} /> : null}
               </svg>
               {lanes.map(lane => {

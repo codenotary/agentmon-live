@@ -2,14 +2,12 @@ import { ChartNoAxesGantt } from 'lucide-react'
 import { useEffect, useRef, type CSSProperties } from 'react'
 
 import type { TraceCall, WebSnapshot } from '../../../types/index'
-import { countWord, dur, resultOf, stateOf } from '../format.ts'
+import { callTime, countWord, dur, resultOf, stateOf } from '../format.ts'
 import { windowOf } from '../flow.ts'
 import type { Labels } from '../labels.ts'
 import { set, useClock, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { rowsOf, ticksOf, xOf, type Row } from '../waterfall.ts'
-
-const msText = (ms: number | undefined) => (ms === undefined ? '' : ms < 1000 ? `${ms} ms` : dur(ms))
 
 export function openTrace(call: TraceCall): void {
   const result = call.isFailed ? 'failed' : call.ms === undefined ? 'running' : 'ok'
@@ -42,7 +40,7 @@ export function WaterfallRows({ rows, span, l }: { rows: readonly Row[]; span: {
         <>
           <Name row={row} status={asked} />
           <span className="wf-track"><Bar row={row} from={span.from} to={span.to} /></span>
-          <span className={`text-right font-mono text-[11px] tabular-nums ${row.isSlowest ? 'font-bold text-signal' : 'text-ink-3'}`}>{msText(row.ms)}</span>
+          <span className={`text-right font-mono text-[11px] tabular-nums ${row.isSlowest ? 'font-bold text-signal' : 'text-ink-3'}`}>{callTime(row.ms)}</span>
         </>
       )
       const { call } = row

@@ -3,7 +3,7 @@ import { Copy, X } from 'lucide-react'
 
 import type { WebSnapshot } from '../../types/index'
 
-import { agentNames, dur, resultOf, time, whoOf } from './format.ts'
+import { agentNames, callTime, resultOf, time, whoOf } from './format.ts'
 import type { Labels } from './labels.ts'
 import { copyText } from './Palette.tsx'
 import { set, useStore } from './store.ts'
@@ -30,7 +30,7 @@ export function CallDetail({ l, s }: { l: Labels | undefined; s: WebSnapshot | u
             <b>{who}</b>
             <span className="text-ink-3 tabular-nums">{time(call.at)}</span>
             <span className="text-ink-3">{l.cat[call.view] ?? call.view}</span>
-            {ms === undefined ? null : <span className="text-ink-3 tabular-nums">{dur(ms)}</span>}
+            {ms === undefined ? null : <span className="text-ink-3 tabular-nums">{callTime(ms)}</span>}
           </div>
           <span className="eyebrow">{p.what}</span>
           <pre className="mt-1 mb-3 rounded-lg bg-surface-1 p-3 font-mono text-xs break-words whitespace-pre-wrap">{call.what}</pre>
