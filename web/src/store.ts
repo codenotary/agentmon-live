@@ -1,39 +1,29 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 
 import type { Call, WebSnapshot } from '../../types/index'
-import { nextEvents, type FeedEvent } from './events.ts'
-import { DEFAULT_VIEW, type FlowView } from './flow.ts'
-import { parseIds, pushPoint } from './format.ts'
+import { DEFAULT_VIEW } from './flow.ts'
+import { parseIds } from './format.ts'
+import { currentOf, withLive, withoutSessions, withSnapshot, type SessionState } from './sessions.ts'
+
+export { currentOf }
 
 const PICK_KEY = 'agentmon-live-session'
 const THEME_KEY = 'agentmon-live-theme'
 const COLLAPSED_KEY = 'agentmon-live-collapsed'
-const HISTORY_POINTS = 600
-const KEEP_EVENTS = 100
 const THEME_FADE_MS = 200
 const NOTICE_MS = 2500
 const NOTICE_BAD_MS = 10_000
+// How often a session off screen, or a hidden tab, redraws the page.
+const QUIET_MS = 5000
 
 export type Theme = 'auto' | 'dark' | 'light'
 // A row of the calls table or the waterfall, for the drawer.
 export type Detail = Omit<Call, 'view'> & { view: string; ms?: number }
-export type Trend = { ctx: number[]; usd: number[] }
-export type State = {
-  sessions: ReadonlyMap<string, WebSnapshot>
-  // shortcut: the trend starts when the page opens, keep it on the server if people want it across reloads.
-  trends: ReadonlyMap<string, Trend>
-  events: ReadonlyMap<string, FeedEvent[]>
-  receivedAt: ReadonlyMap<string, number>
-  picked: string | null
+export type { Trend } from './sessions.ts'
+export type State = SessionState & {
   isDown: boolean
   downAt: number
   onlyFailures: boolean
-  // The agent Tool calls is narrowed to, by the name it shows; the agent table sets it too.
-  whoFilter: string | null
-  // The time the flow chart and the waterfall show.
-  flowView: FlowView
-  // Agent rows folded open: the flow chart's lane labels open them too.
-  openAgents: ReadonlySet<string>
   // The page's sections folded by this viewer.
   collapsed: ReadonlySet<string>
   notice: { text: string; isBad: boolean } | null
@@ -64,6 +54,7 @@ let state: State = {
   events: new Map(),
   receivedAt: new Map(),
   picked: load(PICK_KEY),
+  shown: null,
   isDown: false,
   downAt: 0,
   onlyFailures: false,
@@ -82,19 +73,27 @@ const subscribe = (fn: () => void) => {
   return () => listeners.delete(fn)
 }
 
-export function set(patch: Partial<State>): void {
-  state = { ...state, ...patch }
+let quietTimer: ReturnType<typeof setTimeout> | undefined
+function emit(): void {
+  clearTimeout(quietTimer)
+  quietTimer = undefined
   for (const fn of listeners) fn()
 }
-export const useStore = () => useSyncExternalStore(subscribe, () => state)
+function emitSoon(): void {
+  quietTimer ??= setTimeout(emit, QUIET_MS)
+}
 
-export const currentOf = (st: State): WebSnapshot | undefined => (st.picked ? st.sessions.get(st.picked) : undefined) ?? [...st.sessions.values()].at(-1)
+export function set(patch: Partial<State>): void {
+  state = { ...state, ...patch }
+  emit()
+}
+export const useStore = () => useSyncExternalStore(subscribe, () => state)
 
 export function pick(id: string): void {
   save(PICK_KEY, id)
   // A section's link in the address belongs to the session being left.
   history.replaceState(null, '', location.pathname + location.search)
-  set({ picked: id, whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set() })
+  set({ picked: id, shown: id, whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set() })
 }
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined
@@ -136,23 +135,15 @@ export function useClock(s: WebSnapshot, everyMs = 1000): number {
   return clockOf(s)
 }
 
+const focusKeys = (s: WebSnapshot | undefined) => s?.focus?.map(f => f.key).join('\n')
+
+// Only the session on screen redraws at once; a hidden tab waits too, unless what needs the person changed, which the tab title shows.
 function received(id: string, snapshot: WebSnapshot): void {
-  const base = {
-    sessions: new Map(state.sessions).set(id, { ...snapshot, session: { ...snapshot.session, id } }),
-    receivedAt: new Map(state.receivedAt).set(id, Date.now()),
-  }
-  // Another version's snapshot may have none of the fields below; the page only shows that it needs an update.
-  if (snapshot.v !== 1) return set(base)
-  const old = state.trends.get(id) ?? { ctx: [], usd: [] }
-  const trend = {
-    ctx: snapshot.usage.ctxPct === undefined ? old.ctx : pushPoint(old.ctx, snapshot.usage.ctxPct, HISTORY_POINTS),
-    usd: pushPoint(old.usd, snapshot.usage.usd, HISTORY_POINTS),
-  }
-  set({
-    ...base,
-    trends: new Map(state.trends).set(id, trend),
-    events: new Map(state.events).set(id, nextEvents(state.events.get(id) ?? [], snapshot.focus, snapshot.now, KEEP_EVENTS)),
-  })
+  const before = focusKeys(state.sessions.get(id))
+  state = withSnapshot(state, id, snapshot, Date.now())
+  const isShown = currentOf(state)?.session.id === id
+  if (isShown && (!document.hidden || focusKeys(snapshot) !== before)) emit()
+  else emitSoon()
 }
 
 // The session applies it within a second and says so in its next snapshot, which moves the button.
@@ -168,8 +159,12 @@ export function connect(): void {
     if (build !== undefined && build !== e.data) location.reload()
     build = e.data
   })
-  // A `removed` sent while the connection was down is lost; the server replays every live session right after this.
-  events.addEventListener('open', () => set({ isDown: false, sessions: new Map() }))
+  // A `removed` sent while the connection was down is lost: the server names who is left first thing, and keeps panels and their filters mounted through a reconnect.
+  events.addEventListener('open', () => set({ isDown: false }))
+  events.addEventListener('sessions', e => {
+    state = withLive(state, JSON.parse(e.data) as string[])
+    emit()
+  })
   events.addEventListener('error', () => {
     if (!state.isDown) set({ isDown: true, downAt: Date.now() })
   })
@@ -179,14 +174,9 @@ export function connect(): void {
   })
   events.addEventListener('removed', e => {
     const { id } = JSON.parse(e.data) as { id: string }
-    const sessions = new Map(state.sessions)
-    sessions.delete(id)
-    const trends = new Map(state.trends)
-    const feed = new Map(state.events)
-    const receivedAt = new Map(state.receivedAt)
-    trends.delete(id)
-    feed.delete(id)
-    receivedAt.delete(id)
-    set({ sessions, trends, events: feed, receivedAt })
+    state = withoutSessions(state, x => x === id)
+    emit()
   })
 }
+
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden && quietTimer !== undefined) emit() })

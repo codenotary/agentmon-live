@@ -89,7 +89,7 @@ Every running session on the machine shares one server. With more than one runni
 
 The page only reads, with one exception: the pane button tells the session to hide or show its pane. Nothing else flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. It has no login, so on a machine shared with other people, they can read your session's prompts, commands, paths and costs from the local port, and hide or show your pane. Secrets are masked first, as in the pane. Set `web` to `off` on a shared machine.
 
-`web` and `webPort` take effect at the next session start. Over SSH on Linux, a browser opens on your desktop session on that machine if you have one, such as a local or RDP login. Where no browser can open, `o` and `/agentmon open` give the address to open yourself.
+`web` and `webPort` take effect at the next session start, turning `web` off as well as on. If the server does not start, the session tries again once a minute. Over SSH on Linux, a browser opens on your desktop session on that machine if you have one, such as a local or RDP login. Where no browser can open, `o` and `/agentmon open` give the address to open yourself.
 
 With no desktop session there, the server still listens on the remote machine, so forward its port from your own machine, keeping the same number, and open the address there. The server refuses a different port number in the address.
 

@@ -6,6 +6,7 @@ export const ja: Strings = {
     open: 'ブラウザーで開く',
     opened: url => `${url} を開きました`,
     off: 'Web ビューはオフです。オプション web を on にして、新しいセッションを開始してください。',
+    nextSession: 'Web ビューは次のセッションで起動します。',
     failed: 'Web ビューを開始できませんでした。PATH に Node が必要です。/agentmon debug を確認してください。',
     noBrowser: url => `ここではブラウザーを開けませんでした。${url} を手動で開いてください。`,
     page: {

@@ -1,10 +1,10 @@
 import { ScrollText } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, callTime, resultOf, time, tone, type AgentName } from '../format.ts'
+import { agentNames, callTime, resultOf, time, tone } from '../format.ts'
 import type { Labels } from '../labels.ts'
-import { chipCounts, logRows, matchesChip, stripOf, type LogChip, type LogRow } from '../logrows.ts'
+import { chipCounts, logRows, matchesChip, sameRow, stripOf, type LogChip, type LogRow } from '../logrows.ts'
 import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { toneVar } from '../ui/Pill.tsx'
@@ -19,13 +19,15 @@ function Marked({ text, q }: { text: string; q: string }) {
   return <>{text.slice(0, at)}<mark>{text.slice(at, at + q.length)}</mark><Marked text={text.slice(at + q.length)} q={q} /></>
 }
 
-function Row({ row, q, now, l, names }: { row: LogRow; q: string; now: number; l: Labels; names: ReadonlyMap<string, AgentName> }) {
+type RowProps = { row: LogRow; q: string; now: number; l: Labels; title: string | undefined; lang: string }
+
+const Row = memo(function Row({ row, q, now, l, title }: RowProps) {
   const shown = row.tool === undefined ? { text: row.result, tone: tone(row.result) } : resultOf(row.result, l)
   const ms = row.isRunning ? now - row.at : row.ms
   const cells = (
     <>
       <span className="whitespace-nowrap text-ink-3">{time(row.at)}</span>
-      <span className={`truncate ${row.isYou ? 'font-bold text-heading' : 'text-signal'}`} title={row.agentId === undefined ? undefined : names.get(row.agentId)?.full}><Marked text={row.who} q={q} /></span>
+      <span className={`truncate ${row.isYou ? 'font-bold text-heading' : 'text-signal'}`} title={title}><Marked text={row.who} q={q} /></span>
       <span className={`max-sm:col-start-2 [overflow-wrap:anywhere] ${row.isYou ? 'font-bold text-heading' : ''}`}>
         {row.tool === undefined ? null : <span className="text-ink-3"><Marked text={row.tool} q={q} /> </span>}
         <Marked text={row.what} q={q} />
@@ -41,7 +43,7 @@ function Row({ row, q, now, l, names }: { row: LogRow; q: string; now: number; l
   const grid = `row-in grid w-full grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 rounded px-1 py-0.5 text-left sm:grid-cols-[72px_190px_minmax(0,1fr)_56px_minmax(48px,140px)] ${row.isFailed ? 'bg-bad-soft' : ''}`
   const { call } = row
   return call ? <button type="button" className={`${grid} cursor-pointer hover:bg-surface-2`} aria-label={`${l.page.details}: ${call.tool} ${call.what}`} onClick={() => openTrace(call)}>{cells}</button> : <div className={grid}>{cells}</div>
-}
+}, (a, b) => sameRow(a.row, b.row) && a.q === b.q && a.title === b.title && a.lang === b.lang && (!a.row.isRunning || a.now === b.now))
 
 export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
@@ -52,7 +54,7 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
   const box = useRef<HTMLDivElement>(null)
   const q = query.toLowerCase()
   const names = useMemo(() => agentNames(s.agents), [s.agents])
-  const all = useMemo(() => logRows(s, p.you, names), [s.log, s.trace, s.turns, names, p.you])
+  const all = useMemo(() => logRows(s, p.you, names), [s.log, s.trace, s.turns, s.active, names, p.you])
   const counts = chipCounts(all)
   const rows = all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text}`.toLowerCase().includes(q)))
   const strip = stripOf(rows)
@@ -99,7 +101,7 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
               if (atEnd !== follow) setFollow(atEnd)
             }}
           >
-            {rows.map(x => <Row key={x.key} row={x} q={q} now={now} l={l} names={names} />)}
+            {rows.map(x => <Row key={x.key} row={x} q={q} now={now} l={l} lang={s.lang} title={x.agentId === undefined ? undefined : names.get(x.agentId)?.full} />)}
           </div>
         </>
       )}

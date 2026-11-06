@@ -1,9 +1,9 @@
 import { ChevronRight, Workflow } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 
 import type { TraceCall, WebSnapshot } from '../../../types/index'
 import { isRunning } from '../agents.ts'
-import { agentNames, callTime, stateOf, time } from '../format.ts'
+import { agentNames, callTime, firstLine, MAIN_KEY, prefixOf, stateOf, time } from '../format.ts'
 import { clampView, DEFAULT_VIEW, dragMode, flowOf, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
 import type { Labels } from '../labels.ts'
 import { clockOf, set, useStore } from '../store.ts'
@@ -197,7 +197,7 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
     const first = m.dots[0]
     if (!first) return
     const c = first.call
-    const line = c.what.split('\n')[0] ?? ''
+    const line = firstLine(c.what)
     placeTip(e, m.count > 1 ? `${m.count} ${p.calls} · ${time(m.at)}–${time(m.to)}` : `${time(c.at)} · ${c.tool} ${line}${c.ms === undefined ? '' : ` · ${callTime(c.ms)}`}${c.isFailed ? ` · ${l.result.failed}` : ''}`)
   }
   const arcTip = (e: { clientX: number; clientY: number }, a: Arc) => {
@@ -210,8 +210,11 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   }
 
   const pickLane = (lane: Lane) => {
-    if (lane.isMain) return set({ whoFilter: l.main })
-    if (lane.agentId) set({ whoFilter: names.get(lane.agentId)?.short ?? null, openAgents: new Set(openAgents).add(lane.agentId) })
+    if (lane.isMain) return set({ whoFilter: MAIN_KEY })
+    if (!lane.agentId) return
+    // Its group opens too, or a folded group would keep the agent out of sight.
+    const task = s.agents.find(a => a.id === lane.agentId)?.task ?? ''
+    set({ whoFilter: lane.agentId, openAgents: new Set(openAgents).add(lane.agentId).add(`group:${prefixOf(task)}`) })
   }
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (list) {
@@ -247,17 +250,9 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
     return `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`
   }
 
-  return (
-    <Panel id="flow" title={p.flow} help={p.helpFlow} icon={Workflow} aside={aside} className={isOpen ? '' : '[&>header]:mb-0'}>
-      {isOpen && !s.trace?.length ? <Empty text={p.none} /> : null}
-      <div ref={box} className="relative outline-offset-2" tabIndex={0} onKeyDown={onKey} onPointerEnter={() => setIsOver(true)} onPointerLeave={() => setIsOver(false)} data-testid="flow" style={isOpen && s.trace?.length ? undefined : { display: 'none' }}>
-        {width > 0 ? (
-          <>
-            <Brush whole={whole} span={span} width={width} colourOf={colourOf} s={s} view={view} setView={setView} p={p} />
-            <div className="relative mt-2 max-h-[320px] overflow-y-auto">
-              <svg width={width} height={height} className="block" role="img" aria-label={p.flow}>
-                <clipPath id="flow-plot"><rect x={label - 4} y={0} width={width - label + 4} height={height} /></clipPath>
-                <g clipPath="url(#flow-plot)"><g ref={plotBox}>
+  // Between its steps the chart stays as it was: it has more elements than the rest of the page's panels redraw often.
+  const chart = useMemo(() => (
+    <>
                 {lanes.map(lane => {
                   const y = yOf.get(lane.id) ?? 0
                   const a = Math.max(xOf(drawnFrom), xOf(lane.from))
@@ -285,6 +280,20 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
                   )
                 })}
                 {marks.map(m => <MarkDot key={m.key} m={m} x={xOf(m.at)} y={yOf.get(m.lane) ?? 0} colour={colourOf.get(m.lane)} isNarrow={isNarrow} onPick={pickMark} onTip={markTip} leave={leave} />)}
+    </>
+  ), [s, now, width, view.at, view.ms, hideFinished, hotArc])
+  return (
+    <Panel id="flow" title={p.flow} help={p.helpFlow} icon={Workflow} aside={aside} className={isOpen ? '' : '[&>header]:mb-0'}>
+      {isOpen && !s.trace?.length ? <Empty text={p.none} /> : null}
+      <div ref={box} className="relative outline-offset-2" tabIndex={0} onKeyDown={onKey} onPointerEnter={() => setIsOver(true)} onPointerLeave={() => setIsOver(false)} data-testid="flow" style={isOpen && s.trace?.length ? undefined : { display: 'none' }}>
+        {width > 0 ? (
+          <>
+            <Brush whole={whole} span={span} width={width} colourOf={colourOf} s={s} view={view} setView={setView} p={p} />
+            <div className="relative mt-2 max-h-[320px] overflow-y-auto">
+              <svg width={width} height={height} className="block" role="img" aria-label={p.flow}>
+                <clipPath id="flow-plot"><rect x={label - 4} y={0} width={width - label + 4} height={height} /></clipPath>
+                <g clipPath="url(#flow-plot)"><g ref={plotBox}>
+                {chart}
                 </g></g>
                 {now >= span.from && now <= span.to ? <line x1={xOf(now)} x2={xOf(now)} y1={0} y2={height} stroke="var(--signal-bright)" strokeWidth={1} pointerEvents="none" /> : null}
               </svg>
@@ -304,7 +313,7 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
           <div ref={listBox} className="pop flow-list absolute" style={{ left: Math.min(list.x, Math.max(0, width - 320)), top: list.y }} data-testid="flow-list">
             {list.calls.map((c, i) => (
               <button key={c.id} type="button" className="flow-call" autoFocus={i === 0} onClick={() => { setList(null); openTrace(c) }}>
-                <span className="text-ink-3">{time(c.at)}</span> <span className={c.isFailed ? 'text-bad' : ''}>{c.tool}</span> {c.what.split('\n')[0]}{c.ms === undefined ? '' : ` · ${callTime(c.ms)}`}
+                <span className="text-ink-3">{time(c.at)}</span> <span className={c.isFailed ? 'text-bad' : ''}>{c.tool}</span> {firstLine(c.what)}{c.ms === undefined ? '' : ` · ${callTime(c.ms)}`}
               </button>
             ))}
           </div>

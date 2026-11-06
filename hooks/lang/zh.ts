@@ -6,6 +6,7 @@ export const zh: Strings = {
     open: '在浏览器中打开',
     opened: url => `已打开 ${url}`,
     off: '网页视图已关闭。请将选项 web 设为 on，然后开始新会话。',
+    nextSession: '网页视图将在下一个会话启动。',
     failed: '网页视图未能启动。它需要 PATH 中有 Node；请查看 /agentmon debug。',
     noBrowser: url => `无法在此处打开浏览器。请自行打开 ${url}。`,
     page: {

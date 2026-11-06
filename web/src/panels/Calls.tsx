@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Terminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, firstLine, resultOf, time, whoOf } from '../format.ts'
+import { agentNames, chipsWith, firstLine, MAIN_KEY, resultOf, time, whoKey, whoOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { set, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -24,11 +24,20 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const list = useMemo(() => tableRows(s), [s])
   const tools = useMemo(() => [...new Set(list.map(c => c.view))].sort(), [list])
-  const people = useMemo(() => [...new Set(list.map(c => whoOf(c, names)))], [list, names])
+  const agentTypes = useMemo(() => new Set(s.agents.map(a => a.type)), [s.agents])
+  // Label by key: two agents can show one name.
+  const people = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const c of list) {
+      const key = whoKey(c, agentTypes)
+      if (!seen.has(key)) seen.set(key, key === MAIN_KEY ? l.main : whoOf(c, names))
+    }
+    return [...seen]
+  }, [list, names, agentTypes, l.main])
   const rows = useMemo(() => {
     const q = text.toLowerCase()
-    return list.filter(c => (!tool || c.view === tool) && (!who || whoOf(c, names) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.view} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
-  }, [list, text, tool, who, onlyFailures, l, names])
+    return list.filter(c => (!tool || c.view === tool) && (!who || whoKey(c, agentTypes) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.view} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
+  }, [list, text, tool, who, onlyFailures, l, names, agentTypes])
 
   const all = useMemo(() => sortCalls(rows, sort, c => whoOf(c, names)), [rows, sort, names])
   const shown = isAll ? all : all.slice(0, ROWS_SHOWN)
@@ -39,11 +48,11 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
     <>
       <input className="field !h-[26px] !w-40" type="search" aria-label={p.filterCalls} placeholder={p.filterCalls} value={text} onChange={e => setText(e.target.value)} />
       <button type="button" className="chip" aria-pressed={onlyFailures} onClick={() => set({ onlyFailures: !onlyFailures })}>{p.onlyFailures}</button>
-      {tools.length > 1 ? tools.map(name => <button key={name} type="button" className="chip font-mono" aria-pressed={tool === name} onClick={() => setTool(tool === name ? null : name)}>{name}</button>) : null}
-      {people.length > 1 ? (
+      {tools.length > 1 || tool ? chipsWith(tools, tool).map(name => <button key={name} type="button" className="chip font-mono" aria-pressed={tool === name} onClick={() => setTool(tool === name ? null : name)}>{name}</button>) : null}
+      {people.length > 1 || who ? (
         <>
           <button type="button" className="chip" aria-pressed={who === null} onClick={() => set({ whoFilter: null })}>{p.everyone}</button>
-          {people.map(name => <button key={name} type="button" className="chip" aria-pressed={who === name} onClick={() => set({ whoFilter: who === name ? null : name })}>{name}</button>)}
+          {people.map(([key, name]) => <button key={key} type="button" className="chip" aria-pressed={who === key} onClick={() => set({ whoFilter: who === key ? null : key })}>{name}</button>)}
         </>
       ) : null}
     </>

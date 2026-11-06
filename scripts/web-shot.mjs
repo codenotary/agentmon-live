@@ -305,6 +305,7 @@ const moves = async target => { const a = await pinAt(target); await target.wait
 const live = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 await live.goto(url)
 await live.waitForSelector('[data-testid=instruments]')
+await live.fill('#q', 'npm')
 await page.goto(url)
 await page.waitForSelector('[data-testid=instruments]')
 if (await moves(page)) problems.push('pins: moved under reduced motion')
@@ -313,6 +314,15 @@ await live.locator('[data-testid=instruments]').screenshot({ path: join(out, 'we
 server.kill()
 await live.waitForSelector('[data-testid=instruments][data-down]', { timeout: 15000 }).catch(() => problems.push('pins: the band did not see the connection drop'))
 if (await moves(live)) problems.push('pins: moved with the connection down')
+// A reconnect keeps panels mounted, so what a person typed stays.
+const again = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT, '--fixture', join(ROOT, 'tests/fixtures/snapshot.json')], { stdio: 'inherit' })
+process.on('exit', () => again.kill())
+// The session on screen is the posted one: it reports to the new server, as a live session would.
+await new Promise(done => setTimeout(done, 300))
+await fetch(`${url.slice(0, -1)}/state/second`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(other) })
+await live.waitForSelector('[data-testid=instruments]:not([data-down])', { timeout: 30000 }).catch(() => problems.push('reconnect: the page did not come back'))
+if (await live.inputValue('#q') !== 'npm') problems.push('reconnect: the log search was lost')
+again.kill()
 
 await browser.close()
 console.log(problems.length ? problems.join('\n') : 'no script errors, no sideways scroll')

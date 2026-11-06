@@ -1,7 +1,7 @@
 import type { Active, Card, TraceCall } from '../../types/index'
 
 import { endOf, isRunning } from './agents.ts'
-import { agentNames } from './format.ts'
+import { agentNames, traceResult } from './format.ts'
 import type { Detail } from './store.ts'
 
 export type BarState = 'ok' | 'failed' | 'running' | 'asking'
@@ -24,7 +24,7 @@ export function tableRows(d: { trace?: TraceCall[]; calls: readonly (Omit<Detail
       who: c.who,
       view: c.tool,
       what: c.what,
-      result: c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : running.has(c.id) ? 'running' : 'unknown',
+      result: traceResult(c, running.has(c.id)),
       ...(c.ms === undefined ? {} : { ms: c.ms }),
       ...(error ? { error } : {}),
       ...(c.agentId === undefined ? {} : { agentId: c.agentId }),
@@ -55,8 +55,8 @@ export function ticksOf(ms: number): { step: number; at: number[] } {
 export const xOf = (at: number, from: number, to: number) => Math.min(100, Math.max(0, ((at - from) / Math.max(1, to - from)) * 100))
 
 // A turn's calls in the order they started, each subagent's nested under it, so a stall shows as a long bar or a gap.
-// shortcut: the session keeps the last 200 calls, so a longer turn loses its start; raise KEEP_TRACE if people hit it.
-export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, mainName: string, now: number): Row[] {
+// shortcut: the session keeps the last 500 calls, so a longer turn loses its start; raise KEEP_TRACE if people hit it.
+export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, now: number): Row[] {
   const { from, to } = span
   const running = new Map(d.active.map(a => [a.id, a]))
   const callRow = (c: TraceCall, depth: number): Row => {
@@ -66,12 +66,13 @@ export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, ma
     return { key: c.id, name: c.tool, what: c.what, depth, from: c.at, to: end, ...(c.ms === undefined ? {} : { ms: c.ms }), state, isAgent: false, isSlowest: false, call: c }
   }
   const names = agentNames(d.agents)
+  const agentTypes = new Set(d.agents.map(a => a.type))
   const agents = d.agents.filter(a => a.startedAt <= to && endOf(a, now) >= from)
   const nested = new Map<string, TraceCall[]>(agents.map(a => [a.id, []]))
   const blocks: { at: number; rows: Row[] }[] = []
   for (const c of d.trace ?? []) {
     if (c.at < from || c.at > to) continue
-    if (c.agentId === undefined && c.who === mainName) {
+    if (c.agentId === undefined && !agentTypes.has(c.who)) {
       if (!STARTS_AGENT.test(c.tool)) blocks.push({ at: c.at, rows: [callRow(c, 0)] })
       continue
     }

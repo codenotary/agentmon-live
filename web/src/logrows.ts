@@ -1,5 +1,5 @@
-import type { Card, LogLine, TraceCall } from '../../types/index'
-import { firstLine, tone, type AgentName, whoOf } from './format.ts'
+import type { Active, Card, LogLine, TraceCall } from '../../types/index'
+import { firstLine, tone, traceResult, type AgentName, whoOf } from './format.ts'
 
 export type LogRow = {
   key: string
@@ -29,6 +29,7 @@ type Input = {
   trace?: readonly TraceCall[] | undefined
   turns: readonly { startedAt: number; prompt?: string }[]
   agents: readonly Pick<Card, 'id' | 'task' | 'status' | 'startedAt' | 'endedAt'>[]
+  active: readonly Pick<Active, 'id'>[]
 }
 
 // One subagent is one row: its first line carries the duration and the last line's result. When the log's cap dropped the first line, the lines left stay as they are.
@@ -65,21 +66,22 @@ function logLineRows(log: readonly LogLine[], agents: Input['agents'], names: Re
 
 const canMerge = (a: LogRow | undefined, b: LogRow): a is LogRow => a !== undefined && a.tool !== undefined && !a.isFailed && !a.isRunning && !b.isFailed && !b.isRunning && a.who === b.who && a.tool === b.tool && a.what === b.what
 
-export function logRows({ log, trace = [], turns, agents }: Input, you: string, names: ReadonlyMap<string, AgentName>): LogRow[] {
+export function logRows({ log, trace = [], turns, agents, active }: Input, you: string, names: ReadonlyMap<string, AgentName>): LogRow[] {
+  const running = new Set(active.map(a => a.id))
   const calls = trace.filter(c => !LAUNCH_TOOLS.test(c.tool)).map((c): LogRow => ({
     key: `call:${c.id}`,
     at: c.at,
     who: whoOf(c, names),
     what: c.what,
     tool: c.tool,
-    result: c.isFailed ? 'failed' : c.ms === undefined ? 'running' : 'ok',
+    result: traceResult(c, running.has(c.id)),
     ...(c.ms === undefined ? {} : { ms: c.ms }),
     count: 1,
     ...(c.agentId === undefined ? {} : { agentId: c.agentId }),
     call: c,
     isYou: false,
     isFailed: c.isFailed === true,
-    isRunning: c.ms === undefined && c.isFailed !== true,
+    isRunning: traceResult(c, running.has(c.id)) === 'running',
   }))
   const asked = turns.flatMap((t): LogRow[] => (t.prompt ? [{ key: `you:${t.startedAt}`, at: t.startedAt, who: you, what: firstLine(t.prompt), result: '', count: 1, isYou: true, isFailed: false, isRunning: false }] : []))
   const ordered = [...logLineRows(log, agents, names), ...calls, ...asked].sort((a, b) => a.at - b.at)
@@ -116,3 +118,6 @@ export function stripOf(rows: readonly LogRow[], bars = STRIP_BARS): (StripBar |
   })
   return strip
 }
+
+// The same row as last time, for `memo`: only a running row's clock moves it.
+export const sameRow = (a: LogRow, b: LogRow) => a.key === b.key && a.at === b.at && a.who === b.who && a.what === b.what && a.tool === b.tool && a.result === b.result && a.ms === b.ms && a.count === b.count && a.isFailed === b.isFailed && a.isRunning === b.isRunning

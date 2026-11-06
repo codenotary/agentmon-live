@@ -32,6 +32,8 @@ const HEARTBEAT_MS = 30_000
 const ENSURE_EVERY_MS = 60_000
 const KEEP_TURNS = 50
 const KEEP_FILES = 50
+// A live turn's clock moves on every read: it alone posts this often, while anything else that changes posts on the next tick.
+const CLOCK_MS = 3000
 const KEEP_BENCH_ROWS = 10
 const resetMs = (at: string | undefined) => (at && !Number.isNaN(Date.parse(at)) ? Date.parse(at) : undefined)
 const KEEP_ASKED = 10
@@ -64,7 +66,7 @@ export type SnapshotParts = {
 }
 
 // The pane's list of what needs the person, in its order and with its keys, so a dismissal holds on both surfaces.
-function urgentItems(p: SnapshotParts): WebFocus[] {
+export function urgentItems(p: SnapshotParts): WebFocus[] {
   const { t } = p
   const items: (WebFocus & { key: string })[] = [
     ...p.doing.filter(a => a.isAsking).map(a => ({ key: `ask:${a.id}`, tag: t.approval, text: `${a.tool} ${a.what}`, isUrgent: true })),
@@ -73,6 +75,7 @@ function urgentItems(p: SnapshotParts): WebFocus[] {
     ...p.agents
       .filter(a => (a.tests === 'FAIL' || a.status === 'error') && (a.endedAt ?? 0) >= (p.main.turnAt ?? 0))
       .map(a => ({ key: `agent:${a.id}:${a.endedAt ?? 0}`, tag: a.tests === 'FAIL' ? 'FAIL' : t.status.error, text: `${a.type} ${a.testsWhy ?? a.task}`, isUrgent: true })),
+    ...p.agents.filter(a => a.status === 'waiting').map(a => ({ key: `ask:agent:${a.id}`, tag: t.status.waiting, text: `${a.type} ${a.task}`, isUrgent: true })),
   ]
   return items.filter(x => !p.dismissed.includes(x.key))
 }
@@ -148,10 +151,10 @@ let endedId: string | undefined
 // A turn from before this time belongs to an ended session.
 let ringFrom = 0
 let lastJson = ''
-let lastPostAt = 0
+let lastPostAt = -Infinity
 let lastEnsureAt = -Infinity
 let cwd = ''
-// shortcut: the branch is read when the server is reached, so a checkout shows on the next start; read it per post if people switch mid-session.
+// shortcut: the branch is read at session start, so a checkout shows on the next start; read it per post if people switch mid-session.
 let branch: string | undefined
 
 function serverScript($: EngineInterface): string {
@@ -165,29 +168,43 @@ async function ensureServer($: EngineInterface): Promise<void> {
   cfg.webUrl = `http://127.0.0.1:${port}/`
 }
 
-// The flag keeps a pane the person hid closed when a module reload runs session.start again.
 // `/agentmon clear`: the page's turns go with the session's history.
 export function forgetTurns(): void {
   turnRing = []
 }
 
+// The flag keeps a pane the person hid closed when a module reload runs session.start again.
 export async function setPane($: EngineInterface, isOpen: boolean): Promise<void> {
   await update($, layout, l => ({ ...l, isPaneHidden: !isOpen }))
   if (isOpen) await $.ui.open({ id: PANE, title: 'AgentMon Live' })
   else await $.ui.close({ id: PANE })
 }
 
-// What the page's button asked for; the server hands it over once.
-async function takePaneRequest($: EngineInterface, id: string): Promise<void> {
+// What the page's button asked for; the server hands it over once. Answers whether a tab may be watching: only a server that says none counts as none.
+async function takePaneRequest($: EngineInterface, id: string): Promise<boolean> {
   const r = await $.http.fetch(`${cfg.webUrl}pane/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+  // A server that does not know this session started after it (a newer session replaced it): post now, not at the next heartbeat.
+  if (r.status === 404) lastJson = ''
   if (r.status === 200) await setPane($, (JSON.parse(r.text) as { isOpen: boolean }).isOpen)
+  return r.headers['x-clients'] !== '0'
+}
+
+// What says a post is due: all of the snapshot but the clocks.
+export function changeKey(snapshot: WebSnapshot): string {
+  return JSON.stringify({ ...snapshot, now: 0, turns: snapshot.turns.map(x => (x.isLive ? { startedAt: x.startedAt, prompt: x.prompt } : x)) })
 }
 
 async function publish($: EngineInterface): Promise<void> {
-  const [id, usage, now, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, insStored, learnt, panes, traced, reviewed, adv] = await Promise.all([
-    $.session.id(),
+  const [id, now] = await Promise.all([$.session.id(), $.clock.now()])
+  if (id === endedId) return
+  const hasTab = await takePaneRequest($, id)
+  // Every tick, tab or none: the ring takes a finished turn only as it goes by.
+  const insStored = await read($, insights)
+  const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
+  turnRing = pushTurn(turnRing, ins.last && ins.last.startedAt >= ringFrom ? ins.last : undefined)
+  if (!hasTab && now - lastPostAt < HEARTBEAT_MS) return
+  const [usage, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, learnt, panes, traced, reviewed, adv] = await Promise.all([
     $.session.usage(),
-    $.clock.now(),
     read($, main),
     read($, agents),
     $.agent.list().catch(() => []),
@@ -199,17 +216,12 @@ async function publish($: EngineInterface): Promise<void> {
     read($, files),
     read($, layout),
     read($, tasks),
-    read($, insights),
     read($, learned),
     $.ui.panes().catch(() => []),
     read($, trace),
     read($, testReview),
     read($, advisor),
   ])
-  if (id === endedId) return
-  await takePaneRequest($, id)
-  const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
-  turnRing = pushTurn(turnRing, ins.last && ins.last.startedAt >= ringFrom ? ins.last : undefined)
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
   const cards = list.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const c = usage.context
@@ -235,15 +247,15 @@ async function publish($: EngineInterface): Promise<void> {
     focus,
     t: cfg.t,
     lang: cfg.lang,
-    isPaneOpen: panes.some(x => x.id === PANE),
+    isPaneOpen: panes.some(x => x.id === PANE && x.isPlaced),
     build: cfg.build,
     testReview: reviewed,
     trace: traced,
     notes: adv.notes,
   })
-  // `now` moves on every read; the rest says whether anything changed.
-  const json = JSON.stringify({ ...snapshot, now: 0 })
-  if (json === lastJson && now - lastPostAt < HEARTBEAT_MS) return
+  const json = changeKey(snapshot)
+  const dueEvery = snapshot.turns.at(-1)?.isLive ? CLOCK_MS : HEARTBEAT_MS
+  if (json === lastJson && now - lastPostAt < dueEvery) return
   const r = await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(snapshot) })
   // Something else may hold the port now: throw, so the loop's retry looks for our server.
   if (!r.ok) throw new Error(`post answered ${r.status}`)
@@ -253,8 +265,10 @@ async function publish($: EngineInterface): Promise<void> {
 
 function publishLoop($: EngineInterface): void {
   $.clock.after(PUBLISH_MS, async () => {
-    if (cfg.web && cfg.webUrl) {
+    if (cfg.webOn) {
       try {
+        // No address means the first start failed: this retry is the way back.
+        if (!cfg.webUrl) throw new Error('no server')
         await publish($)
       } catch (error) {
         const now = await $.clock.now()
@@ -262,7 +276,10 @@ function publishLoop($: EngineInterface): void {
           lastEnsureAt = now
           void debug($, 'web.down', { message: String(error) })
           // A server that idled out or was killed: the next post reaches the new one, and the page's EventSource finds it too.
-          await ensureServer($).catch(() => undefined)
+          await ensureServer($).then(async () => {
+            $.ui.invalidate('ui.render')
+            if (cfg.webOpenOnStart) await openOnce($)
+          }).catch(() => undefined)
         }
       }
     }
@@ -279,14 +296,22 @@ async function openOnce($: EngineInterface): Promise<void> {
 }
 
 export async function startWeb($: EngineInterface, dir: string): Promise<void> {
+  // `web` applies at session start, as the guide says: the option can change at any prompt.
+  cfg.webOn = cfg.web
   if (!cfg.web) return
   cwd = dir
   endedId = undefined
-  lastEnsureAt = -Infinity
+  // The loop's retry waits while this first start is still under way.
+  lastEnsureAt = await $.clock.now()
+  const head = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir }).catch(() => undefined)
+  branch = head?.exitCode === 0 ? head.stdout.trim() : undefined
+  if (!isLooping) {
+    isLooping = true
+    publishLoop($)
+  }
   try {
     await ensureServer($)
-    const head = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir }).catch(() => undefined)
-    branch = head?.exitCode === 0 ? head.stdout.trim() : undefined
+    lastEnsureAt = -Infinity
   } catch (error) {
     cfg.webUrl = undefined
     void debug($, 'web.start', { message: String(error) })
@@ -294,10 +319,6 @@ export async function startWeb($: EngineInterface, dir: string): Promise<void> {
     return
   }
   $.ui.invalidate('ui.render')
-  if (!isLooping) {
-    isLooping = true
-    publishLoop($)
-  }
   if (cfg.webOpenOnStart) await openOnce($).catch(() => undefined)
 }
 

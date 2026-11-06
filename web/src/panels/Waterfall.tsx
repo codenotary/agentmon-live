@@ -2,7 +2,7 @@ import { ChartNoAxesGantt } from 'lucide-react'
 import { useEffect, useRef, type CSSProperties } from 'react'
 
 import type { TraceCall, WebSnapshot } from '../../../types/index'
-import { callTime, countWord, dur, resultOf, stateOf } from '../format.ts'
+import { callTime, countWord, dur, resultOf, stateOf, traceResult } from '../format.ts'
 import { windowOf } from '../flow.ts'
 import type { Labels } from '../labels.ts'
 import { set, useClock, useStore } from '../store.ts'
@@ -10,7 +10,8 @@ import { Empty, Panel } from '../ui/Panel.tsx'
 import { rowsOf, ticksOf, xOf, type Row } from '../waterfall.ts'
 
 export function openTrace(call: TraceCall): void {
-  const result = call.isFailed ? 'failed' : call.ms === undefined ? 'running' : 'ok'
+  // The drawer reads the live state; this is what it shows for a call that has left the trace.
+  const result = traceResult(call, true)
   set({ call: { id: call.id, ...(call.agentId === undefined ? {} : { agentId: call.agentId }), at: call.at, who: call.who, view: call.tool, what: call.what, result, ...(call.error ? { error: call.error } : {}), ...(call.ms === undefined ? {} : { ms: call.ms }) } })
 }
 
@@ -45,7 +46,7 @@ export function WaterfallRows({ rows, span, l }: { rows: readonly Row[]; span: {
       )
       const { call } = row
       if (!call) return <div key={row.key} className="wf-row">{inner}</div>
-      const result = call.isFailed ? 'failed' : call.ms === undefined ? 'running' : 'ok'
+      const result = traceResult(call, row.state === 'running' || row.state === 'asking')
       return (
         <button key={row.key} type="button" className="wf-row row-in" aria-label={`${p.details}: ${call.tool} ${call.what} ${resultOf(result, l).text}`} onClick={() => openTrace(call)}>
           {inner}
@@ -63,7 +64,7 @@ export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   const box = useRef<HTMLDivElement>(null)
   const isFollowing = flowView.at === null
   const span = windowOf(flowView, s, now, stateOf(s) !== 'idle')
-  const rows = rowsOf(s, span, l.main, now)
+  const rows = rowsOf(s, span, now)
   const failed = rows.filter(r => r.state === 'failed').length
   const calls = rows.filter(r => !r.isAgent).length
   const length = span.to - span.from

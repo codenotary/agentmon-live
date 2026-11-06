@@ -30,18 +30,21 @@ export function blockedOf(s: { insights: { session?: Record<string, number>; ses
   return { ms, pct: wall > 0 ? Math.round((ms / wall) * 100) : 0 }
 }
 
-// Edited after the last test run that passed: what a reviewer wants to know before merging. Undefined while no passing run is known.
-export function editsSinceGreen(files: { editedTimes?: Record<string, number> }, checks: readonly { kind: string; at: number; result: string }[]): number | undefined {
+// When the tests last passed: a run still under way or cut off keeps the pass before it, a failed run does not.
+export function lastGreenAt(checks: readonly { kind: string; at: number; result: string; greenAt?: number }[]): number | undefined {
   const test = checks.find(c => c.kind === 'test')
-  if (test?.result !== 'ok') return undefined
-  return Object.values(files.editedTimes ?? {}).filter(at => at > test.at).length
+  return test?.result === 'ok' ? test.at : test?.result === 'failed' ? undefined : test?.greenAt
 }
 
-// The log with the prompt that started each turn, in time order. Page only: the pane's log stays as it is.
-export function withPrompts<T extends { at: number; who: string; what: string; result: string }>(log: readonly T[], turns: readonly { startedAt: number; prompt?: string }[], you: string): (T | { at: number; who: string; what: string; result: string })[] {
-  const asked = turns.flatMap(t => (t.prompt ? [{ at: t.startedAt, who: you, what: firstLine(t.prompt), result: '' }] : []))
-  return [...log, ...asked].sort((a, b) => a.at - b.at)
+// Edited after the last test run that passed: what a reviewer wants to know before merging. Undefined while no passing run is known.
+export function editsSinceGreen(files: { editedTimes?: Record<string, number> }, checks: readonly { kind: string; at: number; result: string; greenAt?: number }[]): number | undefined {
+  const green = lastGreenAt(checks)
+  if (green === undefined) return undefined
+  return Object.values(files.editedTimes ?? {}).filter(at => at > green).length
 }
+
+// A call with no end that the session no longer runs was lost, for example to a module reload.
+export const traceResult = (c: { isFailed?: boolean; ms?: number }, isActive: boolean) => (c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : isActive ? 'running' : 'unknown')
 export const firstLine = (text: string) => text.split('\n')[0] ?? ''
 
 // `g` then a letter goes to a section.
@@ -79,6 +82,11 @@ export function agentNames(agents: readonly { id: string; type: string; task: st
   }))
 }
 // A session of an older version sends no `agentId`, and an old finished agent may be gone: `who` still names them.
+// Who a call belongs to, for filters: names change as agents arrive and the main session's follows the language.
+export const MAIN_KEY = 'main'
+export const whoKey = (x: { who: string; agentId?: string }, agentTypes: ReadonlySet<string>) => x.agentId ?? (agentTypes.has(x.who) ? x.who : MAIN_KEY)
+// A filter's own value stays on offer, so it can be cleared when its rows have gone.
+export const chipsWith = (values: readonly string[], active: string | null) => (active !== null && !values.includes(active) ? [...values, active] : [...values])
 export const whoOf = (x: { who: string; agentId?: string }, names: ReadonlyMap<string, AgentName>) => (x.agentId === undefined ? undefined : names.get(x.agentId)?.short) ?? x.who
 
 // What a session is doing: something asks you (a call waiting for approval, a subagent waiting), it works, or it rests.

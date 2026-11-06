@@ -180,6 +180,8 @@ test('the page asks for the pane, another site cannot, and the session takes it 
   assert.equal((await ask('/pane/s/close', 'null')).status, 403)
   assert.equal((await ask('/pane/s/close')).status, 403)
   assert.equal((await take()).status, 204)
+  assert.equal((await take()).headers['x-clients'], '0')
+  assert.equal((await call(47419, '/pane/unknown', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 404)
   assert.equal((await ask('/pane/gone/close', 'http://127.0.0.1:47419')).status, 404)
   assert.equal((await ask('/pane/s/close', 'http://127.0.0.1:47419')).status, 204)
   assert.equal((await take({ origin: 'http://127.0.0.1:47419' })).status, 403)
@@ -333,4 +335,13 @@ test('an opener that stays running counts as opened', { skip: process.platform !
   const { env } = fakeOpener('/bin/sleep 5', '')
   const r = spawnSync(process.execPath, [WEB, 'open', 'http://127.0.0.1:47311/'], { env, encoding: 'utf8' })
   assert.equal(r.status, 0)
+})
+
+test('a new reader hears who is live before their snapshots', async () => {
+  startServer(47423)
+  await waitUp(47423)
+  await post(47423, 'one', { v: 1 })
+  const text = await readEvents(47423, t => t.includes('event: snapshot'))
+  assert.ok(text.indexOf('event: sessions\ndata: ["one"]') >= 0)
+  assert.ok(text.indexOf('event: sessions') < text.indexOf('event: snapshot'))
 })

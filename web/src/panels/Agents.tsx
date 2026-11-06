@@ -34,9 +34,8 @@ const Metric = ({ text, share }: { text: string; share: number }) => (
   </span>
 )
 
-// Show the agent's calls: its name is what the table's filter goes by.
-function showCalls(name: string | undefined, onlyFailures: boolean): void {
-  set({ whoFilter: name ?? null, onlyFailures })
+function showCalls(id: string, onlyFailures: boolean): void {
+  set({ whoFilter: id, onlyFailures })
   jumpTo('calls')
 }
 
@@ -44,7 +43,7 @@ function Detail({ a, s, l, name, now }: { a: Card; s: WebSnapshot; l: Labels; na
   const p = l.page
   const end = endOf(a, now)
   const span = { from: a.startedAt, to: end }
-  const rows = rowsOf({ trace: (s.trace ?? []).filter(c => c.agentId === a.id), agents: [], active: s.active }, span, l.main, now)
+  const rows = rowsOf({ trace: (s.trace ?? []).filter(c => c.agentId === a.id), agents: [], active: s.active }, span, now)
   const turn = s.turns.findLast(t => t.startedAt <= a.startedAt)
   const summary = `${name?.full ?? a.task}\n${a.type} · ${a.model}${a.effort ? ` ${a.effort}` : ''}\n${dur(end - a.startedAt)} · ${a.tools} ${p.calls} · ${kilo(tokensOf(a))} ${p.tokens} · ${usdText(a.usd ?? 0)} · ${a.errors ?? 0} ${p.errors}`
   const facts: [string, ReactNode][] = [
@@ -67,9 +66,9 @@ function Detail({ a, s, l, name, now }: { a: Card; s: WebSnapshot; l: Labels; na
           {rows.length === 0 ? <Empty text={p.none} /> : <div className="flex max-h-[240px] flex-col overflow-auto"><WaterfallRows rows={rows} span={span} l={l} /></div>}
         </div>
         <div className="flex flex-wrap gap-2 lg:col-span-2">
-          <button type="button" className="icon-btn" onClick={() => showCalls(name?.short, false)}><Terminal size={13} aria-hidden />{p.showCalls}</button>
+          <button type="button" className="icon-btn" onClick={() => showCalls(a.id, false)}><Terminal size={13} aria-hidden />{p.showCalls}</button>
           <button type="button" className="icon-btn" onClick={() => void copyText(summary, p.copied)}><Copy size={13} aria-hidden />{p.copySummary}</button>
-          <button type="button" className="icon-btn" onClick={() => showCalls(name?.short, true)}><TriangleAlert size={13} aria-hidden />{p.onlyFailures}</button>
+          <button type="button" className="icon-btn" onClick={() => showCalls(a.id, true)}><TriangleAlert size={13} aria-hidden />{p.onlyFailures}</button>
         </div>
       </div>
     </div>
@@ -160,8 +159,8 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
         hasCost={hasCost}
         l={l}
         isMember={isMember}
-        onErrors={() => showCalls(name?.short, true)}
-        onFilter={() => showCalls(name?.short, false)}
+        onErrors={() => showCalls(a.id, true)}
+        onFilter={() => showCalls(a.id, false)}
       />,
       isOpen ? <tr key={`${a.id}:detail`}><td colSpan={columnCount} className="p-0"><Detail a={a} s={s} l={l} name={name} now={now} /></td></tr> : null,
     ]

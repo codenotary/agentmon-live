@@ -6,6 +6,7 @@ export const es: Strings = {
     open: 'abrir en el navegador',
     opened: url => `${url} abierto`,
     off: 'La vista web está desactivada. Pon la opción web en on e inicia una sesión nueva.',
+    nextSession: 'La vista web se inicia en la próxima sesión.',
     failed: 'La vista web no se inició. Necesita Node en el PATH; consulta /agentmon debug.',
     noBrowser: url => `No se pudo abrir un navegador aquí. Abre ${url} tú mismo.`,
     page: {

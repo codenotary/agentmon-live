@@ -6,6 +6,7 @@ export const de: Strings = {
     open: 'im Browser öffnen',
     opened: url => `${url} geöffnet`,
     off: 'Die Webansicht ist aus. Setze die Option web auf on und starte eine neue Sitzung.',
+    nextSession: 'Die Webansicht startet mit der nächsten Sitzung.',
     failed: 'Die Webansicht startete nicht. Sie braucht Node im PATH; siehe /agentmon debug.',
     noBrowser: url => `Hier ließ sich kein Browser öffnen. Öffne ${url} selbst.`,
     page: {

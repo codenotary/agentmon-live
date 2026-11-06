@@ -4,12 +4,15 @@ import { Timer } from 'lucide-react'
 import type { WebSnapshot } from '../../../types/index'
 import { dur, firstLine, hhmm, RAMP_STEPS, rampColour, rankBuckets } from '../format.ts'
 import type { Labels } from '../labels.ts'
+import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 
 const TURNS_SHOWN = 14
 
 export function TurnClock({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
+  // A live turn posts its time every few seconds; between posts the clock runs on here.
+  const now = useClock(s)
   const shown = s.turns.slice(-TURNS_SHOWN)
   if (shown.length === 0) return <Panel id="turns" title={p.turnClock} help={p.helpTurns} icon={Timer}><Empty text={p.none} /></Panel>
   const ranked = rankBuckets(shown)
@@ -33,7 +36,7 @@ export function TurnClock({ s, l }: { s: WebSnapshot; l: Labels }) {
                 </Tooltip.Trigger>
                 <Tooltip.Portal><Tooltip.Content className="pop" sideOffset={6}>{t.prompt ? <b className="block font-semibold">{firstLine(t.prompt)}</b> : null}{summary}</Tooltip.Content></Tooltip.Portal>
               </Tooltip.Root>
-              <span className="text-right text-ink-3 tabular-nums">{dur(t.wallMs)}</span>
+              <span className="text-right text-ink-3 tabular-nums">{dur(t.isLive ? now - t.startedAt : t.wallMs)}</span>
             </div>
           )
         })}

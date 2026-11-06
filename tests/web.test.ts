@@ -4,7 +4,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { WebSnapshot } from '../types'
 import { LANGUAGES } from '../hooks/i18n'
 import { shapeInsights } from '../hooks/state'
-import { pushTurn, toSnapshot } from '../hooks/web'
+import { changeKey, pushTurn, toSnapshot, urgentItems } from '../hooks/web'
 import { SHAPE } from './fixtures/snapshot-shape'
 import { withOptions } from './options-helper'
 
@@ -23,11 +23,11 @@ let panesOpened = 0
 
 function engine(on: On, ensure: () => unknown = () => ({ exitCode: 0, stdout: '{"port":47311}\n', stderr: '' }), sessionId: () => string = () => 'sess-1', openExit = 0) {
   const argvs: (readonly string[])[] = []
-  on('process.run', (_, e) => {
+  on('process.run', async (_, e) => {
     argvs.push(e.argv)
     if (e.argv[0] === 'git') return { value: { exitCode: 0, stdout: 'main\n', stderr: '' } as never }
     if (e.argv.includes('open')) return { value: { exitCode: openExit, stdout: '', stderr: '' } as never }
-    return { value: ensure() as never }
+    return { value: (await ensure()) as never }
   })
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => {
@@ -410,6 +410,201 @@ test('a server that went away is started again, at most once a minute', async ($
   await clock.advance(5000)
   await clock.settle()
   expect(ensures()).toBe(2)
+})
+
+test('a first start that fails keeps trying, and posts once the server is up', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  let isUp = false
+  const argvs = engine(on, () => {
+    if (!isUp) throw new Error('ensure timed out')
+    return { exitCode: 0, stdout: '{"port":47311}\n', stderr: '' }
+  })
+  const sent = posts(on)
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(5000)
+  await clock.settle()
+  const ensures = () => argvs.filter(a => a.includes('ensure')).length
+  expect(ensures()).toBe(1)
+  expect(sent.length).toBe(0)
+  isUp = true
+  await clock.advance(61_000)
+  await clock.settle()
+  expect(ensures()).toBe(2)
+  await clock.advance(600)
+  await clock.settle()
+  expect(sent.length).toBeGreaterThan(0)
+})
+
+test('a slow first start runs one ensure, not one per loop tick', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  let release: () => void = () => undefined
+  const gate = new Promise<void>(done => { release = done })
+  const argvs = engine(on, () => gate.then(() => ({ exitCode: 0, stdout: '{"port":47311}\n', stderr: '' })))
+  const sent = posts(on)
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(2000)
+  const ensures = () => argvs.filter(a => a.includes('ensure')).length
+  expect(ensures()).toBe(1)
+  release()
+  await clock.settle()
+  await clock.advance(600)
+  await clock.settle()
+  expect(ensures()).toBe(1)
+  expect(sent.length).toBeGreaterThan(0)
+})
+
+test('a tab asked for at start opens when a failed start recovers', async ($, on) => {
+  withOptions(on, { webOpenOnStart: true })
+  const clock = mock.clock(on)
+  let isUp = false
+  const argvs = engine(on, () => {
+    if (!isUp) throw new Error('ensure timed out')
+    return { exitCode: 0, stdout: '{"port":47311}\n', stderr: '' }
+  })
+  posts(on)
+  const store = new Map<string, unknown>()
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const opens = () => argvs.filter(a => a.includes('open')).length
+  expect(opens()).toBe(0)
+  isUp = true
+  await clock.advance(61_000)
+  await clock.settle()
+  expect(opens()).toBe(1)
+})
+
+test('a live turn posts for its clock every few seconds, and at once for anything else', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('tool.call', () => ({ result: {} }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'work', turnId: 'm1' } as never)
+  await clock.advance(600)
+  await clock.settle()
+  const before = onlyPosts(sent).length
+  // Every tick would be 18 posts.
+  await clock.advance(9000)
+  await clock.settle()
+  const clockPosts = onlyPosts(sent).length - before
+  expect(clockPosts).toBeGreaterThan(1)
+  expect(clockPosts).toBeLessThan(5)
+  const atTool = onlyPosts(sent).length
+  await $.tool.call({ tool: 'Read', file_path: '/w/a.ts' })
+  await clock.advance(600)
+  await clock.settle()
+  expect(onlyPosts(sent).length).toBeGreaterThan(atTool)
+})
+
+test('the clock alone is no change; anything else is', () => {
+  const snap = { now: 5, usage: { usd: 1 }, turns: [{ startedAt: 1, wallMs: 9, buckets: { model: 9 }, isLive: true, prompt: 'p' }] } as unknown as WebSnapshot
+  const later = { ...snap, now: 6, turns: [{ startedAt: 1, wallMs: 10, buckets: { model: 10 }, isLive: true, prompt: 'p' }] } as unknown as WebSnapshot
+  expect(changeKey(later)).toBe(changeKey(snap))
+  expect(changeKey({ ...later, usage: { usd: 2 } } as unknown as WebSnapshot)).not.toBe(changeKey(snap))
+  expect(changeKey({ ...later, turns: [] })).not.toBe(changeKey(snap))
+})
+
+test('with no tab open a session posts only its heartbeat, keeps its turns, and catches up when a tab opens', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  let clients = '0'
+  let states = 0
+  let last = ''
+  on('http.fetch', (_, e) => {
+    if (e.url.includes('/state/') && e.init?.method === 'POST') {
+      states += 1
+      last = e.init.body as string
+    }
+    return { value: { status: 204, ok: true, headers: { 'x-clients': clients }, text: '' } }
+  })
+  on('tool.call', () => ({ result: {} }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(600)
+  await clock.settle()
+  expect(states).toBe(1)
+  await $.turn.start({ text: 'work', turnId: 'm1' } as never)
+  await clock.advance(1000)
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' } as never)
+  await clock.advance(1000)
+  await clock.settle()
+  expect(states).toBe(1)
+  clients = '1'
+  await clock.advance(600)
+  await clock.settle()
+  expect(states).toBe(2)
+  expect((JSON.parse(last) as WebSnapshot).turns).toHaveLength(1)
+})
+
+test('a waiting subagent is urgent on the page, as in the pane', () => {
+  const t = LANGUAGES.en!
+  const items = urgentItems({ t, doing: [], streak: 0, checks: [], main: {}, dismissed: [], agents: [{ id: 'g', type: 'tester', task: 'run', status: 'waiting' }, { id: 'h', type: 'x', task: 'y', status: 'running' }] } as never)
+  expect(items.map(x => x.key)).toEqual(['ask:agent:g'])
+  expect(items[0]!.isUrgent).toBe(true)
+})
+
+test('/agentmon open says the web view waits for the next session when turned on after the start', async ($, on) => {
+  const options: Record<string, unknown> = { web: 'off' }
+  withOptions(on, options)
+  engine(on)
+  posts(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  const run = () => $.command.run({ origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 }, command: 'agentmon', args: 'open' } as never)
+  expect(String((await run()).text)).toBe(LANGUAGES.en!.web.off)
+  options.web = 'on'
+  await $.turn.start({ text: 'work', turnId: 'm1' } as never)
+  expect(String((await run()).text)).toBe(LANGUAGES.en!.web.nextSession)
+})
+
+test('a server that does not know the session gets it at once, not at the next heartbeat', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  let isForgotten = false
+  let states = 0
+  on('http.fetch', (_, e) => {
+    if (e.url.includes('/state/')) states += 1
+    if (e.url.includes('/pane/') && isForgotten) {
+      isForgotten = false
+      return { value: { status: 404, ok: false, headers: {}, text: '' } }
+    }
+    return { value: { status: 204, ok: true, headers: {}, text: '' } }
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(1500)
+  await clock.settle()
+  const before = states
+  await clock.advance(1500)
+  await clock.settle()
+  expect(states).toBe(before)
+  isForgotten = true
+  await clock.advance(1500)
+  await clock.settle()
+  expect(states).toBe(before + 1)
+})
+
+test('a pane that is open but not placed counts as not shown, as in the terminal band', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('ui.panes', () => ({ value: [{ id: PANE, isPlaced: false }] as never }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).isPaneOpen).toBe(false)
 })
 
 test('the button and /agentmon open run the opener on the server address', async ($, on) => {

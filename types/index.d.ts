@@ -189,7 +189,7 @@ export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
 // The last run of one kind of check: `unknown` when its exit status could not be read (a pipe, a denial).
 // A test run also says where it ran (`dir`, relative to the project, absent at its root) and, when the summary said, how many tests ran and were skipped.
-export type Check = { kind: CheckKind; command: string; who: string; at: number; result: 'running' | 'ok' | 'failed' | 'unknown'; dir?: string; ran?: number; skipped?: number }
+export type Check = { kind: CheckKind; command: string; who: string; at: number; result: 'running' | 'ok' | 'failed' | 'unknown'; dir?: string; ran?: number; skipped?: number; greenAt?: number }
 
 // Files the session read and edited successfully; `editedAt` is the last successful edit, to tell stale checks.
 // `editedTimes` says when each edited path last changed; missing in state from older versions.

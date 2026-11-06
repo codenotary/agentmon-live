@@ -6,9 +6,10 @@ import { fileURLToPath } from 'node:url'
 
 import { elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
-import { agentNames, blockedOf, callTime, countWord, editsSinceGreen, firstLine, nextRow, SECTION_KEYS, withPrompts, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
+import { agentNames, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
-import { chipCounts, logRows, matchesChip, stripOf } from '../../web/src/logrows.ts'
+import { chipCounts, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
+import { currentOf, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
 import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../../web/src/kpi.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
@@ -28,14 +29,14 @@ test('a time with no calls draws no rows', () => {
 
 test('only the turn\'s calls show, in order, and the slowest is marked', () => {
   const trace = [call('before', MAIN, 5, { ms: 1 }), call('b', MAIN, 30, { ms: 50 }), call('a', MAIN, 20, { ms: 5 }), call('after', MAIN, 200, { ms: 1 })]
-  const rows = rowsOf({ ...empty, trace: trace.toSorted((x, y) => y.at - x.at) }, { from: 10, to: 100 }, MAIN, 100)
+  const rows = rowsOf({ ...empty, trace: trace.toSorted((x, y) => y.at - x.at) }, { from: 10, to: 100 }, 100)
   assert.deepEqual(rows.map(r => [r.key, r.depth, r.isSlowest]), [['a', 0, false], ['b', 0, true]])
 })
 
 test('a subagent\'s calls nest under it, in any language, and its starting call is not drawn twice', () => {
   const agents = [{ id: 'g', type: 'tester', task: 'run', status: 'done', startedAt: 20, endedAt: 60 }]
   const trace = [call('start', MAIN, 20, { tool: 'Agent', ms: 40 }), call('in', 'tester', 30, { ms: 5 }), call('late', MAIN, 70, { ms: 1 })]
-  const rows = rowsOf({ ...empty, agents, trace }, { from: 0, to: 100 }, MAIN, 100)
+  const rows = rowsOf({ ...empty, agents, trace }, { from: 0, to: 100 }, 100)
   assert.deepEqual(rows.map(r => [r.key, r.depth]), [['agent:g', 0], ['in', 1], ['late', 0]])
   assert.equal(rows[0].isAgent, true)
   assert.equal(rows[0].ms, 40)
@@ -43,14 +44,14 @@ test('a subagent\'s calls nest under it, in any language, and its starting call 
 
 test('two subagents of one type keep their own calls', () => {
   const agents = [{ id: 'g1', type: 't', task: 'a', status: 'done', startedAt: 0, endedAt: 10 }, { id: 'g2', type: 't', task: 'b', status: 'done', startedAt: 20, endedAt: 30 }]
-  const rows = rowsOf({ ...empty, agents, trace: [call('x', 't', 5, { ms: 1 }), call('y', 't', 25, { ms: 1 })] }, { from: 0, to: 40 }, MAIN, 40)
+  const rows = rowsOf({ ...empty, agents, trace: [call('x', 't', 5, { ms: 1 }), call('y', 't', 25, { ms: 1 })] }, { from: 0, to: 40 }, 40)
   assert.deepEqual(rows.map(r => r.key), ['agent:g1', 'x', 'agent:g2', 'y'])
 })
 
 test('parallel subagents of one type keep their own calls, by id', () => {
   const agents = [{ id: 'g1', type: 't', task: 'a', status: 'running', startedAt: 0 }, { id: 'g2', type: 't', task: 'b', status: 'running', startedAt: 1 }]
   const trace = [call('x', 't', 5, { ms: 1, agentId: 'g1' }), call('y', 't', 6, { ms: 1, agentId: 'g2' })]
-  const rows = rowsOf({ ...empty, agents, trace }, { from: 0, to: 40 }, MAIN, 40)
+  const rows = rowsOf({ ...empty, agents, trace }, { from: 0, to: 40 }, 40)
   assert.deepEqual(rows.map(r => r.key), ['agent:g1', 'x', 'agent:g2', 'y'])
   assert.deepEqual(rows.filter(r => r.isAgent).map(r => [r.name, r.what]), [['a', 't'], ['b', 't']])
 })
@@ -109,14 +110,6 @@ test('edits since the last passing test run', () => {
   assert.equal(editsSinceGreen({}, [{ kind: 'test', at: 20, result: 'ok' }]), 0)
 })
 
-test('the log shows each turn\'s prompt, in time order, first line only', () => {
-  const log = [{ at: 5, who: 'x', what: 'early', result: 'ok' }, { at: 20, who: 'x', what: 'late', result: 'ok' }]
-  const rows = withPrompts(log, [{ startedAt: 10, prompt: 'fix it\nplease' }, { startedAt: 15 }], 'You')
-  assert.deepEqual(rows.map(r => r.what), ['early', 'fix it', 'late'])
-  assert.equal(rows[1].who, 'You')
-  assert.equal(firstLine('a\nb'), 'a')
-})
-
 test('j and k stay on the rows; g keys name sections', () => {
   assert.equal(nextRow(-1, 3, 1), 0)
   assert.equal(nextRow(0, 3, 1), 1)
@@ -134,7 +127,7 @@ test('one word for one call', () => {
 test('states: a running call reaches now, an approval shows, a failure shows, a lost call stays still', () => {
   const trace = [call('run', MAIN, 10), call('ask', MAIN, 20), call('bad', MAIN, 30, { ms: 1, isFailed: true }), call('lost', MAIN, 40)]
   const active = [{ id: 'run', who: MAIN, tool: 'Bash', what: '', startedAt: 10 }, { id: 'ask', who: MAIN, tool: 'Bash', what: '', startedAt: 20, isAsking: true }]
-  const rows = rowsOf({ ...empty, trace, active }, { from: 0, to: 100 }, MAIN, 100)
+  const rows = rowsOf({ ...empty, trace, active }, { from: 0, to: 100 }, 100)
   assert.deepEqual(rows.map(r => [r.key, r.state, r.to]), [['run', 'running', 100], ['ask', 'asking', 100], ['bad', 'failed', 31], ['lost', 'ok', 40]])
 })
 
@@ -195,7 +188,7 @@ test('an agent the engine dropped stops counting, everywhere it is drawn', () =>
   assert.equal(endOf(agent('live', { status: 'running', startedAt: 10, endedAt: undefined }), 1000), 1000)
   assert.equal(endOf(agent('done', { status: 'done', startedAt: 10, endedAt: 20 }), 1000), 20)
   assert.equal(flowOf(flowInput({ agents: [dropped] }), MAIN, 1000, OPEN).lanes[1].to, 40)
-  const [head] = rowsOf({ ...empty, agents: [dropped] }, { from: 0, to: 1000 }, MAIN, 1000)
+  const [head] = rowsOf({ ...empty, agents: [dropped] }, { from: 0, to: 1000 }, 1000)
   assert.deepEqual([head.to, head.ms, head.state], [40, 30, 'ok'])
 })
 
@@ -481,7 +474,7 @@ test('only read leaves out edited files, most read first, and marks new files an
 })
 
 const traced = (id, at, more = {}) => ({ id, at, who: 'main', tool: 'Read', what: 'a.ts', ms: 10, ...more })
-const rowsOf2 = (input, names = new Map()) => logRows({ log: [], trace: [], turns: [], agents: [], ...input }, 'You', names)
+const rowsOf2 = (input, names = new Map()) => logRows({ log: [], trace: [], turns: [], agents: [], active: [], ...input }, 'You', names)
 
 test('the log stream holds prompts, calls and log lines in time order, without launch calls', () => {
   const rows = rowsOf2({
@@ -494,7 +487,7 @@ test('the log stream holds prompts, calls and log lines in time order, without l
 })
 
 test('equal calls in a row merge; a failure, a running call or another call between does not', () => {
-  const rows = rowsOf2({ trace: [traced('1', 1), traced('2', 2), traced('f', 3, { isFailed: true, error: 'x' }), traced('3', 4), traced('run', 5, { ms: undefined }), traced('o', 6, { what: 'b.ts' }), traced('4', 7)] })
+  const rows = rowsOf2({ trace: [traced('1', 1), traced('2', 2), traced('f', 3, { isFailed: true, error: 'x' }), traced('3', 4), traced('run', 5, { ms: undefined }), traced('o', 6, { what: 'b.ts' }), traced('4', 7)], active: [{ id: 'run' }] })
   assert.deepEqual(rows.map(r => [r.key, r.count, r.result]), [['call:1', 2, 'ok'], ['call:f', 1, 'failed'], ['call:3', 1, 'ok'], ['call:run', 1, 'running'], ['call:o', 1, 'ok'], ['call:4', 1, 'ok']])
   assert.equal(rows[0].ms, 20)
   assert.equal(rows[3].isRunning, true)
@@ -517,7 +510,7 @@ test('a running subagent shows as running; one whose first line the cap dropped 
 })
 
 test('an older session without a trace still has its log', () => {
-  assert.equal(logRows({ log: [{ at: 1, who: 'm', what: 'x', result: '' }], turns: [], agents: [] }, 'You', new Map()).length, 1)
+  assert.equal(logRows({ log: [{ at: 1, who: 'm', what: 'x', result: '' }], turns: [], agents: [], active: [] }, 'You', new Map()).length, 1)
 })
 
 test('chips count and match the rows', () => {
@@ -549,3 +542,113 @@ test('a failed report stays red when the log cap dropped the started line', () =
   const rows = rowsOf2({ log, agents: [{ id: 'g', task: 'Run tests', status: 'done', startedAt: 10, endedAt: 21 }] })
   assert.deepEqual(rows.map(r => [r.what, r.result, r.isFailed]), [['Tests failed', 'FAIL (reported)', true], ['done after 11s', '1 file · 3 tools', false]])
 })
+
+test('a call with no end that the session no longer runs is lost, not running', () => {
+  assert.equal(traceResult({}, true), 'running')
+  assert.equal(traceResult({}, false), 'unknown')
+  assert.equal(traceResult({ ms: 1 }, false), 'ok')
+  assert.equal(traceResult({ isFailed: true }, true), 'failed')
+  const [row] = rowsOf2({ trace: [traced('lost', 1, { ms: undefined })] })
+  assert.deepEqual([row.result, row.isRunning], ['unknown', false])
+})
+
+test('a filter goes by agent id, and the main session under any language is one', () => {
+  const types = new Set(['tester'])
+  assert.equal(whoKey({ who: 'Review: a', agentId: 'g1' }, types), 'g1')
+  assert.equal(whoKey({ who: 'main session' }, types), MAIN_KEY)
+  assert.equal(whoKey({ who: 'Hauptsitzung' }, types), MAIN_KEY)
+  assert.equal(whoKey({ who: 'tester' }, types), 'tester')
+})
+
+test('main calls stay on the main lane after a language switch, an older agent call stays off it', () => {
+  const trace = [call('old', 'main session', 1, { ms: 1 }), call('new', MAIN, 2, { ms: 1 }), call('typed', 't', 3, { ms: 1 })]
+  const agents = [{ id: 'g', type: 't', task: 'x', startedAt: 0, endedAt: 9, status: 'done' }]
+  assert.deepEqual(flowOf(flowInput({ agents, trace }), MAIN, 10, OPEN).dots.filter(d => d.lane === 'main').map(d => d.key).sort(), ['new', 'old'])
+  const rows = rowsOf({ ...empty, agents, trace }, { from: 0, to: 10 }, 10)
+  assert.deepEqual(rows.filter(r => r.depth === 0 && !r.isAgent).map(r => r.key).sort(), ['new', 'old'])
+})
+
+test('a filter whose rows have gone stays on offer to clear', () => {
+  assert.deepEqual(chipsWith(['Bash'], 'Read'), ['Bash', 'Read'])
+  assert.deepEqual(chipsWith(['Bash', 'Read'], 'Read'), ['Bash', 'Read'])
+  assert.deepEqual(chipsWith(['Bash'], null), ['Bash'])
+})
+
+test('the last pass stays known through a rerun, and goes with a failed one', () => {
+  assert.equal(lastGreenAt([{ kind: 'test', at: 5, result: 'ok' }]), 5)
+  assert.equal(lastGreenAt([{ kind: 'test', at: 9, result: 'running', greenAt: 5 }]), 5)
+  assert.equal(lastGreenAt([{ kind: 'test', at: 9, result: 'unknown', greenAt: 5 }]), 5)
+  assert.equal(lastGreenAt([{ kind: 'test', at: 9, result: 'failed', greenAt: 5 }]), undefined)
+  assert.equal(lastGreenAt([]), undefined)
+  const g = fileGroups(filesOf({ at: 250, result: 'running', greenAt: 150 }))
+  assert.deepEqual([g.state, paths(g.toCheck), paths(g.beforeGreen)], ['green', ['b', 'c'], ['a']])
+  assert.equal(editsSinceGreen({ editedTimes: { a: 100, b: 300, c: 200 } }, [{ kind: 'test', at: 250, result: 'running', greenAt: 150 }]), 2)
+})
+
+test('a problem that grows is one event; one that goes is cleared; different asks stay apart', () => {
+  const item = (key, text = key) => ({ key, tag: 't', text, isUrgent: false })
+  let list = nextEvents([], [item('context:16'), item('ask:A')], 10, 100)
+  list = nextEvents(list, [item('context:17'), item('ask:B')], 20, 100)
+  const byKey = Object.fromEntries(list.map(e => [e.key, e]))
+  assert.equal(byKey['context:16'], undefined)
+  assert.deepEqual([byKey['context:17'].at, byKey['context:17'].clearedAt], [10, undefined])
+  assert.equal(byKey['ask:A'].clearedAt, 20)
+  assert.equal(byKey['ask:B'].at, 20)
+  list = nextEvents(list, [], 30, 100)
+  assert.equal(list.find(e => e.key === 'context:17').clearedAt, 30)
+  assert.equal(nextEvents(nextEvents([], [item('reread:/a:3')], 1, 9), [item('reread:/b:3')], 2, 9).find(e => e.key === 'reread:/a:3').clearedAt, 2)
+})
+
+const sessionState = (more = {}) => ({ sessions: new Map(), trends: new Map(), events: new Map(), receivedAt: new Map(), picked: null, shown: null, whoFilter: null, flowView: { at: null, ms: 1 }, openAgents: new Set(), ...more })
+const snap = (id, more = {}) => ({ ...fixture, session: { id, cwd: '/w' }, ...more })
+
+test('the session on screen stays when another starts; leaving it resets what belonged to it', () => {
+  let st = withSnapshot(sessionState(), 'a', snap('a'), 1)
+  assert.equal(st.shown, 'a')
+  st = { ...st, whoFilter: 'g1', openAgents: new Set(['g1']) }
+  st = withSnapshot(st, 'b', snap('b'), 2)
+  assert.equal(currentOf(st).session.id, 'a')
+  assert.equal(st.whoFilter, 'g1')
+  st = withoutSessions(st, id => id === 'a')
+  assert.equal(currentOf(st).session.id, 'b')
+  assert.deepEqual([st.shown, st.whoFilter, st.openAgents.size], ['b', null, 0])
+  assert.equal(st.trends.has('a'), false)
+  assert.equal(st.events.has('a'), false)
+  assert.equal(st.receivedAt.has('a'), false)
+})
+
+test('a /clear gap keeps the filter out of the next session, and a picked session wins', () => {
+  let st = withSnapshot(sessionState(), 'a', snap('a'), 1)
+  st = { ...st, whoFilter: 'g1' }
+  st = withoutSessions(st, () => true)
+  assert.equal(currentOf(st), undefined)
+  st = withSnapshot(st, 'n', snap('n'), 2)
+  assert.deepEqual([st.shown, st.whoFilter], ['n', null])
+  st = withSnapshot({ ...st, picked: 'p' }, 'p', snap('p'), 3)
+  assert.equal(currentOf(st).session.id, 'p')
+})
+
+test('a reconnect that keeps the session keeps what belongs to it', () => {
+  let st = withSnapshot(sessionState(), 'a', snap('a'), 1)
+  st = withSnapshot({ ...st, whoFilter: 'g1' }, 'b', snap('b'), 1)
+  const live = new Set(['a'])
+  st = withoutSessions(st, id => !live.has(id))
+  assert.deepEqual([st.shown, st.whoFilter, [...st.sessions.keys()]], ['a', 'g1', ['a']])
+})
+
+test('an unchanged log row skips its redraw; any change draws it', () => {
+  const [row] = rowsOf2({ trace: [traced('a', 1)] })
+  assert.equal(sameRow(row, { ...row, call: { ...row.call } }), true)
+  for (const more of [{ result: 'failed' }, { count: 2 }, { ms: 99 }, { isRunning: true }, { what: 'x' }]) assert.equal(sameRow(row, { ...row, ...more }), false)
+})
+
+test('a page just opened shows the newest session, not whichever replays first', () => {
+  let st = withLive(sessionState(), ['old', 'new'])
+  assert.equal(st.shown, 'new')
+  st = withSnapshot(st, 'old', snap('old'), 1)
+  assert.equal(currentOf(st), undefined)
+  st = withSnapshot(st, 'new', snap('new'), 2)
+  assert.equal(currentOf(st).session.id, 'new')
+  assert.equal(withLive(sessionState(), []).shown, null)
+})
+

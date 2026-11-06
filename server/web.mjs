@@ -39,8 +39,8 @@ function envMs(name, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
-function reply(res, status, type, body) {
-  res.writeHead(status, { ...HEADERS, ...(type ? { 'content-type': type } : {}) })
+function reply(res, status, type, body, extra = {}) {
+  res.writeHead(status, { ...HEADERS, ...extra, ...(type ? { 'content-type': type } : {}) })
   res.end(body)
 }
 
@@ -106,6 +106,7 @@ function serve(port, fixture) {
       if (path === '/events') {
         res.writeHead(200, { ...HEADERS, 'content-type': 'text/event-stream' })
         send(res, 'build', String(stamp))
+        send(res, 'sessions', JSON.stringify([...sessions.keys()]))
         for (const [id, s] of sessions) send(res, 'snapshot', packed(id, s.json))
         clients.add(res)
         req.on('close', () => clients.delete(res))
@@ -130,9 +131,12 @@ function serve(port, fixture) {
     const taken = path.match(/^\/pane\/([\w-]{1,80})$/)
     if (taken && req.method === 'POST') {
       if (!isWriteAllowed(req)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!sessions.has(taken[1])) return reply(res, 404)
       const isOpen = paneRequests.get(taken[1])
       paneRequests.delete(taken[1])
-      return isOpen === undefined ? reply(res, 204) : reply(res, 200, 'application/json', JSON.stringify({ isOpen }))
+      // The count lets a session with no tab to draw for spare its work. A header, because an older session takes any 200 for a pane request.
+      const seen = { 'x-clients': String(clients.size) }
+      return isOpen === undefined ? reply(res, 204, undefined, undefined, seen) : reply(res, 200, 'application/json', JSON.stringify({ isOpen }), seen)
     }
 
     const match = /^\/state\/([\w-]{1,80})$/.exec(path)
@@ -154,9 +158,9 @@ function serve(port, fixture) {
     })
     req.on('end', () => {
       if (size > MAX_BODY) return reply(res, 413, 'text/plain', 'too large')
-      let json
+      const json = Buffer.concat(parts).toString('utf8')
       try {
-        json = JSON.stringify(JSON.parse(Buffer.concat(parts).toString('utf8')))
+        JSON.parse(json)
       } catch {
         return reply(res, 400, 'text/plain', 'bad json')
       }

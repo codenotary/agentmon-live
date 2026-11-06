@@ -13,6 +13,7 @@ const en = {
     open: 'open in browser',
     opened: (url: string) => `Opened ${url}`,
     off: 'The web view is off. Set the option web to on, then start a new session.',
+    nextSession: 'The web view starts at the next session.',
     failed: 'The web view did not start. It needs Node on the PATH; see /agentmon debug.',
     noBrowser: (url: string) => `Could not open a browser here. Open ${url} yourself.`,
     page: {

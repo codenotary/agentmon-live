@@ -675,14 +675,14 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       <Button key="layout:switch" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, isClassic: !(l.isClassic ?? cfg.isClassic) }))}>
         {`◐ ${isClassic ? t.layoutClassic : t.layoutCalm}`}
       </Button>
-      {cfg.web && cfg.webUrl && (
+      {cfg.webOn && cfg.webUrl && (
         <Button key="web:open" plain hotkey="o" onPress={() => openBrowser($).then(isOpen => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(cfg.webUrl ?? ''))))}>
           {t.web.open}
         </Button>
       )}
       <Button key="pane:hide" plain hotkey="p" onPress={() => setPane($, false)}>{`◂ ${t.paneHide}`}</Button>
       {/* Narrower, the address wraps the header row; `o` still opens it. */}
-      {cfg.web && cfg.webUrl && cols >= 130 && <Link href={cfg.webUrl}>{cfg.webUrl}</Link>}
+      {cfg.webOn && cfg.webUrl && cols >= 130 && <Link href={cfg.webUrl}>{cfg.webUrl}</Link>}
       {release && (
         <Button key="update" plain hotkey="u" onPress={() => investigate(t.promptUpdate(cfg.version, release.version))}>
           {t.update}

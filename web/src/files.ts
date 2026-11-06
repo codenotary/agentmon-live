@@ -1,4 +1,4 @@
-import type { Tone } from './format.ts'
+import { lastGreenAt, type Tone } from './format.ts'
 
 // As `REREADS` in hooks/insights.ts, which flags the same files in Focus.
 const REREAD_OFTEN = 3
@@ -17,7 +17,7 @@ export type FileGroups = {
 
 type Input = {
   files: { read: readonly string[]; edited: readonly string[]; editedTimes?: Record<string, number> }
-  checks: readonly { kind: string; at: number; result: string }[]
+  checks: readonly { kind: string; at: number; result: string; greenAt?: number }[]
   insights: { reads?: Record<string, number>; edits?: Record<string, number>; sizes?: Record<string, { first?: number; now: number }> }
 }
 
@@ -25,7 +25,7 @@ const latestFirst = (a: FileRow, b: FileRow) => (b.at ?? 0) - (a.at ?? 0)
 
 export function fileGroups({ files, checks, insights }: Input): FileGroups {
   const test = checks.find(c => c.kind === 'test')
-  const greenAt = test?.result === 'ok' ? test.at : undefined
+  const greenAt = lastGreenAt(checks)
   const rows = files.edited.map((path): FileRow => {
     const at = files.editedTimes?.[path]
     const edits = insights.edits?.[path]

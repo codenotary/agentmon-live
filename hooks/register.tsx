@@ -66,6 +66,13 @@ let isBaseWatched = false
 // How often the redraw loop asks the engine which agents still run.
 const RECONCILE_MS = 5000
 
+// A new run replaces its check: the pass before it stays known until this one ends.
+function greenOf(all: readonly Check[], kind: Check['kind']): { greenAt?: number } {
+  const old = all.find(c => c.kind === kind)
+  const at = old?.result === 'ok' ? old.at : old?.greenAt
+  return at === undefined ? {} : { greenAt: at }
+}
+
 function editedFiles(f: Files, path: string, at: number): Files {
   const edited = [...f.edited.filter(p => p !== path), path].slice(-200)
   const times = { ...f.editedTimes, [path]: at }
@@ -389,7 +396,8 @@ export const register: Register = on => {
       return { text: t.checking }
     }
     if (arg === 'open') {
-      if (!cfg.web || !cfg.webUrl) return { text: cfg.web ? t.web.failed : t.web.off }
+      if (!cfg.webOn) return { text: cfg.web ? t.web.nextSession : t.web.off }
+      if (!cfg.webUrl) return { text: t.web.failed }
       return { text: (await openBrowser($)) ? t.web.opened(cfg.webUrl) : t.web.noBrowser(cfg.webUrl) }
     }
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
@@ -600,7 +608,7 @@ export const register: Register = on => {
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
-          ...found.map(f => ({ kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const, ...(f.kind === 'test' && scopeDir ? { dir: scopeDir } : {}) })),
+          ...found.map(f => ({ ...greenOf(all, f.kind), kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const, ...(f.kind === 'test' && scopeDir ? { dir: scopeDir } : {}) })),
         ]),
     ])
     queueStatus($)

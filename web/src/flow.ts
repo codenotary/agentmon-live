@@ -32,12 +32,13 @@ export function flowOf(d: FlowInput, mainName: string, now: number, opts: FlowOp
   for (const a of inOrder) lanes.push({ id: a.id, name: names.get(a.id)?.short ?? a.type, full: names.get(a.id)?.full ?? a.type, dot: dotOf(a), from: a.startedAt, to: endOf(a, now), isMain: false, isRunning: isRunning(a), agentId: a.id })
   const hasLane = new Set(lanes.map(l => l.id))
   const live = new Map(d.active.map(a => [a.id, a]))
+  const agentTypes = new Set(d.agents.map(a => a.type))
   const dots: Dot[] = []
   const lastAt = new Map<string, number>()
   const firstOf = new Map<string, number>()
   for (const c of trace) {
     const isMain = c.agentId === undefined
-    if (isMain && c.who !== mainName) continue
+    if (isMain && agentTypes.has(c.who)) continue
     const lane = isMain ? MAIN_LANE : (c.agentId as string)
     if (!hasLane.has(lane)) continue
     const running = live.get(c.id)
