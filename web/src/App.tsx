@@ -16,7 +16,8 @@ import { Instruments } from './panels/Instruments.tsx'
 import { Log } from './panels/Log.tsx'
 import { Agents } from './panels/Agents.tsx'
 import { Flow } from './panels/Flow.tsx'
-import { Checks, Files, Insights, Running, Tasks } from './panels/Side.tsx'
+import { Files } from './panels/Files.tsx'
+import { Checks, Insights, Running, Tasks } from './panels/Side.tsx'
 import { TurnClock } from './panels/TurnClock.tsx'
 import { Waterfall } from './panels/Waterfall.tsx'
 import { currentOf, set, setCollapsed, useStore, type Trend } from './store.ts'
@@ -55,7 +56,7 @@ function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; 
     case 'files':
       return <Files s={s} p={p} />
     case 'log':
-      return <Log s={s} p={p} />
+      return <Log s={s} l={l} />
     default:
       return (
         <>

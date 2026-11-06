@@ -113,13 +113,16 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     trace: p.trace,
     agents: p.agents,
     checks: p.checks,
-    files: { ...p.files, read: p.files.read.slice(-KEEP_FILES), edited: p.files.edited.slice(-KEEP_FILES) },
+    files: { ...p.files, read: p.files.read.slice(-KEEP_FILES), edited: p.files.edited },
     log: p.log,
     tasks: p.tasks,
     insights: {
       slow: ins.slow,
       big: ins.big,
       tokens: ins.tokens,
+      reads: ins.reads,
+      edits: ins.edits,
+      sizes: ins.sizes,
       breakdown: ins.breakdown ?? [],
       mcpTokens: ins.mcpTokens ?? 0,
       memoryTokens: ins.memoryTokens ?? 0,
@@ -128,7 +131,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
       askedAll: Object.fromEntries(Object.entries(ins.askedAll ?? {}).sort((a, b) => b[1] - a[1]).slice(0, KEEP_ASKED)),
     },
     gate: lastGate(p.notes ?? []),
-    learned: { sessions: p.learned.sessions.length, bench: p.learned.bench.slice(-KEEP_BENCH_ROWS) },
+    learned: { bench: p.learned.bench.slice(-KEEP_BENCH_ROWS) },
   }
 }
 

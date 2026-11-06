@@ -27,4 +27,8 @@ export const bandTone = (value: number, goodTo: number, warnTo: number): Tone =>
 // For a figure where more is better, such as cache hits.
 export const reversedLevel = (pct: number | undefined): Tone => (pct === undefined ? '' : pct >= 80 ? 'good' : pct >= 50 ? 'warn' : 'bad')
 
+// shortcut: fixed round figures until a project has three earlier sessions, read a per-model figure if these mislead.
+export const GUIDE = { usd: 10, turns: 20 }
+export const referenceOf = (typical: number | undefined, guide: number) => ({ value: typical ?? guide, isGuide: typical === undefined })
+
 export const fill = (text: string, values: Record<string, string | number>) => text.replace(/\{(\w+)\}/g, (raw, key: string) => String(values[key] ?? raw))

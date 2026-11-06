@@ -3,7 +3,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
 import { blockedOf, dur, kilo, levelOf, type Tone } from '../format.ts'
-import { bandTone, fill, isAheadOfPace, paceOf, reversedLevel, typicalOf } from '../kpi.ts'
+import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../kpi.ts'
 import type { Page } from '../labels.ts'
 import { useStore, type Trend } from '../store.ts'
 import { Gauge } from '../ui/Gauge.tsx'
@@ -25,14 +25,13 @@ function Stat({ label, tone = '', children, foot }: { label: string; tone?: Tone
 const Note = ({ text }: { text: string }) => <span className="text-xs text-ink-3 tabular-nums">{text}</span>
 const usdText = (usd: number) => `$${usd.toFixed(2)}`
 
-// Against a typical value the ruler runs to twice that, so the tick sits in the middle: 75% of the track is 150% of typical.
-function typicalFoot(value: number, typical: number | undefined, text: string, tone: Tone, zones: readonly { to: number; tone: Tone }[], p: Page) {
-  if (typical === undefined) return undefined
-  const pct = (value / typical) * 100
+// Against a reference the ruler runs to twice that, so the tick sits in the middle: 75% of the track is 150% of it. A guide says nothing good or bad, so its zones stay neutral.
+function referenceFoot(value: number, ref: { value: number; isGuide: boolean }, text: string, tone: Tone, zones: readonly { to: number; tone: Tone }[], p: Page) {
+  const pct = (value / ref.value) * 100
   return (
     <>
-      <Ruler pos={pct / 2} tone={tone} tick={50} zones={zones} />
-      <Note text={fill(p.ofTypical, { pct: Math.round(pct), v: text })} />
+      <Ruler pos={pct / 2} tone={tone} tick={50} zones={ref.isGuide ? [{ to: 100, tone: '' }] : zones} />
+      <Note text={fill(ref.isGuide ? p.ofGuide : p.ofTypical, { pct: Math.round(pct), v: text })} />
     </>
   )
 }
@@ -45,6 +44,7 @@ export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: T
   // Counts up over the session, so it never falls back to a dash; the per-turn figure starts over at every prompt.
   const cache = tokens.mainIn > 0 ? Math.round((tokens.mainCached / tokens.mainIn) * 100) : undefined
   const blocked = blockedOf(s)
+  const blockedTone = bandTone(blocked.pct, 20, 50)
   const { ctxPct, ctxTokens, ctxWindow, usd } = s.usage
   const quotaGauge = (kind: string, key: string, label: string) => {
     const rate = s.usage.rate.find(r => r.kind === kind)
@@ -57,6 +57,8 @@ export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: T
   }
   const usdTypical = typicalOf(s.learned.bench, s.session.id, r => r.totalUsd)
   const turnsTypical = typicalOf(s.learned.bench, s.session.id, r => r.turns)
+  const usdRef = referenceOf(usdTypical, GUIDE.usd)
+  const turnsRef = referenceOf(turnsTypical, GUIDE.turns)
   const usdTone = usdTypical === undefined ? '' : bandTone((usd / usdTypical) * 100, 100, 150)
   const turnsTone: Tone = turnsTypical !== undefined && s.turnCount > turnsTypical * 1.5 ? 'warn' : ''
   const tokensIn = tokens.mainIn + tokens.agentsIn
@@ -68,12 +70,12 @@ export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: T
     quotaGauge('five_hour', 'five', p.quota5h),
     quotaGauge('seven_day', 'seven', p.quota),
     <Gauge key="cache" label={p.cacheHit} pct={cache} tone={reversedLevel(cache)} note={cache === undefined ? undefined : p.ofInputTokens} />,
-    <Stat key="cost" label={p.cost} tone={usdTone} foot={typicalFoot(usd, usdTypical, usdText(usdTypical ?? 0), usdTone, [{ to: 50, tone: 'good' }, { to: 75, tone: 'warn' }, { to: 100, tone: 'bad' }], p)}>
+    <Stat key="cost" label={p.cost} tone={usdTone} foot={referenceFoot(usd, usdRef, usdText(usdRef.value), usdTone, [{ to: 50, tone: 'good' }, { to: 75, tone: 'warn' }, { to: 100, tone: 'bad' }], p)}>
       <NumberFlow value={usd} locales="en-US" format={{ style: 'currency', currency: 'USD' }} />
       <Sparkline points={trend?.usd ?? []} label={p.cost} className="h-4 min-w-0 flex-1" />
     </Stat>,
-    <Stat key="turns" label={p.turns} tone={turnsTone} foot={typicalFoot(s.turnCount, turnsTypical, String(Math.round(turnsTypical ?? 0)), turnsTone, [{ to: 75, tone: '' }, { to: 100, tone: 'warn' }], p)}><NumberFlow value={s.turnCount} /></Stat>,
-    <Stat key="blocked" label={p.blockedOnYou} tone={bandTone(blocked.pct, 20, 50)} foot={<><Ruler pos={blocked.pct} tone={bandTone(blocked.pct, 20, 50)} zones={[{ to: 20, tone: 'good' }, { to: 50, tone: 'warn' }, { to: 100, tone: 'bad' }]} /><Note text={fill(p.ofSessionTime, { pct: blocked.pct })} /></>}>{dur(blocked.ms)}</Stat>,
+    <Stat key="turns" label={p.turns} tone={turnsTone} foot={referenceFoot(s.turnCount, turnsRef, String(Math.round(turnsRef.value)), turnsTone, [{ to: 75, tone: '' }, { to: 100, tone: 'warn' }], p)}><NumberFlow value={s.turnCount} /></Stat>,
+    <Stat key="blocked" label={p.blockedOnYou} tone={blockedTone} foot={<><Ruler pos={blocked.pct} tone={blockedTone} zones={[{ to: 20, tone: 'good' }, { to: 50, tone: 'warn' }, { to: 100, tone: 'bad' }]} /><Note text={fill(p.ofSessionTime, { pct: blocked.pct })} /></>}>{dur(blocked.ms)}</Stat>,
     <div key="tokens" className="flex min-w-0 flex-col justify-center gap-0.5 px-4 py-[18px]">
       <span className="kpi-label truncate">{p.tokens}</span>
       <ShareBar pct={inPct} />

@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url'
 import { elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
 import { agentNames, blockedOf, callTime, countWord, editsSinceGreen, firstLine, nextRow, SECTION_KEYS, withPrompts, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
-import { bandTone, fill, isAheadOfPace, paceOf, reversedLevel, typicalOf } from '../../web/src/kpi.ts'
+import { fileGroups } from '../../web/src/files.ts'
+import { chipCounts, logRows, matchesChip, stripOf } from '../../web/src/logrows.ts'
+import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../../web/src/kpi.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
@@ -437,4 +439,113 @@ test('relation text fills its values and leaves an unknown one showing', () => {
   assert.equal(fill(PAGE_EN.relOf, { a: '1K', b: '2K' }), '1K of 2K')
   assert.equal(fill(PAGE_EN.ofTypical, { pct: 57, v: '$4.10' }), '57% of typical $4.10')
   assert.equal(fill('{a} {x}', { a: 0 }), '0 {x}')
+})
+
+const filesOf = (test, more = {}) => ({
+  files: { read: ['a', 'r1', 'r2'], edited: ['a', 'b', 'c'], editedTimes: { a: 100, b: 300, c: 200 } },
+  checks: test ? [{ kind: 'lint', at: 999, result: 'ok' }, { kind: 'test', ...test }] : [],
+  insights: {},
+  ...more,
+})
+const paths = rows => rows.map(r => r.path)
+
+test('edited files split at the last passing test, latest change first', () => {
+  const g = fileGroups(filesOf({ at: 250, result: 'ok' }))
+  assert.equal(g.state, 'green')
+  assert.equal(g.tone, 'bad')
+  assert.deepEqual(paths(g.toCheck), ['b'])
+  assert.deepEqual(paths(g.beforeGreen), ['c', 'a'])
+  assert.equal(g.toCheck.length, editsSinceGreen({ editedTimes: { a: 100, b: 300, c: 200 } }, [{ kind: 'test', at: 250, result: 'ok' }]))
+})
+
+test('without a passing test every edited file still needs one', () => {
+  const failed = fileGroups(filesOf({ at: 999, result: 'failed' }))
+  assert.deepEqual([failed.state, failed.tone, failed.beforeGreen.length, failed.toCheck.length], ['failed', 'bad', 0, 3])
+  for (const test of [undefined, { at: 999, result: 'running' }, { at: 999, result: 'unknown' }]) {
+    const g = fileGroups(filesOf(test))
+    assert.deepEqual([g.state, g.tone, g.beforeGreen.length, g.toCheck.length], ['none', 'warn', 0, 3])
+  }
+})
+
+test('an edit with no time cannot count as tested', () => {
+  const g = fileGroups(filesOf({ at: 999, result: 'ok' }, { files: { read: [], edited: ['old', 'a'], editedTimes: { a: 1 } } }))
+  assert.deepEqual(paths(g.toCheck), ['old'])
+  assert.deepEqual(paths(g.beforeGreen), ['a'])
+})
+
+test('only read leaves out edited files, most read first, and marks new files and re-reads', () => {
+  const g = fileGroups(filesOf(undefined, { insights: { reads: { a: 9, r1: 1, r2: 3 }, edits: { b: 4 }, sizes: { b: { now: 5 }, c: { first: 1, now: 5 } } } }))
+  assert.deepEqual(g.readOnly, [{ path: 'r2', reads: 3, isOften: true }, { path: 'r1', reads: 1, isOften: false }])
+  const byPath = Object.fromEntries(g.toCheck.map(r => [r.path, r]))
+  assert.deepEqual([byPath.b.isNew, byPath.b.edits, byPath.c.isNew, byPath.a.isNew], [true, 4, false, false])
+})
+
+const traced = (id, at, more = {}) => ({ id, at, who: 'main', tool: 'Read', what: 'a.ts', ms: 10, ...more })
+const rowsOf2 = (input, names = new Map()) => logRows({ log: [], trace: [], turns: [], agents: [], ...input }, 'You', names)
+
+test('the log stream holds prompts, calls and log lines in time order, without launch calls', () => {
+  const rows = rowsOf2({
+    turns: [{ startedAt: 1, prompt: 'do it\nmore' }, { startedAt: 2 }],
+    trace: [traced('t', 3), traced('launch', 4, { tool: 'Agent', what: 'x' })],
+    log: [{ at: 2, who: 'main', what: 'compacted', result: '' }],
+  })
+  assert.deepEqual(rows.map(r => r.what), ['do it', 'compacted', 'a.ts'])
+  assert.equal(rows[0].isYou, true)
+})
+
+test('equal calls in a row merge; a failure, a running call or another call between does not', () => {
+  const rows = rowsOf2({ trace: [traced('1', 1), traced('2', 2), traced('f', 3, { isFailed: true, error: 'x' }), traced('3', 4), traced('run', 5, { ms: undefined }), traced('o', 6, { what: 'b.ts' }), traced('4', 7)] })
+  assert.deepEqual(rows.map(r => [r.key, r.count, r.result]), [['call:1', 2, 'ok'], ['call:f', 1, 'failed'], ['call:3', 1, 'ok'], ['call:run', 1, 'running'], ['call:o', 1, 'ok'], ['call:4', 1, 'ok']])
+  assert.equal(rows[0].ms, 20)
+  assert.equal(rows[3].isRunning, true)
+})
+
+test('a subagent is one row, and its test report stays apart', () => {
+  const log = [{ at: 10, who: 'tester', what: 'Run tests', result: 'started', agentId: 'g' }, { at: 20, who: 'tester', what: 'Tests passed', result: 'PASS (reported)', agentId: 'g' }, { at: 21, who: 'tester', what: 'done after 11s', result: '2 files, 5 tools', agentId: 'g' }]
+  const rows = rowsOf2({ log, agents: [{ id: 'g', task: 'Run tests', status: 'done', startedAt: 10, endedAt: 21 }] }, new Map([['g', { short: 'Run tests', full: 'Run tests' }]]))
+  assert.deepEqual(rows.map(r => [r.what, r.result, r.ms, r.who]), [['Run tests', '2 files, 5 tools', 11, 'Run tests'], ['Tests passed', 'PASS (reported)', undefined, 'Run tests']])
+})
+
+test('a running subagent shows as running; one whose first line the cap dropped keeps its last; an errored one is failed', () => {
+  const start = { at: 10, who: 't', what: 'task', result: 'started', agentId: 'g' }
+  const running = rowsOf2({ log: [start], agents: [{ id: 'g', task: 'task', status: 'running', startedAt: 10 }] })
+  assert.deepEqual([running[0].isRunning, running[0].ms], [true, undefined])
+  const capped = rowsOf2({ log: [{ ...start, what: 'done after 1s', result: '1 file' }], agents: [{ id: 'g', task: 'task', status: 'done', startedAt: 1, endedAt: 10 }] })
+  assert.deepEqual(capped.map(r => [r.what, r.result]), [['done after 1s', '1 file']])
+  const errored = rowsOf2({ log: [start, { ...start, at: 11, what: 'done', result: '0 files' }], agents: [{ id: 'g', task: 'task', status: 'error', startedAt: 10, endedAt: 11 }] })
+  assert.deepEqual([errored.length, errored[0].isFailed], [1, true])
+})
+
+test('an older session without a trace still has its log', () => {
+  assert.equal(logRows({ log: [{ at: 1, who: 'm', what: 'x', result: '' }], turns: [], agents: [] }, 'You', new Map()).length, 1)
+})
+
+test('chips count and match the rows', () => {
+  const rows = rowsOf2({ turns: [{ startedAt: 1, prompt: 'p' }], trace: [traced('a', 2, { agentId: 'g' }), traced('f', 3, { isFailed: true })] })
+  assert.deepEqual(chipCounts(rows), { all: 3, failures: 1, you: 1, agents: 1 })
+  assert.deepEqual(rows.filter(r => matchesChip(r, 'failures')).map(r => r.key), ['call:f'])
+  assert.deepEqual(chipCounts([]), { all: 0, failures: 0, you: 0, agents: 0 })
+})
+
+test('the strip spans the rows, counts merged calls, and goes to a bar\'s first failure', () => {
+  assert.deepEqual(stripOf([]), [])
+  const rows = rowsOf2({ trace: [traced('1', 0), traced('2', 1, { what: 'b' }), traced('f', 2, { isFailed: true }), traced('g', 3, { isFailed: true }), traced('z', 100, { what: 'z' })] })
+  const strip = stripOf(rows, 10)
+  assert.equal(strip.length, 10)
+  assert.deepEqual([strip[0].count, strip[0].isFailed, strip[0].target, strip[0].at], [4, true, 2, 2])
+  assert.equal(strip[5], null)
+  assert.deepEqual([strip[9].count, strip[9].target], [1, 4])
+  assert.equal(stripOf(rowsOf2({ trace: [traced('1', 5)] }), 3).filter(Boolean).length, 1)
+})
+
+test('a project with no history compares with the guide, and says so', () => {
+  assert.deepEqual(referenceOf(undefined, GUIDE.usd), { value: 10, isGuide: true })
+  assert.deepEqual(referenceOf(4, GUIDE.usd), { value: 4, isGuide: false })
+  assert.equal(fill(PAGE_EN.ofGuide, { pct: 24, v: '$10.00' }), '24% of $10.00 guide')
+})
+
+test('a failed report stays red when the log cap dropped the started line', () => {
+  const log = [{ at: 20, who: 't', what: 'Tests failed', result: 'FAIL (reported)', agentId: 'g' }, { at: 21, who: 't', what: 'done after 11s', result: '1 file · 3 tools', agentId: 'g' }]
+  const rows = rowsOf2({ log, agents: [{ id: 'g', task: 'Run tests', status: 'done', startedAt: 10, endedAt: 21 }] })
+  assert.deepEqual(rows.map(r => [r.what, r.result, r.isFailed]), [['Tests failed', 'FAIL (reported)', true], ['done after 11s', '1 file · 3 tools', false]])
 })

@@ -275,10 +275,10 @@ export type WebSnapshot = {
   log: LogLine[]
   tasks: Task[]
   // All but the first three are absent from a session of an older version.
-  insights: Pick<Insights, 'slow' | 'big' | 'tokens'> & Partial<Pick<Insights, 'breakdown' | 'mcpTokens' | 'memoryTokens' | 'session' | 'sessionWall' | 'askedAll'>>
+  insights: Pick<Insights, 'slow' | 'big' | 'tokens'> & Partial<Pick<Insights, 'reads' | 'edits' | 'sizes' | 'breakdown' | 'mcpTokens' | 'memoryTokens' | 'session' | 'sessionWall' | 'askedAll'>>
   // The last done gate result. Absent from a session of an older version.
   gate?: { ok: boolean; text: string; isSent: boolean; at: number } | null
-  learned: { sessions: number; bench: BenchRow[] }
+  learned: { bench: BenchRow[] }
 }
 
 declare module 'claude-code' {

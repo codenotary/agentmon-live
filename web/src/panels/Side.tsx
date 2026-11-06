@@ -1,8 +1,8 @@
-import { CheckCircle2, Circle, Cpu, FileText, Gauge, ListChecks, Loader, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Circle, Cpu, Gauge, ListChecks, Loader, ShieldCheck } from 'lucide-react'
 import { useMemo } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, countWord, dur, editsSinceGreen, kilo, resultOf, short, time, whoOf } from '../format.ts'
+import { agentNames, dur, editsSinceGreen, kilo, resultOf, time, whoOf } from '../format.ts'
 import type { Labels, Page } from '../labels.ts'
 import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -106,27 +106,6 @@ export function Tasks({ s, l }: { s: WebSnapshot; l: Labels }) {
           </li>
         ))}
       </ul>
-    </Panel>
-  )
-}
-
-function PathList({ label, list }: { label: string; list: string[] }) {
-  if (list.length === 0) return null
-  return (
-    <div>
-      <span className="eyebrow">{label} · {list.length}</span>
-      <ul className="mt-1 flex flex-col gap-0.5 font-mono text-xs">
-        {list.slice(-8).reverse().map(f => <li key={f} className="[overflow-wrap:anywhere]" title={f}>{short(f)}</li>)}
-      </ul>
-    </div>
-  )
-}
-
-export function Files({ s, p }: { s: WebSnapshot; p: Page }) {
-  const isEmpty = s.files.edited.length === 0 && s.files.read.length === 0
-  return (
-    <Panel id="files" title={p.files} help={p.helpFiles} icon={FileText}>
-      {isEmpty ? <Empty text={`${p.noFilesEdited} · ${countWord(s.trace?.length ?? 0, p)}`} /> : <div className="flex flex-col gap-3"><PathList label={p.edited} list={s.files.edited} /><PathList label={p.read} list={s.files.read} /></div>}
     </Panel>
   )
 }
