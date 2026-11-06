@@ -191,14 +191,16 @@ button.wf-row:hover { background: var(--surface-2); }
 .wf-bar.failed { background: var(--bad); opacity: 1; }
 .wf-bar.agent { background: var(--signal-soft); box-shadow: inset 0 0 0 1px var(--signal-bright); opacity: 1; }
 .wf-bar.agent.failed { background: var(--bad-soft); box-shadow: inset 0 0 0 1px var(--bad); }
-.wf-bar.running, .wf-bar.asking {
+.wf-bar.running, .wf-bar.asking { background-color: transparent; opacity: 1; overflow: hidden; }
+/* Moved by transform, off the main thread: animating background-position repainted the page on every frame. One step is four stripes, so the loop has no seam. */
+.wf-bar.running::before, .wf-bar.asking::before {
+  content: "";
+  position: absolute;
+  inset: 0 -53px 0 0;
   background-image: repeating-linear-gradient(115deg, rgb(245 147 0 / .6) 0 6px, rgb(245 147 0 / .22) 6px 12px);
-  background-color: transparent;
-  background-size: 200% 100%;
-  opacity: 1;
   animation: march 1.4s linear infinite;
 }
-.wf-bar.asking { background-image: repeating-linear-gradient(115deg, var(--warn) 0 6px, var(--warn-soft) 6px 12px); }
+.wf-bar.asking::before { background-image: repeating-linear-gradient(115deg, var(--warn) 0 6px, var(--warn-soft) 6px 12px); }
 @media (max-width: 640px) { .wf-row { grid-template-columns: minmax(0, 46%) minmax(0, 1fr) 46px; gap: 6px; } }
 .now-line { position: absolute; top: 0; bottom: 0; right: 0; width: 1px; background: var(--signal-bright); }
 .now-line::before { content: ""; position: absolute; top: -3px; left: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--signal-bright); }
@@ -227,15 +229,15 @@ button.wf-row:hover { background: var(--surface-2); }
 .flow-count { font: 400 8px var(--font-mono); fill: var(--surface); pointer-events: none; }
 .flow-arc { stroke-width: 1.5; stroke-opacity: .6; stroke-dasharray: 1; animation: arc-in .3s ease-out; transition: stroke-opacity .15s; }
 .flow-arc.hot { stroke-opacity: 1; }
-.flow-running { stroke-dasharray: 6 4; animation: flow-march 1.4s linear infinite; }
+/* Dashes that hold still: a moving stroke repainted the whole chart on every frame, about 20% of a core. The chart's glide and the now line show it runs. */
+.flow-running { stroke-dasharray: 6 4; }
 @keyframes dot-in { from { transform: scale(0); } 70% { transform: scale(1.6); } }
 @keyframes arc-in { from { stroke-dashoffset: 1; } }
-@keyframes flow-march { to { stroke-dashoffset: -20; } }
 .row-in { animation: row-in .7s ease-out; }
 .flat-sweep { animation: sweep 3.2s linear infinite; }
 .spin { animation: spin 1.4s linear infinite; }
 
-@keyframes march { to { background-position: -48px 0; } }
+@keyframes march { to { transform: translateX(-52.96px); } }
 @keyframes rec { 50% { opacity: .35; } }
 @keyframes row-in { from { background-color: var(--signal-soft); } }
 @keyframes sweep { from { left: 0; } to { left: 100%; } }
