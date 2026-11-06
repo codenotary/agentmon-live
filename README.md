@@ -4,27 +4,30 @@
 
 <h1 align="center">AgentMon Live</h1>
 
-<p align="center"><b>See what Claude Code is doing while it works. Catch "done" before it is done.</b></p>
+<p align="center"><b>See what your AI agents are really doing.</b></p>
 
-<p align="center">Mission control for Claude Code. A live pane beside the chat and a full dashboard in your browser show every tool call, subagent and test run as it happens. A done gate checks the facts before Claude can call work finished, Focus tells you when to step in, and AgentMon learns your project across sessions.</p>
+<p align="center">Watch Claude Code and its subagents work, live in your browser or beside the chat. See what it costs, how close you are to your limits, and when it needs you. AgentMon also checks Claude's work before it says "done".</p>
 
-<p align="center"><a href="#install">Install</a> · <a href="#the-pane">The pane</a> · <a href="#why-you-want-it">Why you want it</a> · <a href="#the-web-view">The web view</a> · <a href="#make-it-yours">Make it yours</a> · <a href="#more">More</a></p>
+<p align="center">
+  <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcodenotary%2Fagentmon-live%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version" alt="Version">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/codenotary/agentmon-live" alt="License"></a>
+</p>
 
-**Press `o` and the session opens in your browser.** See who started whom in the agent flow, follow every call in the waterfall, and read context, quotas, cost and cache hits against their limits, live. It runs on your machine, and every running session is one click away. [See all of it](#the-web-view).
+<p align="center"><a href="#install">Install</a> · <a href="#why-you-want-it">Why you want it</a> · <a href="#the-pane">The pane</a> · <a href="#the-web-view">The web view</a> · <a href="#cost-and-privacy">Cost and privacy</a> · <a href="#make-it-yours">Make it yours</a> · <a href="#more">More</a></p>
 
-[![Agent flow in the web view: the main session starts six subagents, one reports failing tests, and two still run](docs/web/flow.png)](#the-web-view)
+**Press `o` and your session opens in the browser.** See who started whom, what each agent does right now, and where the money goes. [See all of it](#the-web-view).
+
+[![The web view during a session: dials and rulers fill up while the main session starts subagents and the agent flow grows](docs/web/live.gif)](#the-web-view)
 
 ## Install
 
-Installing asks no questions, so it works on a small screen too. Everything starts on its defaults.
-
-Requires Claude Code 2.1.308 or later. In a Claude Code session:
+In a Claude Code session (2.1.308 or later):
 
 ```
 /plugin install agentmon-live --marketplace codenotary/agentmon-live
 ```
 
-Answer `y` to add the marketplace and pick a scope. The pane opens by itself when the terminal is wide enough, or with `/agentmon`.
+Answer `y` to add the marketplace and pick a scope. There is nothing to set up. The pane opens by itself when the terminal is wide enough, or with `/agentmon`.
 
 <details>
 <summary>From a shell, the desktop app, or let Claude do it</summary>
@@ -45,42 +48,22 @@ Claude Code when done.
 
 </details>
 
-## The pane
+## Why you want it
 
-```
-AGENTMON LIVE · OPUS 5.5 PLANS (high)
-╭──────────────────────────────────────────────────────────────╮
-│ ● FOCUS · NEEDS ATTENTION                         x: dismiss │
-│  FAILED  test npm test                       i: investigate  │
-╰──────────────────────────────────────────────────────────────╯
-╭──────────────────────────────────────────────────────────────╮
-│ ● CHANGES & VERIFICATION                                     │
-│ 3 edited · 7 read                                            │
-│ test         FAILED  npm test                                │
-╰──────────────────────────────────────────────────────────────╯
-╭──────────────────────────────────────────────────────────────╮
-│ ● USAGE                                                      │
-│ context   ▕████▋               ▏  19 % 190k / 1000k          │
-│ seven_day ▕██████████████▌     ▏  77 % resets 15:00          │
-╰──────────────────────────────────────────────────────────────╯
-h: history   d: details
-```
+- **See it happen.** Every agent, tool call and handoff, live in your browser, in the [agent flow](#overview).
+- **Don't run out.** Cost, context and quota limits at a glance, and when `/clear` or `/compact` would save you money.
+- **Know when to step in.** It raises a waiting approval, a stuck subagent or a failure loop. Press `i` and it drafts the follow-up question for you.
+- **Trust "done".** Claude says all tests pass? AgentMon checks, and sends it back if they don't.
+- **It learns your project.** It remembers flaky tools and recurring errors across sessions, and spots drift in your CLAUDE.md.
+- **Measure it.** `/agentmon bench` compares your sessions with and without AgentMon.
+
+Speaks English, German, French, Spanish, Chinese and Japanese, and follows your terminal's language. The [guide](docs/guide.md) has the details, including everything the done gate checks.
+
+## The pane
 
 ![AgentMon Live pane, section by section: header, Focus, running call, Insights, done gate, changes and verification, Usage, tool history, subagents and session log](docs/pane-explained.png)
 
 [![AgentMon Live demo: the done gate catches a failing test before Claude stops](docs/demo.png)](https://asciinema.org/a/1270436)
-
-## Why you want it
-
-- **No more "all tests pass" when they don't.** Before Claude stops, the done gate checks what really happened: failed or stale tests, test runs that ran no tests, tests deleted or skipped after an edit (when the task edited tests itself, a review item beside the green run instead), edited packages no test reached, open todos, failing subagents. Anything unfinished goes back to Claude once. Fable, a second model that never writes code, checks that every part of your request got an answer.
-- **One glance, not a scroll.** Running tool calls, subagents, edited files and the last test, lint and build results sit in one pane.
-- **It tells you when to step in.** Focus raises what needs you: a waiting approval, a failure loop (the same call, or the same error behind different calls), context near compaction, a stuck subagent, a cold prompt cache, a base branch that changed the files you are editing. Press `i` and it drafts the follow-up question for you.
-- **Spend less.** See where time and tokens go, which MCP servers you load but never use, and when `/clear` or `/compact` would save you money.
-- **It learns your project.** It remembers flaky tools, recurring errors, compaction points, how long turns usually run, heavy habits and what the done gate keeps catching across sessions, and checks your CLAUDE.md and memory files for drift.
-- **Room to read it all.** Press `o` for the same session in your browser, with an agent flow chart, a waterfall and every tool call. See [the web view](#the-web-view).
-- **Proof, not vibes.** `/agentmon bench` compares your sessions with and without the mod.
-
-Speaks English, German, French, Spanish, Chinese and Japanese, and follows your terminal's language (`LC_ALL`, `LC_MESSAGES`, `LANG`).
 
 ## The web view
 
@@ -132,9 +115,21 @@ One searchable stream of your prompts, tool calls and subagents. Equal calls mer
 
 ![Session log with filter buttons, activity bars and rows](docs/web/log.png)
 
+## Cost and privacy
+
+- **Your session stays on your machine.** The web view listens on `127.0.0.1` only, and what AgentMon learns is kept in Claude Code's local plugin store. Secrets are masked before they are shown.
+- **The web view has no login.** On a machine shared with other people, they can read your session from the local port. Set `web` to `off` there.
+- **One optional model call.** Before Claude stops, Fable, a second model, may check that every part of your request got an answer: a small call with about 12,000 characters of session text, at most 30 per session by default. Set `advisorMode` to `gate` for no model calls at all.
+- **One network check.** It asks GitHub for the latest release. No session data goes with it.
+
+To remove it: `claude plugin uninstall agentmon-live`.
+
 ## Make it yours
 
 Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn the done gate off"*. It takes effect at once, with no reload. Or edit `pluginConfigs` in `~/.claude/settings.json` yourself; that applies at your next prompt. The options are not in `/config`. See the [guide](docs/guide.md) for all of them.
+
+<details>
+<summary>All keys</summary>
 
 | Key | Does |
 | --- | --- |
@@ -149,6 +144,8 @@ Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn t
 | `o` | Open the web view in your browser |
 | `p` | Hide the pane; a button above the prompt brings it back |
 | `c` | Run the done-gate check now |
+
+</details>
 
 Commands: `/agentmon`, `advisor`, `check`, `open`, `learn`, `memory`, `bench`, `debug`, `clear`.
 

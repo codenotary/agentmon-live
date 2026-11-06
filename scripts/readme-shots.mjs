@@ -1,6 +1,7 @@
-// Draws the README's web view pictures from a made-up session, one per section of the page's navigation: `node scripts/readme-shots.mjs` (setup as for web-shot.mjs, in docs/develop.md).
-import { spawn } from 'node:child_process'
-import { mkdirSync, readFileSync } from 'node:fs'
+// Draws the README's web view pictures from a made-up session, one per section of the page's navigation: `node scripts/readme-shots.mjs` (setup as for web-shot.mjs, in docs/develop.md, plus ffmpeg for the moving picture).
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -109,6 +110,39 @@ for (const [name, selector] of Object.entries(shots)) {
   if (await where.count() === 0) problems.push(`no ${selector}`)
   else await where.screenshot({ path: join(OUT, `${name}.png`) })
 }
+// The moving picture: the same session replayed up to each moment, `t` seconds before its end.
+const atMoment = t => {
+  const now = ago(t)
+  const done = 1 - t / 112
+  const seen = trace.filter(c => c.at <= now).map(({ ms, ...c }) => (ms !== undefined && c.at + ms <= now ? { ...c, ms } : c))
+  return {
+    ...snapshot,
+    now,
+    gate: undefined,
+    trace: seen,
+    active: seen.filter(c => c.ms === undefined).map(c => ({ id: c.id, who: c.who, tool: c.tool, what: c.what, startedAt: c.at, agentId: c.agentId })),
+    agents: agents.filter(a => a.startedAt <= now).map(({ endedAt, tests, testsWhy, errors, ...a }) => (endedAt !== undefined && endedAt <= now ? { ...a, endedAt, ...(tests ? { tests, testsWhy, errors } : {}) } : { ...a, status: 'running' })),
+    focus: snapshot.focus.filter(f => t <= 32 || !f.isUrgent),
+    checks: snapshot.checks.filter(c => c.at <= now),
+    log: snapshot.log.filter(l => l.at <= now),
+    usage: { ...snapshot.usage, ctxPct: Math.round(12 + 26 * done), ctxTokens: Math.round(120_000 + 260_000 * done), usd: 1 + 2.12 * done },
+    turns: snapshot.turns.map(x => (x.isLive ? { ...x, wallMs: 112_000 - t * 1000, buckets: Object.fromEntries(Object.entries(x.buckets).map(([k, v]) => [k, v * done])) } : x)),
+  }
+}
+const frameDir = mkdtempSync(join(tmpdir(), 'readme-frames-'))
+// The page must meet the session at its start, or the final Focus items show as cleared.
+await fetch(`${url}state/readme`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(atMoment(112)) })
+const live = await browser.newPage({ colorScheme: 'dark', viewport: { width: 1440, height: 860 }, reducedMotion: 'reduce' })
+await live.goto(url)
+await live.waitForSelector('[data-testid=instruments]')
+for (let t = 112, i = 0; t >= 0; t -= 2, i += 1) {
+  await fetch(`${url}state/readme`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(atMoment(t)) })
+  await live.waitForTimeout(200)
+  await live.screenshot({ path: join(frameDir, `${String(i).padStart(3, '0')}.png`) })
+}
+const gif = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', '8', '-i', join(frameDir, '%03d.png'), '-vf', 'tpad=stop_mode=clone:stop_duration=3,scale=1100:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle', join(OUT, 'live.gif')], { stdio: 'inherit' })
+rmSync(frameDir, { recursive: true })
+if (gif.status !== 0) problems.push('ffmpeg failed')
 await browser.close()
 server.kill()
 console.log(problems.length ? problems.join('\n') : `drawn in ${OUT}`)

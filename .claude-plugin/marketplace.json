@@ -6,13 +6,13 @@
     "url": "https://github.com/vchaindz"
   },
   "metadata": {
-    "description": "AgentMon Live: mission control for Claude Code, with a live pane, a browser dashboard and a done gate"
+    "description": "AgentMon Live: watch Claude Code and its subagents work, live"
   },
   "plugins": [
     {
       "name": "agentmon-live",
       "source": "./",
-      "description": "AgentMon Live: mission control for Claude Code. A live pane and a browser dashboard show every tool call, subagent and test run, a done gate checks the facts before Claude calls work finished, and it learns your project across sessions",
+      "description": "AgentMon Live: see what Claude Code and its subagents are doing, live in your browser or beside the chat, with cost, limits, a nudge when it needs you and a check of its work before it says done",
       "version": "0.36.0",
       "author": {
         "name": "vchaindz",
