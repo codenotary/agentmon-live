@@ -1,12 +1,12 @@
 import { ChevronRight, Workflow } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 
-import type { WebSnapshot } from '../../../types/index'
+import type { TraceCall, WebSnapshot } from '../../../types/index'
 import { isRunning } from '../agents.ts'
-import { agentNames, dur, stateOf, time } from '../format.ts'
+import { agentNames, callTime, stateOf, time } from '../format.ts'
 import { clampView, DEFAULT_VIEW, dragMode, flowOf, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
 import type { Labels } from '../labels.ts'
-import { set, useClock, useStore } from '../store.ts'
+import { clockOf, set, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { openTrace } from './Waterfall.tsx'
 
@@ -20,6 +20,7 @@ const MIN_LANE = 24
 const MAX_LANE = 50
 const CHART_LANES_H = 150
 const DOT_HIT_R = 8
+const STEP_MS = 3000
 
 // The ramp's palest step is too faint for a dot on white.
 const laneColour = (i: number, isMain: boolean) => (isMain ? 'var(--ink-2)' : `var(--ramp-${(i % 4) + 1})`)
@@ -64,10 +65,10 @@ function Brush({ whole, span, width, colourOf, s, view, setView, p }: { whole: S
   )
 }
 
-function MarkDot({ m, x, y, colour, isNarrow, onTip, leave }: { m: Mark; x: number; y: number; colour: string | undefined; isNarrow: boolean; onTip: (e: { clientX: number; clientY: number }, m: Mark) => void; leave: () => void }) {
+function MarkDot({ m, x, y, colour, isNarrow, onPick, onTip, leave }: { m: Mark; x: number; y: number; colour: string | undefined; isNarrow: boolean; onPick: (e: { clientX: number; clientY: number }, m: Mark) => void; onTip: (e: { clientX: number; clientY: number }, m: Mark) => void; leave: () => void }) {
   const first = m.dots[0]
   if (!first) return null
-  const open = () => openTrace(first.call)
+  const open = (e: { clientX: number; clientY: number }) => onPick(e, m)
   const fill = m.state === 'failed' ? 'var(--bad)' : m.state === 'asking' ? 'var(--surface)' : colour
   const stroke = m.state === 'asking' ? 'var(--warn)' : undefined
   if (m.count > 1) {
@@ -87,11 +88,10 @@ function MarkDot({ m, x, y, colour, isNarrow, onTip, leave }: { m: Mark; x: numb
   )
 }
 
-export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
+export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
-  const now = useClock(s)
   const { flowView: view, openAgents } = useStore()
-  const anyRunning = s.agents.some(isRunning)
+  const anyRunning = live.agents.some(isRunning)
   // Open while a subagent runs. A click holds until the next agent starts or the last one ends.
   const [pickedOpen, setPickedOpen] = useState<boolean | null>(null)
   const isOpen = pickedOpen ?? anyRunning
@@ -100,6 +100,31 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
   useEffect(() => {
     if (!isOpen) set({ flowView: DEFAULT_VIEW })
   }, [isOpen])
+  const [isOver, setIsOver] = useState(false)
+  const [list, setList] = useState<{ x: number; y: number; calls: TraceCall[] } | null>(null)
+  const listBox = useRef<HTMLDivElement>(null)
+  const latest = useRef(live)
+  latest.current = live
+  const [drawn, setDrawn] = useState({ s: live, now: clockOf(live) })
+  // Redraws in steps, and not while the pointer is here or a list is open: a mark that moves is hard to click.
+  const isHeld = isOver || list !== null
+  useEffect(() => {
+    if (isHeld) return
+    const draw = () => setDrawn({ s: latest.current, now: clockOf(latest.current) })
+    draw()
+    const id = setInterval(draw, STEP_MS)
+    return () => clearInterval(id)
+  }, [isHeld, isOpen])
+  const { s, now } = drawn.s.session.id === live.session.id ? drawn : { s: live, now: clockOf(live) }
+  useEffect(() => setList(null), [live.session.id])
+  useEffect(() => {
+    if (!list) return
+    const close = (e: Event) => {
+      if (!listBox.current?.contains(e.target as Node)) setList(null)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [list])
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [hideFinished, setHideFinished] = useState(false)
@@ -131,16 +156,26 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
   const marks = mergeDots(dots, span, plot)
   const nameOfAgent = (id: string) => names.get(id)?.short ?? id
 
-  const placeTip = (e: { clientX: number; clientY: number }, text: string) => {
+  const spotOf = (e: { clientX: number; clientY: number }) => {
     const r = box.current?.getBoundingClientRect()
-    if (r) setTip({ x: e.clientX - r.left + 10, y: e.clientY - r.top + 12, text })
+    return r ? { x: e.clientX - r.left + 10, y: e.clientY - r.top + 12 } : null
+  }
+  const placeTip = (e: { clientX: number; clientY: number }, text: string) => {
+    const spot = spotOf(e)
+    if (spot) setTip({ ...spot, text })
+  }
+  const pickMark = (e: { clientX: number; clientY: number }, m: Mark) => {
+    const spot = spotOf(e)
+    const [first] = m.dots
+    if (m.count === 1 && first) openTrace(first.call)
+    else if (spot) setList({ ...spot, calls: m.dots.map(d => d.call) })
   }
   const markTip = (e: { clientX: number; clientY: number }, m: Mark) => {
     const first = m.dots[0]
     if (!first) return
     const c = first.call
     const line = c.what.split('\n')[0] ?? ''
-    placeTip(e, m.count > 1 ? `${m.count} ${p.calls} · ${time(m.at)}–${time(m.to)}` : `${time(c.at)} · ${c.tool} ${line}${c.ms === undefined ? '' : ` · ${dur(c.ms)}`}${c.isFailed ? ` · ${l.result.failed}` : ''}`)
+    placeTip(e, m.count > 1 ? `${m.count} ${p.calls} · ${time(m.at)}–${time(m.to)}` : `${time(c.at)} · ${c.tool} ${line}${c.ms === undefined ? '' : ` · ${callTime(c.ms)}`}${c.isFailed ? ` · ${l.result.failed}` : ''}`)
   }
   const arcTip = (e: { clientX: number; clientY: number }, a: Arc) => {
     const name = nameOfAgent(a.agent)
@@ -156,6 +191,10 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
     if (lane.agentId) set({ whoFilter: names.get(lane.agentId)?.short ?? null, openAgents: new Set(openAgents).add(lane.agentId) })
   }
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (list) {
+      if (e.key === 'Escape') setList(null)
+      return
+    }
     const step = view.ms * 0.1
     if (e.key === 'ArrowLeft') setView({ ms: view.ms, at: span.to - step })
     else if (e.key === 'ArrowRight') setView({ ms: view.ms, at: span.to + step })
@@ -188,7 +227,7 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
   return (
     <Panel id="flow" title={p.flow} help={p.helpFlow} icon={Workflow} aside={aside} className={isOpen ? '' : '[&>header]:mb-0'}>
       {isOpen && !s.trace?.length ? <Empty text={p.none} /> : null}
-      <div ref={box} className="relative outline-offset-2" tabIndex={0} onKeyDown={onKey} data-testid="flow" style={isOpen && s.trace?.length ? undefined : { display: 'none' }}>
+      <div ref={box} className="relative outline-offset-2" tabIndex={0} onKeyDown={onKey} onPointerEnter={() => setIsOver(true)} onPointerLeave={() => setIsOver(false)} data-testid="flow" style={isOpen && s.trace?.length ? undefined : { display: 'none' }}>
         {width > 0 ? (
           <>
             <Brush whole={whole} span={span} width={width} colourOf={colourOf} s={s} view={view} setView={setView} p={p} />
@@ -220,8 +259,8 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
                     </g>
                   )
                 })}
-                {marks.map(m => <MarkDot key={m.key} m={m} x={xOf(m.at)} y={yOf.get(m.lane) ?? 0} colour={colourOf.get(m.lane)} isNarrow={isNarrow} onTip={markTip} leave={leave} />)}
-                {inWindow(now) ? <line x1={xOf(now)} x2={xOf(now)} y1={0} y2={height} stroke="var(--signal-bright)" strokeWidth={1} /> : null}
+                {marks.map(m => <MarkDot key={m.key} m={m} x={xOf(m.at)} y={yOf.get(m.lane) ?? 0} colour={colourOf.get(m.lane)} isNarrow={isNarrow} onPick={pickMark} onTip={markTip} leave={leave} />)}
+                {inWindow(now) ? <line x1={xOf(now)} x2={xOf(now)} y1={0} y2={height} stroke="var(--signal-bright)" strokeWidth={1} pointerEvents="none" /> : null}
               </svg>
               {lanes.map(lane => {
                 const y = yOf.get(lane.id) ?? 0
@@ -235,7 +274,16 @@ export function Flow({ s, l }: { s: WebSnapshot; l: Labels }) {
             </div>
           </>
         ) : null}
-        {tip ? <div className="pop pointer-events-none absolute" style={{ left: Math.min(tip.x, Math.max(0, width - 320)), top: tip.y }}>{tip.text}</div> : null}
+        {list ? (
+          <div ref={listBox} className="pop flow-list absolute" style={{ left: Math.min(list.x, Math.max(0, width - 320)), top: list.y }} data-testid="flow-list">
+            {list.calls.map((c, i) => (
+              <button key={c.id} type="button" className="flow-call" autoFocus={i === 0} onClick={() => { setList(null); openTrace(c) }}>
+                <span className="text-ink-3">{time(c.at)}</span> <span className={c.isFailed ? 'text-bad' : ''}>{c.tool}</span> {c.what.split('\n')[0]}{c.ms === undefined ? '' : ` · ${callTime(c.ms)}`}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {tip && !list ? <div className="pop pointer-events-none absolute" style={{ left: Math.min(tip.x, Math.max(0, width - 320)), top: tip.y }}>{tip.text}</div> : null}
       </div>
     </Panel>
   )
