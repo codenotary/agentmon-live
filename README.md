@@ -6,9 +6,13 @@
 
 <p align="center"><b>See what Claude Code is doing while it works. Catch "done" before it is done.</b></p>
 
-<p align="center">A live pane beside the chat for Claude Code: the session, its tools and subagents at a glance, plus a gate that stops Claude from reporting work as finished when it is not.</p>
+<p align="center">Mission control for Claude Code. A live pane beside the chat and a full dashboard in your browser show every tool call, subagent and test run as it happens. A done gate checks the facts before Claude can call work finished, Focus tells you when to step in, and AgentMon learns your project across sessions.</p>
 
 <p align="center"><a href="#install">Install</a> · <a href="#the-pane">The pane</a> · <a href="#why-you-want-it">Why you want it</a> · <a href="#the-web-view">The web view</a> · <a href="#make-it-yours">Make it yours</a> · <a href="#more">More</a></p>
+
+**Press `o` and the session opens in your browser.** See who started whom in the agent flow, follow every call in the waterfall, and read context, quotas, cost and cache hits against their limits, live. It runs on your machine, and every running session is one click away. [See all of it](#the-web-view).
+
+[![Agent flow in the web view: the main session starts six subagents, one reports failing tests, and two still run](docs/web/flow.png)](#the-web-view)
 
 ## Install
 

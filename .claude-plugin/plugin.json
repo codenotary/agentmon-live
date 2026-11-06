@@ -1,7 +1,7 @@
 {
   "name": "agentmon-live",
   "version": "0.36.0",
-  "description": "AgentMon Live: live pane with the main session, tool calls (git highlighted), subagents, session log and a Fable advisor that reads along",
+  "description": "AgentMon Live: mission control for Claude Code. A live pane and a browser dashboard show every tool call, subagent and test run, a done gate checks the facts before Claude calls work finished, and it learns your project across sessions",
   "types": "./types/index.d.ts",
   "license": "Apache-2.0",
   "author": {
