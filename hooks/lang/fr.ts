@@ -49,6 +49,7 @@ export const fr: Strings = {
       memoryFiles: 'Fichiers mémoire',
       repeatedApprovals: 'Approbations répétées',
       gatePassed: 'Contrôle de fin réussi',
+      startLink: 'Besoin d’une vue combinée ? Essayez AgentMon Start',
       gateSent: 'Contrôle de fin : renvoyé',
       gateOpen: 'Contrôle de fin : points ouverts',
       you: 'Vous',

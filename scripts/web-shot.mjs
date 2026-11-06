@@ -183,6 +183,15 @@ if ((await page.$$('[role=option] .state-dot')).length !== 2) problems.push('swi
 await page.screenshot({ path: join(out, 'web-switch.png') })
 await page.click('[role=option]:has-text("agent-radar")')
 await page.waitForFunction(() => document.querySelector('#picker')?.textContent.includes('agent-radar'), null, { timeout: 2000 }).catch(() => problems.push('switch: picking a session did not show it'))
+// The list's last entry opens AgentMon Start in a new tab and leaves the session as it was.
+await page.context().route('https://codenotary.com/**', r => r.fulfill({ body: '' }))
+await page.click('#picker')
+if (!/AgentMon Start/.test(await page.locator('[role=option]').last().textContent())) problems.push('switch: AgentMon Start is not the last entry')
+const [startTab] = await Promise.all([page.context().waitForEvent('page'), page.click('[data-testid=start-link]')])
+await startTab.waitForLoadState().catch(() => {})
+if (startTab.url() !== 'https://codenotary.com/agentmon-start') problems.push(`switch: the last entry opened ${startTab.url()}`)
+await startTab.close()
+if (!(await page.locator('#picker').textContent()).includes('agent-radar')) problems.push('switch: the last entry changed the session')
 // The flow is open while an agent runs and folded when none does; the arrow opens and folds it.
 const isFlowOpen = () => page.locator('[data-testid=flow]').isVisible()
 const folded = page.locator('[data-testid=flow-fold]')

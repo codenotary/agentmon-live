@@ -49,6 +49,7 @@ export const zh: Strings = {
       memoryFiles: '记忆文件',
       repeatedApprovals: '重复的批准',
       gatePassed: '完成检查通过',
+      startLink: '需要合并视图?试试 AgentMon Start',
       gateSent: '完成检查已退回',
       gateOpen: '完成检查:有未完成项',
       you: '你',

@@ -49,6 +49,7 @@ export const de: Strings = {
       memoryFiles: 'Memory-Dateien',
       repeatedApprovals: 'Wiederholte Freigaben',
       gatePassed: 'Abschlussprüfung bestanden',
+      startLink: 'Gesamtansicht nötig? Probiere AgentMon Start',
       gateSent: 'Abschlussprüfung schickte zurück',
       gateOpen: 'Abschlussprüfung: Offenes',
       you: 'Du',

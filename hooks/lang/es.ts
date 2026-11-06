@@ -49,6 +49,7 @@ export const es: Strings = {
       memoryFiles: 'Archivos de memoria',
       repeatedApprovals: 'Aprobaciones repetidas',
       gatePassed: 'Control final superado',
+      startLink: '¿Necesitas una vista combinada? Prueba AgentMon Start',
       gateSent: 'Control final: devuelto',
       gateOpen: 'Control final: pendientes',
       you: 'Tú',

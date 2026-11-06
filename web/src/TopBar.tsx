@@ -8,6 +8,15 @@ import { pick, requestPane, set, setTheme, useStore, type Theme } from './store.
 
 const NEXT: Record<Theme, Theme> = { auto: 'dark', dark: 'light', light: 'auto' }
 
+const START_ITEM = 'agentmon-start'
+const START_URL = 'https://codenotary.com/agentmon-start'
+
+// A Select item, not a link: Radix keeps keyboard focus on its items, so a plain link there could not be reached.
+function choose(id: string) {
+  if (id === START_ITEM) window.open(START_URL, '_blank', 'noopener')
+  else pick(id)
+}
+
 const whereOf = (s: WebSnapshot) => `${s.session.cwd}${s.session.branch ? ` · ${s.session.branch}` : ''}`
 
 const stateWord = (x: WebSnapshot, p: Page) => ({ waiting: labelsOf(x).status.waiting ?? 'waiting', active: p.live, idle: p.idle })[stateOf(x)]
@@ -28,7 +37,7 @@ function detailOf(x: WebSnapshot, p: Page): string {
 function SessionPicker({ s, p, sessions }: { s: WebSnapshot; p: Page; sessions: ReadonlyMap<string, WebSnapshot> }) {
   const names = sessionNames(sessions)
   return (
-    <Select.Root value={s.session.id} onValueChange={pick}>
+    <Select.Root value={s.session.id} onValueChange={choose}>
       <Select.Trigger className="select-trigger" id="picker" aria-label={`${whereOf(s)}, ${s.v === 1 ? stateWord(s, p) : ''}`} title={whereOf(s)}>
         <StateDot s={s} p={p} />
         <span className="min-w-0 flex-1 truncate text-left"><Select.Value>{whereOf(s)}</Select.Value></span>
@@ -45,6 +54,7 @@ function SessionPicker({ s, p, sessions }: { s: WebSnapshot; p: Page; sessions: 
                 <span className="select-detail">{detailOf(x, p)}</span>
               </Select.Item>
             ))}
+            <Select.Item value={START_ITEM} className="select-item select-foot" data-testid="start-link"><Select.ItemText>{p.startLink}</Select.ItemText></Select.Item>
           </Select.Viewport>
         </Select.Content>
       </Select.Portal>

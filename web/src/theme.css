@@ -283,6 +283,7 @@ button.wf-row:hover { background: var(--surface-2); }
 .select-menu { z-index: 45; min-width: var(--radix-select-trigger-width); max-width: min(520px, calc(100vw - 32px)); max-height: min(360px, var(--radix-select-content-available-height)); padding: 4px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-1); box-shadow: var(--shadow-hover); animation: fade .12s ease-out; }
 .select-item { position: relative; display: block; padding: 7px 12px 7px 28px; border-radius: 8px; font: 400 13px/18px var(--font-mono); color: var(--ink); cursor: pointer; outline: 0; overflow-wrap: anywhere; }
 .select-item[data-highlighted] { background: var(--surface-2); }
+.select-foot { margin-top: 4px; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; font-family: var(--font-sans); color: var(--signal); }
 .select-check { position: absolute; top: 9px; left: 8px; color: var(--signal); }
 .select-detail { display: block; font: 400 12px/16px var(--font-sans); color: var(--ink-3); }
 

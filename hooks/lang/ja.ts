@@ -49,6 +49,7 @@ export const ja: Strings = {
       memoryFiles: 'メモリファイル',
       repeatedApprovals: '繰り返された承認',
       gatePassed: '完了チェック通過',
+      startLink: '統合ビューが必要なら AgentMon Start をお試しください',
       gateSent: '完了チェックが差し戻し',
       gateOpen: '完了チェック:未完了あり',
       you: 'あなた',
