@@ -907,3 +907,18 @@ test('an edit of only a fragment of an assertion is still seen as changing it', 
   expect(await ui.find({ type: 'Text', text: /\+ expect\(2 \+ 2\)\.toBe\(4\)/ })).toBeTruthy()
   await ui.unmount()
 })
+
+test('Fable is asked about unasked features, and its verdict goes back to Claude', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts, ['A rate limiter was added that nobody asked for.\n→ Remove it, or say why the task needs it.'])
+  await start($)
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+
+  await clock.settle()
+  const r = await $.classic.Stop({ ...STOP, last_assistant_message: 'Parser fixed, and I added a rate limiter.' })
+  expect(prompts[0]).toContain('Did the work add a feature, option or abstraction the task did not ask for?')
+  expect(r.block).toContain('- Fable, a reviewing model that may be wrong, says: A rate limiter was added that nobody asked for.')
+  expect(r.block).toContain('- → Fable, a reviewing model that may be wrong, says: Remove it, or say why the task needs it.')
+})

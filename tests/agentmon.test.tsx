@@ -657,7 +657,7 @@ test('check now asks Fable at once, from the button and the command', async ($, 
   await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
   expect(prompts.length).toBe(2)
-  expect(prompts[0]).toMatch(/^Does the final answer address every part of the task\?/)
+  expect(prompts[0]).toMatch(/^Two checks\. Does the final answer address every part of the task\?/)
   expect(await ui.find({ type: 'Text', text: /^✓ nothing left open at the last stop$/ })).toBeTruthy()
   await ui.unmount()
 })

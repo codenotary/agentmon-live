@@ -126,7 +126,8 @@ async function material($: EngineInterface, turn: Turn): Promise<string> {
   return t.material(request, lines.join('\n'), changed) + evidence
 }
 
-// What the turn left open: recorded facts first; only when they show nothing does Fable judge whether the answer covers the request.
+// shortcut: Fable sees no diff, so an extra inside an edited file shows only if the answer names it; upgrade when misses show in real sessions.
+// What the turn left open: recorded facts first; only when they show nothing does Fable judge whether the answer covers the request and the work stayed within it.
 // `judged` is false when no gap was found and Fable did not look (off, busy, failed, budget used): no verdict, not a pass.
 export async function openGaps($: EngineInterface, turn: Turn, answer: string): Promise<{ lines: string[]; fix?: string; judged: boolean }> {
   const t = cfg.t
