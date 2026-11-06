@@ -22,6 +22,13 @@ export type Card = {
   lastAt?: number
   // Calls that did more than read or search.
   others?: number
+  // The Agent call that started it, and its prompt, masked and cut short.
+  callId?: string
+  prompt?: string
+  // Input read from the prompt cache, its cost so far, and its failed calls.
+  cached?: number
+  usd?: number
+  errors?: number
 }
 
 // Where a main-loop turn's wall time went, in ms per bucket: `model` (requests streaming),
@@ -30,6 +37,8 @@ export type Card = {
 // is in now and `since` when it last moved, so a drawing can add the time not yet booked.
 export type TurnTime = {
   startedAt: number
+  // The prompt that started it, masked and cut short.
+  prompt?: string
   wallMs: number
   buckets: Record<string, number>
   steps: number
@@ -90,6 +99,8 @@ export type Bench = {
   // Tool calls per prompt that used tools (missing in older rows), and the main loop's cost, each request priced from its usage (missing when no model had a price).
   turnCalls?: number[]
   usd?: number
+  // The whole session's cost as the engine counts it, subagents included. `usd` stays the main loop's: the bench compares it with transcripts of sessions without the mod.
+  totalUsd?: number
 }
 
 // One prompt's part of a Bench.
@@ -127,6 +138,8 @@ export type Insights = {
   turnCalls: number
   // Approval prompts per call.
   asked: Record<string, number>
+  // Approvals over the session: `asked` starts over at each prompt.
+  askedAll?: Record<string, number>
   // The main loop's context per model request, oldest first; a drop is a compaction.
   ctx: number[]
   cacheRead: number
@@ -157,7 +170,7 @@ export type Insights = {
   lastTokens?: number
 }
 
-export type LogLine = { at: number; who: string; what: string; result: string }
+export type LogLine = { at: number; who: string; what: string; result: string; agentId?: string }
 
 // `ok` is missing on notes kept by older versions, which kept only objections.
 // `ref` names the request a note is about. `text` holds the gaps, one per line; `fix` what would settle them.
@@ -167,16 +180,20 @@ export type Note = { kind: 'done' | 'check'; ok?: boolean; text: string; fix?: s
 export type View = 'git' | 'shell' | 'mcp'
 
 // `result` is `running` from the moment the call starts until it reports back; `error` holds its error text.
-export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string }
+export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string; agentId?: string }
+
+// Every tool call of the session, for the web view's waterfall; `ms` once it reported back.
+export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; ms?: number; isFailed?: boolean; error?: string; agentId?: string }
 
 export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
 // The last run of one kind of check: `unknown` when its exit status could not be read (a pipe, a denial).
 // A test run also says where it ran (`dir`, relative to the project, absent at its root) and, when the summary said, how many tests ran and were skipped.
-export type Check = { kind: CheckKind; command: string; who: string; at: number; result: 'running' | 'ok' | 'failed' | 'unknown'; dir?: string; ran?: number; skipped?: number }
+export type Check = { kind: CheckKind; command: string; who: string; at: number; result: 'running' | 'ok' | 'failed' | 'unknown'; dir?: string; ran?: number; skipped?: number; greenAt?: number }
 
 // Files the session read and edited successfully; `editedAt` is the last successful edit, to tell stale checks.
-export type Files = { read: string[]; edited: string[]; editedAt: number }
+// `editedTimes` says when each edited path last changed; missing in state from older versions.
+export type Files = { read: string[]; edited: string[]; editedAt: number; editedTimes?: Record<string, number> }
 
 // `model` is the one the caller ran on, when known.
 export type LastCall = { tool: string; what: string; who: string; model?: string; at: number }
@@ -186,7 +203,7 @@ export type LastCall = { tool: string; what: string; who: string; model?: string
 // `mode` is unused since the flow view was dropped; kept so older stores load.
 // `isChangelogOpen` folds out a newer release's notes under the header.
 // `isAgentsOpen` lists every running subagent once more than four run; `isClassic`, set by `v`, beats the `layout` option.
-export type Layout = { isHistoryOpen: boolean; isDetailed: boolean; dismissed?: string[]; mode?: 'radar' | 'flow'; isChangelogOpen?: boolean; isAgentsOpen?: boolean; isClassic?: boolean }
+export type Layout = { isHistoryOpen: boolean; isPaneHidden?: boolean; isDetailed: boolean; dismissed?: string[]; mode?: 'radar' | 'flow'; isChangelogOpen?: boolean; isAgentsOpen?: boolean; isClassic?: boolean }
 
 // One tool call by category and time, for the calls-per-minute rate.
 export type Flow = { cat: string; at: number }
@@ -211,7 +228,7 @@ export type Advisor = {
 }
 
 // A tool call that has started and not yet finished; `isAsking` while it waits for the person's approval.
-export type Active = { id: string; who: string; model?: string; tool: string; what: string; startedAt: number; isAsking?: boolean }
+export type Active = { id: string; who: string; model?: string; tool: string; what: string; startedAt: number; isAsking?: boolean; agentId?: string }
 
 // The session's own task list (TaskCreate/TaskUpdate or TodoWrite), as the calls left it.
 // `at` is when a call last changed it.
@@ -225,6 +242,45 @@ export type TestLine = { before?: string; after?: string }
 export type TestEdit = { path: string; removed: number; skips: number; at: number; changed?: number; lines?: TestLine[] }
 export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: number; skipped: number; ranNow: number; skippedNow: number }[]; isGreen: boolean }
 
+// One turn on the web view's clock; `isLive` while it still runs.
+export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean; prompt?: string }
+
+export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean }
+
+// What a session posts to the web view's server. The page draws from this alone; change `v` when a field changes meaning.
+export type WebSnapshot = {
+  v: 1
+  session: { id: string; cwd: string; branch?: string }
+  now: number
+  lang: string
+  labels: Record<string, unknown>
+  main: Main
+  // The mod's version and commit, as in the pane's header. Absent from a session of an older version.
+  build?: string
+  // Absent from a session of an older version, which cannot take the page's request.
+  isPaneOpen?: boolean
+  focus: WebFocus[]
+  usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number }
+  turns: WebTurn[]
+  turnCount: number
+  active: Active[]
+  calls: Call[]
+  // Absent from a session of an older version, like `isPaneOpen`.
+  trace?: TraceCall[]
+  // `dropped` is already in the session's language. Absent from a session of an older version.
+  testReview?: { files: TestEdit[]; dropped: string[]; isGreen: boolean }
+  agents: Card[]
+  checks: Check[]
+  files: Files
+  log: LogLine[]
+  tasks: Task[]
+  // All but the first three are absent from a session of an older version.
+  insights: Pick<Insights, 'slow' | 'big' | 'tokens'> & Partial<Pick<Insights, 'reads' | 'edits' | 'sizes' | 'breakdown' | 'mcpTokens' | 'memoryTokens' | 'session' | 'sessionWall' | 'askedAll'>>
+  // The last done gate result. Absent from a session of an older version.
+  gate?: { ok: boolean; text: string; isSent: boolean; at: number } | null
+  learned: { bench: BenchRow[] }
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'agentmon-live': {
@@ -236,6 +292,7 @@ declare module 'claude-code' {
       stats: Stats
       calls: Call[]
       testReview: TestReview
+      trace: TraceCall[]
       view: View
       active: Active[]
       checks: Check[]

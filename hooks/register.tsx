@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Card, Check, CheckKind, LogLine, Task, TurnTime } from '../types'
+import type { Card, Check, CheckKind, Files, LogLine, Task, TurnTime } from '../types'
 import { addNote } from './advisor'
 import { isDoc, parseTestRules, testCfg } from './gate'
 import { book, newClock, snapshot } from './clock'
@@ -13,14 +13,15 @@ import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { build, checkRelease, refreshBase, watchBase } from './release'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
-import { brief, decimal, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf } from './format'
+import { brief, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
-import { drawPane } from './render'
+import { drawBand, drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadOptions } from './options'
+import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
 import type { View } from '../types'
 
 
@@ -32,6 +33,11 @@ const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const,
 const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
+const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
+const KEEP_TRACE = 500
+const TRACE_TEXT = 300
+const AGENT_PROMPT = 500
+const TURN_PROMPT = 120
 const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
@@ -59,6 +65,19 @@ let reconciledAt = 0
 let isBaseWatched = false
 // How often the redraw loop asks the engine which agents still run.
 const RECONCILE_MS = 5000
+
+// A new run replaces its check: the pass before it stays known until this one ends.
+function greenOf(all: readonly Check[], kind: Check['kind']): { greenAt?: number } {
+  const old = all.find(c => c.kind === kind)
+  const at = old?.result === 'ok' ? old.at : old?.greenAt
+  return at === undefined ? {} : { greenAt: at }
+}
+
+function editedFiles(f: Files, path: string, at: number): Files {
+  const edited = [...f.edited.filter(p => p !== path), path].slice(-200)
+  const times = { ...f.editedTimes, [path]: at }
+  return { ...f, edited, editedAt: at, editedTimes: Object.fromEntries(edited.flatMap(p => (times[p] === undefined ? [] : [[p, times[p]]]))) }
+}
 
 function category(tool: string, call: object): Category {
   if (tool === 'Bash' && gitCommand(String((call as { command?: unknown }).command ?? ''))) return 'git'
@@ -225,7 +244,7 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
     // The turn is learned from even when the engine gives no usage: the tallies and gaps are the session's own.
     const m = await read($, main)
     const fable = (await read($, advisor)).calls
-    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined })
+    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined, totalUsd: u?.cost?.usd })
   })
 }
 
@@ -267,7 +286,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'agentmon',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|learn|memory|debug]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|open|learn|memory|debug]`,
     })
     cwd = e.cwd
     turn.root = cwd
@@ -312,7 +331,7 @@ export const register: Register = on => {
       update($, calls, list => list.map(c => (c.result === 'running' ? { ...c, result: t.unknown } : c))),
       update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
-    void $.ui.open({ id: PANE, title: 'AgentMon Live' })
+    if (!(await read($, layout)).isPaneHidden) void $.ui.open({ id: PANE, title: 'AgentMon Live' })
     // Reading the build and the status line need not hold up the session.
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
@@ -323,6 +342,7 @@ export const register: Register = on => {
         isBaseWatched = true
         void watchBase($, cwd, cfg.baseMinutes, cfg.isFetching).catch(() => undefined)
       }
+      void startWeb($, cwd).catch(() => undefined)
       // Learning is extra: an engine without a store or session id leaves the rest working.
       await startLearning($, cwd).catch(() => undefined)
       const kept = (await $.session.id().then(id => $.store.get(`active:${id}`)).catch(() => undefined)) as { at?: unknown; tokens?: unknown } | undefined
@@ -336,6 +356,14 @@ export const register: Register = on => {
   }).catch(($, e, next) => failOpen($, 'session.start', next.error, () => next(e)))
 
   // Plan-window readings, kept for their pace; a new `resetsAt` is a new window.
+  on('session.end', async ($, e, next) => {
+    const r = await next(e)
+    await stopWeb($, e.sessionId).catch(() => undefined)
+    // After `/clear` no session.start follows, and a closed pane's button must come back.
+    $.ui.invalidate('ui.render')
+    return r
+  }).catch(($, e, next) => failOpen($, 'session.end', next.error, () => next(e)))
+
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('rateLimits')) {
       const at = await $.clock.now()
@@ -367,6 +395,11 @@ export const register: Register = on => {
       $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
       return { text: t.checking }
     }
+    if (arg === 'open') {
+      if (!cfg.webOn) return { text: cfg.web ? t.web.nextSession : t.web.off }
+      if (!cfg.webUrl) return { text: t.web.failed }
+      return { text: (await openBrowser($)) ? t.web.opened(cfg.webUrl) : t.web.noBrowser(cfg.webUrl) }
+    }
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
     if (arg === 'memory') return { text: await memoryCommand($) }
@@ -380,11 +413,12 @@ export const register: Register = on => {
     const v = VIEWS.find(x => x === arg.toLowerCase())
     if (v) {
       await update($, view, () => v)
-      await $.ui.open({ id: PANE, title: 'AgentMon Live' })
+      await setPane($, true)
       return { text: `AgentMon Live: ${t.cat[v]}` }
     }
     if (CLEAR_ARGS.includes(arg)) {
       forgetSizes()
+      forgetTurns()
       // History goes; running and waiting agents and calls in flight stay.
       await Promise.all([
         update($, tools, () => ({})),
@@ -392,6 +426,7 @@ export const register: Register = on => {
         update($, log, () => []),
         update($, stats, () => ({ errors: {}, compactions: 0, streak: 0 })),
         update($, calls, () => []),
+        update($, trace, () => []),
         update($, checks, () => []),
         update($, files, () => ({ read: [], edited: [], editedAt: 0 })),
         update($, lastCall, () => null),
@@ -407,7 +442,7 @@ export const register: Register = on => {
       await refreshStatus($)
       return { text: t.cleared }
     }
-    await $.ui.open({ id: PANE, title: 'AgentMon Live' })
+    await setPane($, true)
     return { text: t.opened }
   }).catch(($, e, next) => ({ text: `agentmon-live: the command failed (${next.error.message ?? next.error.kind})` }))
 
@@ -440,6 +475,7 @@ export const register: Register = on => {
       const turnAt = turn.startedAt
       void debug($, 'turn.start', { prompt_chars: e.text.length, isFix })
       clk = newClock(turnAt, true)
+      clk.prompt = turn.prompt.slice(0, TURN_PROMPT)
       await Promise.all([
         update($, stats, s => ({ ...s, streak: 0 })),
         update($, main, v => ({ ...v, turnAt, turnLive: true })),
@@ -450,7 +486,7 @@ export const register: Register = on => {
       // A finished agent that gets a new message runs again.
       const id = e.agentId
       const startedAt = await $.clock.now()
-      await update($, agents, list => list.map(a => (a.id === id && !isLive(a) ? { ...a, status: 'running' as const, startedAt, tests: undefined, testsWhy: undefined } : a)))
+      await update($, agents, list => list.map(a => (a.id === id && !isLive(a) ? { ...a, status: 'running' as const, startedAt, endedAt: undefined, tests: undefined, testsWhy: undefined } : a)))
     }
     return next(e)
   }).catch(($, e, next) => failOpen($, 'turn.start', next.error, () => next(e)))
@@ -514,6 +550,7 @@ export const register: Register = on => {
         : {}),
       ...(!isMain ? { tokens: { ...v.tokens, agentsIn: v.tokens.agentsIn + total, agentsOut: v.tokens.agentsOut + u.output_tokens } } : {}),
     })))
+    if (u && !isMain) $.clock.after(0, () => update($, agents, list => list.map(a => (a.id === agentId ? { ...a, input: a.input + total, output: a.output + u.output_tokens, cached: (a.cached ?? 0) + u.cache_read_input_tokens, usd: (a.usd ?? 0) + (priceUsd(e.model, u) ?? 0) } : a))))
     return r
   }).catch(async function* ($, e, next) {
     logFailure($, 'turn.step', next.error)
@@ -565,12 +602,13 @@ export const register: Register = on => {
     await Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
-      update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt }]).then(() => (tick($), pulse($))),
-      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running' }].slice(-60)),
+      update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt, ...(id === undefined ? {} : { agentId: id }) }]).then(() => (tick($), pulse($))),
+      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
+      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...(id === undefined ? {} : { agentId: id }) }].slice(-KEEP_TRACE)),
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
-          ...found.map(f => ({ kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const, ...(f.kind === 'test' && scopeDir ? { dir: scopeDir } : {}) })),
+          ...found.map(f => ({ ...greenOf(all, f.kind), kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const, ...(f.kind === 'test' && scopeDir ? { dir: scopeDir } : {}) })),
         ]),
     ])
     queueStatus($)
@@ -598,6 +636,7 @@ export const register: Register = on => {
       await Promise.all([
         update($, active, all => all.filter(a => a.id !== callId)),
         ran === undefined && tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: t.unknown } : c))),
+        ran === undefined && $.clock.now().then(end => update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: end - startedAt, isFailed: true } : c)))),
         ran === undefined && found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: 'unknown' as const } : c))),
       ])
     }
@@ -674,16 +713,18 @@ export const register: Register = on => {
             errors: r.isError ? { ...v.errors, [cat]: (v.errors[cat] ?? 0) + 1 } : v.errors,
             streak: isMain ? (r.isError ? (v.streak ?? 0) + 1 : 0) : v.streak,
           })),
+        failed && e.agentId !== undefined && update($, agents, all => all.map(a => (a.id === e.agentId ? { ...a, errors: (a.errors ?? 0) + 1 } : a))),
         update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
         update($, flow, all => [...all, { cat, at }].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
+        update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}) } : c))),
         found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
         !failed && sized && recordSize($, sized),
         touched &&
           update($, files, f =>
             cat === 'edit'
-              ? { ...f, edited: [...f.edited.filter(p => p !== touched), touched].slice(-200), editedAt: at }
+              ? editedFiles(f, touched, at)
               : { ...f, read: [...f.read.filter(p => p !== touched), touched].slice(-200) },
           ),
         update($, insights, v => {
@@ -734,7 +775,7 @@ export const register: Register = on => {
         asking.isAsking = true
       }
       const askKey = `${e.tool} ${brief((e.input ?? {}) as object)}`.trim().slice(0, 60)
-      await update($, insights, s => ({ ...s, asked: bump(s.asked, askKey) }))
+      await update($, insights, s => ({ ...s, asked: bump(s.asked, askKey), askedAll: bump(s.askedAll ?? {}, askKey) }))
     }
     return v
   }).catch(($, e, next) => failOpen($, 'tool.check', next.error, () => next(e)))
@@ -781,6 +822,8 @@ export const register: Register = on => {
       model: r.model,
       effort: effort ?? m.effort,
       task: mask(e.description),
+      callId: e.tool_use_id,
+      prompt: mask(e.prompt).slice(0, AGENT_PROMPT),
       status: 'running',
       files: 0,
       tools: 0,
@@ -792,7 +835,7 @@ export const register: Register = on => {
     await update($, agents, list => trimAgents([...list, card]))
     tick($)
     pulse($)
-    await addLog($, { who: e.subagentType, what: card.task, result: t.started })
+    await addLog($, { who: e.subagentType, what: card.task, result: t.started, agentId: r.agentId })
     await refreshStatus($)
     return r
   }).catch(($, e, next) => failOpen($, 'agent.spawn', next.error, () => next(e)))
@@ -800,22 +843,18 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId !== undefined) {
       const id = e.agentId
-      const u = e.usage
       const tests = testsOf(e.answer)
       const why = tests === 'FAIL' ? mask(failLine(e.answer) ?? '') || undefined : undefined
       const endedAt = await $.clock.now()
       turn.delegated += 1
       const status: Card['status'] = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'cancelled' : 'error'
       seenStep.delete(id)
-      filesByAgent.delete(id)
       const list = await update($, agents, all =>
         trimAgents(all.map(a =>
           a.id === id
             ? {
                 ...a,
                 status,
-                input: u ? u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens : a.input,
-                output: u?.output_tokens ?? a.output,
                 tests: tests ?? a.tests,
                 testsWhy: tests ? why : a.testsWhy,
                 endedAt,
@@ -826,9 +865,9 @@ export const register: Register = on => {
       const card = list.find(a => a.id === id)
       if (card) {
         if (tests) {
-          await addLog($, { who: card.type, what: tests.startsWith('PASS') ? t.testsPassed : t.testsFailed, result: `${tests} (${t.reported})` })
+          await addLog($, { who: card.type, what: tests.startsWith('PASS') ? t.testsPassed : t.testsFailed, result: `${tests} (${t.reported})`, agentId: id })
         }
-        await addLog($, { who: card.type, what: t.doneAfter(decimal(e.durationMs / 1000)), result: t.filesTools(card.files, card.tools) })
+        await addLog($, { who: card.type, what: t.doneAfter(took(e.durationMs)), result: t.filesTools(card.files, card.tools), agentId: id })
       }
       await refreshStatus($)
     } else {
@@ -863,6 +902,7 @@ export const register: Register = on => {
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
     const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
     if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
+    if (found.judged) await addLog($, { who: t.gateLog.who, what: workRef(), result: found.lines.length === 0 ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
     void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
     // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
     void saveDebugLog($)
@@ -895,4 +935,12 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, drawPane)
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => drawBand($, e, await next(e))).catch(($, e, next) => failOpen($, 'ui.render', next.error, () => next(e)))
+
+  // The close mark or `ctrl+x x` hides the pane like the pane's own button, so it stays closed after a module reload.
+  on('ui.close', async ($, e, next) => {
+    const closed = await next(e)
+    if (e.id === PANE && e.origin.kind === 'person') await update($, layout, l => ({ ...l, isPaneHidden: true }))
+    return closed
+  }).catch(($, e, next) => failOpen($, 'ui.close', next.error, () => next(e)))
 }

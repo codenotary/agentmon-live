@@ -31,6 +31,10 @@ h: history   d: details
 
 [![AgentMon Live demo: the done gate catches a failing test before Claude stops](docs/demo.png)](https://asciinema.org/a/1270436)
 
+![AgentMon Live web view: gauges, agent flow, turn waterfall, events, tool calls and a subagent table in collapsible sections, with a navigation rail on the right](docs/web-view.png)
+
+The web view needs `node` on your `PATH`, which Claude Code does not include. Everything else works without it.
+
 ## Why you want it
 
 - **No more "all tests pass" when they don't.** Before Claude stops, the done gate checks what really happened: failed or stale tests, test runs that ran no tests, tests deleted or skipped after an edit (when the task edited tests itself, a review item beside the green run instead), edited packages no test reached, open todos, failing subagents. Anything unfinished goes back to Claude once. Fable, a second model that never writes code, checks that every part of your request got an answer.
@@ -38,6 +42,7 @@ h: history   d: details
 - **It tells you when to step in.** Focus raises what needs you: a waiting approval, a failure loop (the same call, or the same error behind different calls), context near compaction, a stuck subagent, a cold prompt cache, a base branch that changed the files you are editing. Press `i` and it drafts the follow-up question for you.
 - **Spend less.** See where time and tokens go, which MCP servers you load but never use, and when `/clear` or `/compact` would save you money.
 - **It learns your project.** It remembers flaky tools, recurring errors, compaction points, how long turns usually run, heavy habits and what the done gate keeps catching across sessions, and checks your CLAUDE.md and memory files for drift.
+- **Room to read it all.** Press `o` for the same session in your browser: an agent flow chart of who started whom, a waterfall for the time you pick on it, a subagent table with health dots that puts the worst first, every tool call sortable and filterable, what fills the context, time blocked on you, repeated approvals, the done gate's verdict, files changed since the last passing test, a searchable log with your prompts, and every running session in one tab. Each section folds, and each widget has an `i` that explains it. Local only, read-only.
 - **Proof, not vibes.** `/agentmon bench` compares your sessions with and without the mod.
 
 Speaks English, German, French, Spanish, Chinese and Japanese, and follows your terminal's language (`LC_ALL`, `LC_MESSAGES`, `LANG`).
@@ -87,9 +92,11 @@ Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn t
 | `h` | Fold the history |
 | `a` | Fold out all running subagents, past four |
 | `v` | Switch between the calm and classic layout |
+| `o` | Open the web view in your browser |
+| `p` | Hide the pane; a button above the prompt brings it back |
 | `c` | Run the done-gate check now |
 
-Commands: `/agentmon`, `advisor`, `check`, `learn`, `memory`, `bench`, `debug`, `clear`.
+Commands: `/agentmon`, `advisor`, `check`, `open`, `learn`, `memory`, `bench`, `debug`, `clear`.
 
 ## More
 

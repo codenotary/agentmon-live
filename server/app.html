@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="agentmon-source" content="d2cc0a05ad517fe8a85573d0aadaf99bdefd06cc5220f125e7f05ea7160a1ec1">
+<meta name="agentmon-built" content="250378b56bbf0fd95dd513c5e5766eedb6f77da0d7598f282a037d5c925679a4">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentMon Live</title>
+<script>
+// Before the first paint, so the theme never flashes the other one. Dark unless a person chose otherwise.
+let t = null
+try { t = localStorage.getItem('agentmon-live-theme') } catch {}
+if (t !== 'auto') document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark'
+</script>
+  <script type="module" crossorigin src="/app.js"></script>
+  <link rel="modulepreload" crossorigin href="/vendor.js">
+  <link rel="stylesheet" crossorigin href="/app.css">
+</head>
+<body>
+<div id="app"></div>
+</body>
+</html>

@@ -20,6 +20,7 @@ npx -p typescript tsc --noEmit -p .
 | `hooks/done.ts` | The done gate's material, checks and per-turn state |
 | `hooks/clock.ts` | The turn clock: where a turn's time went |
 | `hooks/release.ts` | Build label, release check and base-branch watch |
+| `hooks/web.ts`, `server/web.mjs`, `web/` (builds `server/app.html`, `app.js`, `vendor.js`, `app.css`) | The web view: publisher, local server, page |
 | `hooks/render.tsx` | The pane |
 | `hooks/insights.ts` | The Focus rules and their thresholds, time and context helpers |
 | `hooks/learn.ts`, `hooks/learning.ts`, `hooks/bench.ts` | What is learned across sessions: the pure rules, the store and commands, and the self benchmark |
@@ -32,6 +33,31 @@ npx -p typescript tsc --noEmit -p .
 ### Check the log cleanup
 
 `scripts/prune-check.sh` runs the debug log's delete step on a temp folder and checks what is left. The test kit has no real file system, so this is not part of `claude plugin test`.
+
+### Work on the web view
+
+The server has no build step. The page does: its source is in `web/` (React, Tailwind, Radix), and `npm run build` turns it into the committed `server/app.html`, `app.js`, `app.css` and `vendor.js`, so users install nothing. The libraries sit in `vendor.js`, so a change to the page alone leaves that file as it is, unless it starts using another part of a library. Never edit these files by hand. A test fails if the page is older than its source.
+
+```sh
+cd web && npm ci && npm run build
+```
+
+To draw the page from the fixture, with no session:
+
+```sh
+node server/web.mjs serve 47390 --fixture tests/fixtures/snapshot.json
+```
+
+Then open `http://127.0.0.1:47390/`. With that server running, `npm run dev` in `web/` serves the page with hot reload. To watch live motion, `node scripts/web-demo.mjs` posts two changing sessions.
+
+Server tests run with `node --test 'tests/web/*.test.mjs'`, because `claude plugin test` has no Node. For screenshots in light, dark, at phone width, with the palette and with a call's details open, which also report script errors, sideways scrolling, broken navigation (rail links, back button, deep links, the `/` key) and widgets without help:
+
+```sh
+npm i --no-save playwright && npx playwright install chromium
+node scripts/web-shot.mjs <out dir>
+```
+
+The page follows the AgentMon design system (https://claude.ai/artifact/3vpEcGbEDi73UHnbk9dCH3, synced from `frontend/design-system` in `agentmon-teams`), and where the two differ, what `frontend/central` in `agentmon-teams` actually draws: the white ground, the larger rail, the unboxed numbers. `npm run build` also replaces a running server on the default port, because a server otherwise keeps the page it started with until a new session starts. The tokens in `web/src/theme.css` are copied from its `tokens.json`; update them by hand when it changes. Three values differ on purpose, because the system's own README flags them as missing contrast: light success and warning, and dark tertiary text. Strings stay in six languages though the system says English only, because the mod follows the session's language. `toSnapshot` in `hooks/web.ts` is the only code that knows both the state's and the page's shapes.
 
 ### See the pane from a script
 

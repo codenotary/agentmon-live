@@ -13,6 +13,7 @@ export type TurnClock = {
   buckets: Record<string, number>
   ctxStart?: number
   ctxEnd?: number
+  prompt?: string
 }
 
 export function newClock(now: number, inTurn: boolean): TurnClock {
@@ -41,5 +42,5 @@ export function book(c: TurnClock, now: number) {
 }
 
 export function snapshot(c: TurnClock): TurnTime {
-  return { startedAt: c.startedAt, wallMs: c.since - c.startedAt, buckets: { ...c.buckets }, steps: c.steps, ctxStart: c.ctxStart, ctxEnd: c.ctxEnd, mode: clockMode(c), since: c.since }
+  return { startedAt: c.startedAt, wallMs: c.since - c.startedAt, buckets: { ...c.buckets }, steps: c.steps, ctxStart: c.ctxStart, ctxEnd: c.ctxEnd, mode: clockMode(c), since: c.since, ...(c.prompt === undefined ? {} : { prompt: c.prompt }) }
 }

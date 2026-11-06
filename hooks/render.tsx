@@ -5,10 +5,11 @@ import type { Card, Check, Note } from '../types'
 import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
-import { cfg, INIT, isLive, listening, liveStatus, liveTurn, rank, shapeInsights, VIEWS } from './state'
+import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
+import { openBrowser, setPane } from './web'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -50,6 +51,19 @@ async function dismissFocus($: EngineInterface, keys: readonly string[]) {
   if (keys.some(isReview)) await update($, testReview, () => INIT.testReview)
 }
 
+// A pane not on screen leaves one button above the prompt to bring it back, under what other mods draw there. The engine's panes decide, not the flag: `/clear` empties the state, and a pane too wide for the terminal waits unplaced. Reading the layout redraws this on a hide.
+export async function drawBand($: EngineInterface, e: RenderInput<'AbovePrompt'>, beneath: RenderElement) {
+  const [, panes] = await Promise.all([read($, layout), $.ui.panes().catch(() => [])])
+  if (e.props.hasSurvey || panes.some(x => x.id === PANE && x.isPlaced)) return beneath
+  const { Box, Button } = $.ui.resolve(e)
+  return (
+    <Box flexDirection="column">
+      {beneath}
+      <Button key="pane:show" plain hotkey="p" onPress={() => setPane($, true)}>{`▸ AgentMon Live · ${cfg.t.paneShow}`}</Button>
+    </Box>
+  )
+}
+
 // With a refresh rate, while work runs a change redraws the pane at the next period boundary; a key press, a resize,
 // `c` or a clear (both write the advisor), a new urgent item and an idle pane redraw at once. A frame kept skips the other reads, so their writes do not redraw it;
 // register.tsx's pulse, on each boundary, draws the next one.
@@ -70,7 +84,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 // Order, as the review asks: needs attention, running now, changes and verification, usage, then the folding history.
 async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
-  const { Box, Button, Text } = $.ui.resolve(e)
+  const { Box, Button, Link, Text } = $.ui.resolve(e)
   const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt, reviewed] = await Promise.all([
     read($, main),
     read($, tools),
@@ -661,6 +675,14 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       <Button key="layout:switch" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, isClassic: !(l.isClassic ?? cfg.isClassic) }))}>
         {`◐ ${isClassic ? t.layoutClassic : t.layoutCalm}`}
       </Button>
+      {cfg.webOn && cfg.webUrl && (
+        <Button key="web:open" plain hotkey="o" onPress={() => openBrowser($).then(isOpen => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(cfg.webUrl ?? ''))))}>
+          {t.web.open}
+        </Button>
+      )}
+      <Button key="pane:hide" plain hotkey="p" onPress={() => setPane($, false)}>{`◂ ${t.paneHide}`}</Button>
+      {/* Narrower, the address wraps the header row; `o` still opens it. */}
+      {cfg.webOn && cfg.webUrl && cols >= 130 && <Link href={cfg.webUrl}>{cfg.webUrl}</Link>}
       {release && (
         <Button key="update" plain hotkey="u" onPress={() => investigate(t.promptUpdate(cfg.version, release.version))}>
           {t.update}

@@ -28,10 +28,13 @@ const PANE = {
 } as const
 
 // The engine answers every test needs; a test adds its own hooks after. Returns the last status line set.
-function engine(on: On, draft = '') {
+function engine(on: On, draft = '', onOpen = () => {}) {
   let status = ''
   on('command.register', () => ({ value: { command: 'agentmon' } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', () => {
+    onOpen()
+    return { value: { isPlaced: true } }
+  })
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -267,11 +270,11 @@ test('running agents are never trimmed', async ($, on) => {
   on('turn.complete', (_, e) => ({ text: e.answer }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 65; i++) {
     await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}` })
     if (i > 0) await $.turn.complete({ ...DONE, agentId: `a${i}` })
   }
-  expect(status()).toMatch(/subagents \[1\/13\]/)
+  expect(status()).toMatch(/subagents \[1\/61\]/)
 })
 
 test('clear keeps running agents and drops history', async ($, on) => {
@@ -293,6 +296,7 @@ test('clear keeps running agents and drops history', async ($, on) => {
 })
 
 test('an advisor answer that arrives after a clear is dropped', async ($, on) => {
+  withOptions(on, { web: 'off' })
   const clock = mock.clock(on)
   const toasts: string[] = []
   engine(on)
@@ -659,6 +663,7 @@ test('check now asks Fable at once, from the button and the command', async ($, 
 })
 
 test('an advisor answer that arrives after a reload is dropped', async ($, on) => {
+  withOptions(on, { web: 'off' })
   const clock = mock.clock(on)
   const toasts: string[] = []
   engine(on)
@@ -1020,6 +1025,30 @@ test('clear empties the task list and the skills', async ($, on) => {
   await ui.unmount()
 })
 
+test('a marketplace install has no .git: the commit comes from the install record', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('env.get', () => ({ value: '/h' }))
+  let root = ''
+  on('fs.read', (_, e) => {
+    if (e.path.endsWith('/.claude-plugin/plugin.json')) {
+      root = e.path.replace('/.claude-plugin/plugin.json', '')
+      return { value: '{ "name": "agentmon-live", "version": "0.6.0" }' }
+    }
+    if (e.path.endsWith('/plugins/installed_plugins.json')) {
+      const entry = (installPath: string, sha: string) => ({ installPath, gitCommitSha: sha.repeat(40) })
+      return { value: JSON.stringify({ plugins: { 'other@x': [entry('/other', 'a')], 'agentmon-live@agentmon-live': [entry(root, 'b')] } }) }
+    }
+    throw new Error('ENOENT')
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^ 0\.6\.0 · bbbbbbb$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('in a worktree the header names only the version', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
@@ -1341,4 +1370,76 @@ test('calm: with nothing in Focus, i still reaches the slowest call', async ($, 
   await ui.press({ key: 'layout:switch' })
   expect(await ui.find({ type: 'Button', key: 'investigate:slowest' })).toBe(undefined)
   await ui.unmount()
+})
+
+const BAND = { plugin: 'agentmon-live', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} } } as const
+
+function hiddenEngine(on: On) {
+  const pane = { isOpen: false, isPlaced: true }
+  mock.clock(on)
+  engine(on, '', () => {
+    pane.isOpen = true
+  })
+  // Stands for the engine's own band and pane, beneath the mod.
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>beneath</Text>
+  })
+  on('ui.close', () => {
+    pane.isOpen = false
+    return { value: undefined }
+  })
+  on('ui.panes', () => ({ value: (pane.isOpen ? [{ id: 'agentmon-live', isPlaced: pane.isPlaced }] : []) as never }))
+  return pane
+}
+
+test('p hides the pane, and a button above the prompt brings it back', async ($, on) => {
+  const pane = hiddenEngine(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const band = await $.ui.mount(BAND)
+  expect(await band.find({ key: 'pane:show' })).toBe(undefined)
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'pane:hide' })
+  await ui.unmount()
+  expect(pane.isOpen).toBe(false)
+  expect(await band.find({ key: 'pane:show' })).toBeTruthy()
+  await band.press({ key: 'pane:show' })
+  expect(pane.isOpen).toBe(true)
+  expect(await band.find({ key: 'pane:show' })).toBe(undefined)
+  await band.unmount()
+})
+
+test('a pane closed with no flag set gets the button, as after /clear, under what other mods draw', async ($, on) => {
+  const pane = hiddenEngine(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  pane.isOpen = false
+  const band = await $.ui.mount(BAND)
+  expect(await band.find({ key: 'pane:show' })).toBeTruthy()
+  expect(await band.find({ type: 'Text', text: 'beneath' })).toBeTruthy()
+  await band.unmount()
+})
+
+test('a pane waiting for a wider terminal gets the button', async ($, on) => {
+  const pane = hiddenEngine(on)
+  pane.isPlaced = false
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(pane.isOpen).toBe(true)
+  const band = await $.ui.mount(BAND)
+  expect(await band.find({ key: 'pane:show' })).toBeTruthy()
+  await band.unmount()
+})
+
+test('a hidden pane stays hidden through a new start, and a survey keeps the band', async ($, on) => {
+  hiddenEngine(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'pane:hide' })
+  await ui.unmount()
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const again = await $.ui.mount(BAND)
+  expect(await again.find({ key: 'pane:show' })).toBeTruthy()
+  await again.unmount()
+  const survey = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true } })
+  expect(await survey.find({ key: 'pane:show' })).toBe(undefined)
+  await survey.unmount()
 })

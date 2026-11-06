@@ -1,0 +1,1075 @@
+{
+  "v": 1,
+  "session": {
+    "id": "fixture",
+    "cwd": "/home/dev/github/agent-radar",
+    "branch": "browser-screen"
+  },
+  "now": 1793803000000,
+  "lang": "en",
+  "labels": {
+    "page": {
+      "disconnected": "Disconnected from the session server. Trying again…",
+      "noSessions": "No session is running. Start Claude Code and this page fills in.",
+      "update": "This session runs a different AgentMon Live version. Update it to see everything here.",
+      "tokensIn": "in",
+      "tokensOut": "out",
+      "context": "Context",
+      "quota": "7-day quota",
+      "cost": "Session cost",
+      "turns": "Turns",
+      "running": "Running now",
+      "turnClock": "Where each turn went",
+      "toolCalls": "Tool calls",
+      "when": "When",
+      "who": "Who",
+      "what": "What",
+      "result": "Result",
+      "subagents": "Subagents",
+      "insights": "Insights",
+      "slow": "Slowest calls",
+      "big": "Largest results",
+      "tasks": "Tasks",
+      "log": "Session log",
+      "search": "Search the log",
+      "sessions": "Sessions",
+      "calls": "Calls",
+      "call": "Call",
+      "listAll": "Show all",
+      "listFewer": "Show fewer",
+      "errors": "Errors",
+      "none": "Nothing yet.",
+      "live": "live",
+      "idle": "idle",
+      "quota5h": "5-hour quota",
+      "cacheHit": "Cache hit",
+      "relOf": "{a} of {b}",
+      "ofTypical": "{pct}% of typical {v}",
+      "onPace": "on pace",
+      "aheadOfPace": "ahead of pace",
+      "ofInputTokens": "of input tokens",
+      "ofSessionTime": "{pct}% of session time",
+      "tokens": "Tokens",
+      "commands": "Commands",
+      "paletteHint": "Type a command…",
+      "jumpTo": "Jump to",
+      "actions": "Actions",
+      "themeAuto": "Theme: system",
+      "themeDark": "Theme: dark",
+      "themeLight": "Theme: light",
+      "copyCwd": "Copy the working directory",
+      "onlyFailures": "Only failures",
+      "showAll": "Show all calls",
+      "filterCalls": "Filter calls",
+      "everyone": "Everyone",
+      "follow": "Follow",
+      "copy": "Copy",
+      "copied": "Copied",
+      "details": "Call details",
+      "error": "Error",
+      "noMatch": "No match.",
+      "verification": "Verification",
+      "files": "Files",
+      "overview": "Overview",
+      "testEdits": "Test files edited",
+      "assertsRemoved": "assertions removed",
+      "assertsChanged": "assertions changed",
+      "skipsAdded": "skips added",
+      "helpInstruments": "Context: how full this session's context window is; near full, Claude compacts the conversation. 5-hour and 7-day quota: how much of your plan's limits is used. Gauges turn yellow at 60% and red at 80%. Session cost: spend so far, with its trend since you opened this page. Turns: prompts answered. Cache hit: share of the main session's input tokens read from the prompt cache; higher is cheaper. Tokens: sent in and out, subagents included. Click Context to see what fills it. Blocked on you: the time turns waited for your approval. Each tile shows its figure against its limit. Cache hit is green when high. Typical is the median of this project's earlier sessions, marked by a tick. The tick on a quota marks an even pace up to its reset. The pins shake slightly while the page is connected: that movement is decoration, the numbers are exact. Until this project has three earlier sessions, cost and turns compare with a fixed guide, in neutral colour.",
+      "helpWaterfall": "Every tool call in the time chosen in the agent flow, in the order it started. A bar shows when the call ran and for how long; a subagent's calls sit under it. Gaps are time the model spent thinking. The slowest call is marked, failures are red and running calls are striped. Click a call for its details.",
+      "helpEvents": "What needs you, such as a waiting approval or a failed test. An item that goes away stays here, marked cleared with its time. The history starts when you open this page.",
+      "helpRunning": "Each tool call running right now, who runs it and for how long.",
+      "helpTurns": "One bar per recent turn, showing where its time went: the model, each kind of tool, and waiting for you. The longest turn sets the scale.",
+      "helpCalls": "The session's recent tool calls: when, who, what and the result. Click a column head to sort, filter with the box and the buttons, and click a row for its details.",
+      "helpInsights": "The calls worth a look: those that took longest, and those whose results were largest in tokens, since large results fill the context. Approvals asked more than once are listed too.",
+      "helpVerification": "The last test, lint, typecheck and build command and how each ended. A dash means it has not run yet. A number is how many tests ran, with (−n) skipped. Hover for the whole command. Test files edited are listed below, with the changed lines. The list stays until you press x on its item in the pane. Some updates are right, so check them. A count says how many files changed after the last passing test run.",
+      "helpTasks": "Claude's to-do list for this session, and how many items are done.",
+      "helpAgents": "One row per subagent: what it does, its type and model, how long it ran, its calls, tokens, cost, errors and files edited. The three dots show its duration, tokens and errors against the session's other subagents: green is fine, amber worth a look, red needs a look. Agents with the worst dots come first, running ones on top; click a column head to sort. More than eight sharing a name before a colon fold into one row. Click a row for the prompt and its calls. Keys: arrows move, Enter opens, Esc closes, f shows the agent's tool calls. FAIL means it reported failing tests; hover for why.",
+      "helpFiles": "What this session edited and read, from successful calls. Edited files are grouped by the last test run: after it, they still need a test; before a passing run, they were in place when it passed, which does not prove a test covers them. ×n counts edits or reads; reads count since the last compaction. New marks a watched source file the session created. Hover for the whole path.",
+      "helpLog": "The session in order: your prompts, tool calls, subagents, test reports, compaction and done gate results. Equal calls in a row merge into ×n; a failed call always keeps its own row. The bars show activity over time, red where a call failed; click one to go there. Filter with the buttons or press / to search. Click a call for its details. Follow keeps the newest line in view.",
+      "events": "Events",
+      "cleared": "cleared",
+      "paneHide": "Hide the pane in Claude Code",
+      "paneShow": "Show the pane in Claude Code",
+      "waterfall": "Turn waterfall",
+      "agentColumn": "Agent",
+      "elapsed": "Elapsed",
+      "costColumn": "Cost",
+      "health": "Health",
+      "duration": "Duration",
+      "agentsWord": "agents",
+      "started": "Started",
+      "ended": "ended",
+      "model": "Model",
+      "turn": "Turn",
+      "cached": "cached",
+      "showCalls": "Show calls",
+      "copySummary": "Copy summary",
+      "levelGood": "fine",
+      "levelWarn": "worth a look",
+      "levelBad": "needs a look",
+      "flow": "Agent flow",
+      "hideFinished": "Hide finished",
+      "flowNow": "now",
+      "spawned": "spawned",
+      "handedBack": "handed back",
+      "helpFlow": "One lane for the main session and one per subagent, a dot per call. Curves show who started whom and when an agent handed back. Failed calls are red, a call waiting for you has an amber ring, and dashed lines mark test, lint, typecheck and build runs. Drag on the strip on top to choose a time; the waterfall below shows the same time, and Follow keeps it at the present. Click a dot for its details and a name to open that agent and filter Tool calls to it. Keys, with the chart focused: arrows move the time, [ and ] shrink and grow it, Home goes to the start, End follows. It stays folded while no subagent runs; the arrow opens it. It redraws every 3 seconds and holds still under the pointer. A mark with a number lists its calls.",
+      "nothingRunning": "Nothing running.",
+      "needsAttention": "Needs attention",
+      "noFilesEdited": "No files edited yet",
+      "blockedOnYou": "Blocked on you",
+      "contextParts": "What fills the context",
+      "mcpTools": "MCP tools",
+      "memoryFiles": "Memory files",
+      "repeatedApprovals": "Repeated approvals",
+      "gatePassed": "Done gate passed",
+      "startLink": "Need a combined view, try AgentMon Start",
+      "gateSent": "Done gate sent it back",
+      "gateOpen": "Done gate: open items",
+      "you": "You",
+      "editsAfterGreen": "Files changed after the last passing test run",
+      "notTestedSinceGreen": "Not tested since last green",
+      "lastTestFailed": "Last test run failed",
+      "noPassingTest": "No passing test yet",
+      "beforeLastGreen": "Before the last passing test ({t} ago)",
+      "onlyRead": "Only read",
+      "rereadOften": "re-read often",
+      "newFile": "new",
+      "agoText": "{t} ago",
+      "filesSummary": "{e} edited · {r} read",
+      "allRows": "All",
+      "failuresWord": "Failures",
+      "ofGuide": "{pct}% of {v} guide"
+    },
+    "status": {
+      "running": "running",
+      "waiting": "waiting",
+      "done": "done",
+      "error": "error",
+      "cancelled": "cancelled"
+    },
+    "check": {
+      "test": "tests",
+      "lint": "lint",
+      "typecheck": "types",
+      "build": "build"
+    },
+    "cat": {
+      "git": "git",
+      "shell": "shell",
+      "edit": "edit"
+    },
+    "result": {
+      "ok": "ok",
+      "failed": "failed",
+      "unknown": "unknown",
+      "running": "running"
+    },
+    "buckets": {
+      "model": "model",
+      "shell": "shell",
+      "edit": "edit",
+      "read": "read files",
+      "you": "waiting on you",
+      "idle": "between steps",
+      "agents": "agents"
+    },
+    "main": "main session"
+  },
+  "main": {
+    "model": "claude-opus-5-5",
+    "effort": "high",
+    "turnAt": 1793802900000,
+    "turnLive": true
+  },
+  "focus": [
+    {
+      "key": "check:test:1",
+      "tag": "failed",
+      "text": "tests npm test",
+      "isUrgent": true
+    },
+    {
+      "key": "ctx",
+      "tag": "context",
+      "text": "Context is 62% full. /compact before the next large task.",
+      "isUrgent": false
+    }
+  ],
+  "usage": {
+    "ctxPct": 62,
+    "ctxTokens": 620000,
+    "ctxWindow": 1000000,
+    "rate": [
+      {
+        "kind": "five_hour",
+        "pct": 12,
+        "resetsAt": 1793817400000
+      },
+      {
+        "kind": "seven_day",
+        "pct": 77,
+        "resetsAt": 1793911000000
+      }
+    ],
+    "usd": 8.42
+  },
+  "turns": [
+    {
+      "startedAt": 1793800100000,
+      "wallMs": 42000,
+      "buckets": {
+        "model": 21000,
+        "read": 12000,
+        "shell": 6000,
+        "idle": 3000
+      }
+    },
+    {
+      "startedAt": 1793800300000,
+      "wallMs": 118000,
+      "buckets": {
+        "model": 58000,
+        "shell": 40000,
+        "edit": 15000,
+        "idle": 5000
+      }
+    },
+    {
+      "startedAt": 1793800700000,
+      "wallMs": 305000,
+      "buckets": {
+        "model": 90000,
+        "agents": 150000,
+        "you": 45000,
+        "shell": 12000,
+        "idle": 8000
+      }
+    },
+    {
+      "startedAt": 1793801500000,
+      "wallMs": 240000,
+      "buckets": {
+        "model": 120000,
+        "read": 50000,
+        "shell": 45000,
+        "idle": 25000
+      }
+    },
+    {
+      "startedAt": 1793801900000,
+      "wallMs": 420000,
+      "buckets": {
+        "agents": 210000,
+        "model": 130000,
+        "shell": 50000,
+        "edit": 30000
+      }
+    },
+    {
+      "startedAt": 1793802500000,
+      "wallMs": 350000,
+      "buckets": {
+        "model": 170000,
+        "edit": 90000,
+        "you": 60000,
+        "shell": 30000
+      }
+    },
+    {
+      "startedAt": 1793802900000,
+      "wallMs": 100000,
+      "buckets": {
+        "model": 60000,
+        "shell": 40000
+      },
+      "isLive": true,
+      "prompt": "Refactor the review helpers"
+    }
+  ],
+  "turnCount": 7,
+  "active": [
+    {
+      "id": "a1",
+      "who": "main session",
+      "tool": "Bash",
+      "what": "npm test",
+      "startedAt": 1793802990000
+    }
+  ],
+  "calls": [
+    {
+      "at": 1793801440000,
+      "who": "main session",
+      "view": "git",
+      "what": "git diff --stat",
+      "result": "ok"
+    },
+    {
+      "at": 1793801560000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm run lint",
+      "result": "ok"
+    },
+    {
+      "at": 1793801620000,
+      "who": "Explore",
+      "view": "mcp",
+      "what": "codegraph_search toSnapshot",
+      "result": "ok",
+      "agentId": "ag1"
+    },
+    {
+      "at": 1793801650000,
+      "who": "Explore",
+      "view": "mcp",
+      "what": "codegraph_callers publish",
+      "result": "ok",
+      "agentId": "ag1"
+    },
+    {
+      "at": 1793801800000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npx tsc --noEmit -p .",
+      "result": "ok"
+    },
+    {
+      "at": 1793801960000,
+      "who": "tester",
+      "view": "shell",
+      "what": "node --test tests/web",
+      "result": "failed",
+      "error": "server.test.mjs: 1 failing",
+      "agentId": "ag2"
+    },
+    {
+      "at": 1793802040000,
+      "who": "tester",
+      "view": "shell",
+      "what": "node --test tests/web",
+      "result": "ok",
+      "agentId": "ag2"
+    },
+    {
+      "at": 1793802120000,
+      "who": "reviewer",
+      "view": "git",
+      "what": "git log -5 --oneline",
+      "result": "ok",
+      "agentId": "ag3"
+    },
+    {
+      "at": 1793802280000,
+      "who": "main session",
+      "view": "git",
+      "what": "git add -p",
+      "result": "ok"
+    },
+    {
+      "at": 1793802360000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm run build",
+      "result": "ok"
+    },
+    {
+      "at": 1793802480000,
+      "who": "reviewer",
+      "view": "mcp",
+      "what": "codegraph_impact toSnapshot",
+      "result": "ok",
+      "agentId": "ag3"
+    },
+    {
+      "at": 1793802580000,
+      "who": "main session",
+      "view": "shell",
+      "what": "node scripts/web-shot.mjs out",
+      "result": "ok"
+    },
+    {
+      "at": 1793802660000,
+      "who": "main session",
+      "view": "git",
+      "what": "git status --short",
+      "result": "ok"
+    },
+    {
+      "at": 1793802740000,
+      "who": "tester",
+      "view": "shell",
+      "what": "npx playwright test",
+      "result": "ok",
+      "agentId": "ag2"
+    },
+    {
+      "at": 1793802870000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm test -- --watch=false",
+      "result": "failed",
+      "error": "1 failing: the page puts no tool text through HTML"
+    },
+    {
+      "at": 1793802910000,
+      "who": "tester",
+      "view": "shell",
+      "what": "node --test tests/web/page.test.mjs",
+      "result": "ok",
+      "agentId": "ag2"
+    },
+    {
+      "at": 1793802950000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm test",
+      "result": "failed",
+      "error": "1 failing"
+    },
+    {
+      "at": 1793802800000,
+      "who": "main session",
+      "view": "git",
+      "what": "git status",
+      "result": "ok"
+    },
+    {
+      "at": 1793802700000,
+      "who": "Explore",
+      "view": "mcp",
+      "what": "mcp__codegraph__codegraph_search a very long argument that has to wrap on a narrow phone screen without a horizontal page scroll",
+      "result": "ok",
+      "agentId": "ag1"
+    },
+    {
+      "at": 1793802990000,
+      "who": "main session",
+      "view": "shell",
+      "what": "npm run build",
+      "result": "running"
+    }
+  ],
+  "agents": [
+    {
+      "id": "ag1",
+      "type": "Explore",
+      "model": "haiku",
+      "effort": "",
+      "task": "Find the session atoms",
+      "status": "done",
+      "files": 3,
+      "tools": 9,
+      "input": 1000,
+      "output": 200,
+      "startedAt": 1793801000000,
+      "endedAt": 1793801100000,
+      "usd": 0.11,
+      "cached": 500,
+      "prompt": "Find the session atoms. Report what you find, with file and line."
+    },
+    {
+      "id": "ag3",
+      "type": "reviewer",
+      "model": "opus",
+      "effort": "high",
+      "task": "Check the snapshot contract",
+      "status": "done",
+      "files": 6,
+      "tools": 14,
+      "input": 3200,
+      "output": 640,
+      "startedAt": 1793802100000,
+      "endedAt": 1793802500000,
+      "usd": 0.36,
+      "cached": 1600,
+      "prompt": "Check the snapshot contract. Report what you find, with file and line."
+    },
+    {
+      "id": "ag2",
+      "type": "tester",
+      "model": "sonnet",
+      "effort": "",
+      "task": "Run the server tests",
+      "status": "running",
+      "files": 0,
+      "tools": 2,
+      "input": 400,
+      "output": 50,
+      "startedAt": 1793802947000,
+      "usd": 0.04,
+      "cached": 200,
+      "prompt": "Run the server tests. Report what you find, with file and line."
+    },
+    {
+      "id": "r0",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: policy.go",
+      "status": "done",
+      "files": 0,
+      "tools": 4,
+      "input": 260000,
+      "output": 4000,
+      "cached": 200000,
+      "usd": 0.05,
+      "errors": 0,
+      "prompt": "Review policy.go for refactoring chances.",
+      "startedAt": 1793802580000,
+      "endedAt": 1793802611000
+    },
+    {
+      "id": "r1",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: types.ts",
+      "status": "done",
+      "files": 0,
+      "tools": 7,
+      "input": 350000,
+      "output": 4500,
+      "cached": 270000,
+      "usd": 0.09,
+      "errors": 0,
+      "prompt": "Review types.ts for refactoring chances.",
+      "startedAt": 1793802581000,
+      "endedAt": 1793802626000
+    },
+    {
+      "id": "r2",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: deterministic_routes.go",
+      "status": "done",
+      "files": 0,
+      "tools": 10,
+      "input": 440000,
+      "output": 5000,
+      "cached": 340000,
+      "usd": 0.13,
+      "errors": 0,
+      "prompt": "Review deterministic_routes.go for refactoring chances.",
+      "startedAt": 1793802582000,
+      "endedAt": 1793802641000
+    },
+    {
+      "id": "r3",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: cmd/server/internal/handlers/main.go",
+      "status": "done",
+      "files": 0,
+      "tools": 13,
+      "input": 530000,
+      "output": 5500,
+      "cached": 410000,
+      "usd": 0.17,
+      "errors": 0,
+      "prompt": "Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server/internal/handlers/main.go for refactoring chances. Review cmd/server",
+      "startedAt": 1793802583000,
+      "endedAt": 1793802656000
+    },
+    {
+      "id": "r4",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: client/api/session.ts",
+      "status": "done",
+      "files": 0,
+      "tools": 16,
+      "input": 620000,
+      "output": 6000,
+      "cached": 480000,
+      "usd": 0.21,
+      "errors": 2,
+      "prompt": "Review client/api/session.ts for refactoring chances.",
+      "startedAt": 1793802584000,
+      "endedAt": 1793802671000
+    },
+    {
+      "id": "r5",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: store.ts",
+      "status": "done",
+      "files": 0,
+      "tools": 19,
+      "input": 710000,
+      "output": 6500,
+      "cached": 550000,
+      "usd": 0.25,
+      "errors": 0,
+      "prompt": "Review store.ts for refactoring chances.",
+      "startedAt": 1793802585000,
+      "endedAt": 1793802686000
+    },
+    {
+      "id": "r6",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: events.ts",
+      "status": "done",
+      "files": 0,
+      "tools": 22,
+      "input": 800000,
+      "output": 7000,
+      "cached": 620000,
+      "usd": 0.29,
+      "errors": 0,
+      "prompt": "Review events.ts for refactoring chances.",
+      "startedAt": 1793802586000,
+      "endedAt": 1793802701000
+    },
+    {
+      "id": "r7",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: format.ts",
+      "status": "done",
+      "files": 0,
+      "tools": 25,
+      "input": 890000,
+      "output": 7500,
+      "cached": 690000,
+      "usd": 0.33,
+      "errors": 0,
+      "prompt": "Review format.ts for refactoring chances.",
+      "startedAt": 1793802587000,
+      "endedAt": 1793802716000
+    },
+    {
+      "id": "r8",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: labels.ts",
+      "status": "done",
+      "files": 0,
+      "tools": 28,
+      "input": 980000,
+      "output": 8000,
+      "cached": 760000,
+      "usd": 0.37,
+      "errors": 0,
+      "prompt": "Review labels.ts for refactoring chances.",
+      "startedAt": 1793802588000,
+      "endedAt": 1793802731000
+    },
+    {
+      "id": "r9",
+      "type": "general-purpose",
+      "model": "sonnet-5-5",
+      "effort": "medium",
+      "task": "Refactor review: theme.css",
+      "status": "running",
+      "files": 0,
+      "tools": 31,
+      "input": 1070000,
+      "output": 8500,
+      "cached": 830000,
+      "usd": 0.41,
+      "errors": 0,
+      "prompt": "Review theme.css for refactoring chances.",
+      "startedAt": 1793802589000
+    }
+  ],
+  "checks": [
+    {
+      "kind": "test",
+      "command": "npm test",
+      "who": "main session",
+      "at": 1793802950000,
+      "result": "failed"
+    },
+    {
+      "kind": "typecheck",
+      "command": "tsc --noEmit",
+      "who": "main session",
+      "at": 1793802000000,
+      "result": "ok"
+    }
+  ],
+  "files": {
+    "read": [
+      "/home/dev/github/agent-radar/hooks/state.ts",
+      "/home/dev/github/agent-radar/hooks/render.tsx",
+      "/home/dev/github/agent-radar/hooks/bench.ts",
+      "/home/dev/github/agent-radar/hooks/learn.ts",
+      "/home/dev/github/agent-radar/web/src/App.tsx",
+      "/home/dev/github/agent-radar/hooks/web.ts"
+    ],
+    "edited": [
+      "/home/dev/github/agent-radar/types/index.d.ts",
+      "/home/dev/github/agent-radar/web/src/files.ts",
+      "/home/dev/github/agent-radar/hooks/web.ts",
+      "/home/dev/github/agent-radar/server/web.mjs"
+    ],
+    "editedAt": 1793802980000,
+    "editedTimes": {
+      "/home/dev/github/agent-radar/types/index.d.ts": 1793801500000,
+      "/home/dev/github/agent-radar/web/src/files.ts": 1793802700000,
+      "/home/dev/github/agent-radar/hooks/web.ts": 1793802980000,
+      "/home/dev/github/agent-radar/server/web.mjs": 1793801800000
+    }
+  },
+  "log": [
+    {
+      "at": 1793801000000,
+      "who": "Explore",
+      "what": "Find the session atoms",
+      "result": "started",
+      "agentId": "ag1"
+    },
+    {
+      "at": 1793801100000,
+      "who": "Explore",
+      "what": "Find the session atoms",
+      "result": "done",
+      "agentId": "ag1"
+    },
+    {
+      "at": 1793802900000,
+      "who": "tester",
+      "what": "Run the server tests",
+      "result": "started",
+      "agentId": "ag2"
+    },
+    {
+      "at": 1793802950000,
+      "who": "main session",
+      "what": "<img src=x onerror=alert(1)> stays plain text",
+      "result": "failed"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "1",
+      "subject": "Write the server",
+      "status": "completed"
+    },
+    {
+      "id": "2",
+      "subject": "Draw the page",
+      "status": "in_progress"
+    },
+    {
+      "id": "3",
+      "subject": "Release 0.24.0",
+      "status": "pending"
+    }
+  ],
+  "insights": {
+    "slow": [
+      {
+        "tool": "Bash",
+        "what": "npm test",
+        "who": "main session",
+        "ms": 48000,
+        "at": 1793802950000
+      }
+    ],
+    "big": [
+      {
+        "tool": "Read",
+        "what": "CHANGELOG.md",
+        "tokens": 42000,
+        "at": 1793801000000
+      }
+    ],
+    "tokens": {
+      "mainIn": 420000,
+      "mainOut": 18000,
+      "mainCached": 380000,
+      "agentsIn": 9000,
+      "agentsOut": 1200
+    },
+    "breakdown": [
+      {
+        "name": "Messages",
+        "tokens": 312000
+      },
+      {
+        "name": "System tools",
+        "tokens": 41000
+      },
+      {
+        "name": "CLAUDE.md",
+        "tokens": 15600
+      }
+    ],
+    "mcpTokens": 22000,
+    "memoryTokens": 4100,
+    "session": {
+      "model": 900000,
+      "you": 134000,
+      "shell": 300000
+    },
+    "sessionWall": 1500000,
+    "askedAll": {
+      "Bash git push": 12,
+      "Bash npm publish": 3,
+      "Edit /x/y.ts": 1
+    },
+    "reads": {
+      "/home/dev/github/agent-radar/hooks/render.tsx": 6,
+      "/home/dev/github/agent-radar/hooks/state.ts": 1,
+      "/home/dev/github/agent-radar/hooks/bench.ts": 2,
+      "/home/dev/github/agent-radar/hooks/learn.ts": 1,
+      "/home/dev/github/agent-radar/web/src/App.tsx": 1,
+      "/home/dev/github/agent-radar/hooks/web.ts": 4
+    },
+    "edits": {
+      "/home/dev/github/agent-radar/types/index.d.ts": 1,
+      "/home/dev/github/agent-radar/web/src/files.ts": 1,
+      "/home/dev/github/agent-radar/hooks/web.ts": 4,
+      "/home/dev/github/agent-radar/server/web.mjs": 3
+    },
+    "sizes": {
+      "/home/dev/github/agent-radar/web/src/files.ts": {
+        "now": 2100
+      },
+      "/home/dev/github/agent-radar/hooks/web.ts": {
+        "first": 9000,
+        "now": 9400
+      }
+    }
+  },
+  "learned": {
+    "bench": [
+      {
+        "id": "b1",
+        "at": 1793700000000,
+        "turns": 9,
+        "calls": 120,
+        "errors": 3,
+        "compactions": 0,
+        "usd": 4.1,
+        "mod": true,
+        "live": true,
+        "editTurns": 4,
+        "verified": 3,
+        "churn": 0,
+        "outTokens": 9000,
+        "turnMs": [],
+        "blocks": 0,
+        "acted": 0,
+        "passed": 0,
+        "fable": 0,
+        "totalUsd": 5.2
+      },
+      {
+        "id": "b2",
+        "at": 1793786400000,
+        "turns": 11,
+        "calls": 120,
+        "errors": 3,
+        "compactions": 0,
+        "usd": 5.1,
+        "mod": true,
+        "live": true,
+        "editTurns": 4,
+        "verified": 3,
+        "churn": 0,
+        "outTokens": 9000,
+        "turnMs": [],
+        "blocks": 0,
+        "acted": 0,
+        "passed": 0,
+        "fable": 0,
+        "totalUsd": 6.4
+      },
+      {
+        "id": "b3",
+        "at": 1793872800000,
+        "turns": 6,
+        "calls": 120,
+        "errors": 3,
+        "compactions": 0,
+        "usd": 3.3,
+        "mod": true,
+        "live": true,
+        "editTurns": 4,
+        "verified": 3,
+        "churn": 0,
+        "outTokens": 9000,
+        "turnMs": [],
+        "blocks": 0,
+        "acted": 0,
+        "passed": 0,
+        "fable": 0,
+        "totalUsd": 4
+      }
+    ]
+  },
+  "isPaneOpen": true,
+  "build": "0.26.0 · b888ede",
+  "testReview": {
+    "files": [
+      {
+        "path": "/home/dev/github/agent-radar/tests/parser.test.ts",
+        "removed": 1,
+        "skips": 1,
+        "at": 1,
+        "changed": 1,
+        "lines": [
+          {
+            "before": "expect(parse('b')).toBe(2)",
+            "after": "expect(parse('b')).toBe(3)"
+          },
+          {
+            "before": "expect(parse('c')).toThrow()"
+          }
+        ]
+      },
+      {
+        "path": "/home/dev/github/agent-radar/tests/web.test.ts",
+        "removed": 0,
+        "skips": 0,
+        "at": 1
+      }
+    ],
+    "dropped": [
+      "npm test ran 38 tests and skipped 2 after the edit, 40 and 0 before it"
+    ],
+    "isGreen": true
+  },
+  "trace": [
+    {
+      "id": "r3-0",
+      "at": 1793802583000,
+      "who": "general-purpose",
+      "tool": "Read",
+      "what": "client/step0.ts",
+      "ms": 1200,
+      "agentId": "r3"
+    },
+    {
+      "id": "r3-1",
+      "at": 1793802588000,
+      "who": "general-purpose",
+      "tool": "Read",
+      "what": "client/step1.ts",
+      "ms": 1900,
+      "agentId": "r3"
+    },
+    {
+      "id": "r3-2",
+      "at": 1793802593000,
+      "who": "general-purpose",
+      "tool": "Read",
+      "what": "client/step2.ts",
+      "ms": 2600,
+      "agentId": "r3"
+    },
+    {
+      "id": "r3-3",
+      "at": 1793802598000,
+      "who": "general-purpose",
+      "tool": "Bash",
+      "what": "npm test",
+      "ms": 3300,
+      "isFailed": true,
+      "error": "exit 1",
+      "agentId": "r3"
+    },
+    {
+      "id": "t1",
+      "at": 1793802902000,
+      "who": "main session",
+      "tool": "Read",
+      "what": "hooks/web.ts",
+      "ms": 90
+    },
+    {
+      "id": "t2",
+      "at": 1793802906000,
+      "who": "main session",
+      "tool": "Grep",
+      "what": "toSnapshot",
+      "ms": 240
+    },
+    {
+      "id": "t3",
+      "at": 1793802911000,
+      "who": "main session",
+      "tool": "Edit",
+      "what": "hooks/web.ts",
+      "ms": 310
+    },
+    {
+      "id": "t4",
+      "at": 1793802917000,
+      "who": "main session",
+      "tool": "Bash",
+      "what": "npx -p typescript tsc --noEmit -p .",
+      "ms": 19000
+    },
+    {
+      "id": "t5",
+      "at": 1793802938000,
+      "who": "main session",
+      "tool": "Bash",
+      "what": "npm test",
+      "ms": 6200,
+      "isFailed": true,
+      "error": "1 failing: the post loop retries"
+    },
+    {
+      "id": "t6",
+      "at": 1793802947000,
+      "who": "main session",
+      "tool": "Agent",
+      "what": "tester",
+      "ms": 40000
+    },
+    {
+      "id": "t7",
+      "at": 1793802949000,
+      "who": "tester",
+      "tool": "Read",
+      "what": "tests/web.test.ts",
+      "ms": 120,
+      "agentId": "ag2"
+    },
+    {
+      "id": "t8",
+      "at": 1793802952000,
+      "who": "tester",
+      "tool": "Bash",
+      "what": "claude plugin test .",
+      "ms": 21000,
+      "agentId": "ag2"
+    },
+    {
+      "id": "t9",
+      "at": 1793802976000,
+      "who": "tester",
+      "tool": "Edit",
+      "what": "tests/web.test.ts",
+      "ms": 200,
+      "agentId": "ag2"
+    },
+    {
+      "id": "a1",
+      "at": 1793802990000,
+      "who": "main session",
+      "tool": "Bash",
+      "what": "npm test"
+    }
+  ],
+  "gate": {
+    "ok": false,
+    "text": "tests failed: npm test",
+    "isSent": true,
+    "at": 1793802970000
+  }
+}

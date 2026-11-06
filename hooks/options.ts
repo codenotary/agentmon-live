@@ -45,6 +45,10 @@ export function applyOptions(options: Options, envLanguage: string | undefined):
   const basePoll = Number(options.gitPollMinutes ?? 5)
   cfg.baseMinutes = Number.isFinite(basePoll) && basePoll > 0 ? basePoll : 0
   cfg.isFetching = String(options.gitFetch ?? false) === 'true'
+  cfg.web = String(options.web ?? 'on') !== 'off'
+  const webPort = Number(options.webPort ?? 47311)
+  cfg.webPort = Number.isInteger(webPort) && webPort >= 1024 && webPort <= 65535 ? webPort : 47311
+  cfg.webOpenOnStart = String(options.webOpenOnStart ?? false) === 'true'
 }
 
 // The manifest declares no `userConfig`, because Claude Code then opens its options dialog on install whatever the defaults.
