@@ -57,6 +57,8 @@ npm i --no-save playwright && npx playwright install chromium
 node scripts/web-shot.mjs <out dir>
 ```
 
+`node scripts/readme-shots.mjs` redraws the README's pictures in `docs/web/` from a made-up session, with the same setup.
+
 The page follows the AgentMon design system (https://claude.ai/artifact/3vpEcGbEDi73UHnbk9dCH3, synced from `frontend/design-system` in `agentmon-teams`), and where the two differ, what `frontend/central` in `agentmon-teams` actually draws: the white ground, the larger rail, the unboxed numbers. `npm run build` also replaces a running server on the default port, because a server otherwise keeps the page it started with until a new session starts. The tokens in `web/src/theme.css` are copied from its `tokens.json`; update them by hand when it changes. Three values differ on purpose, because the system's own README flags them as missing contrast: light success and warning, and dark tertiary text. Strings stay in six languages though the system says English only, because the mod follows the session's language. `toSnapshot` in `hooks/web.ts` is the only code that knows both the state's and the page's shapes.
 
 ### See the pane from a script
