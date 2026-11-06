@@ -32,7 +32,6 @@ export const PAGE_EN = {
   "tasks": "Tasks",
   "log": "Session log",
   "search": "Search the log",
-  "learning": "Across sessions",
   "sessions": "Sessions",
   "calls": "Calls",
   "call": "Call",
@@ -80,6 +79,12 @@ export const PAGE_EN = {
   "idle": "idle",
   "quota5h": "5-hour quota",
   "cacheHit": "Cache hit",
+  "relOf": "{a} of {b}",
+  "ofTypical": "{pct}% of typical {v}",
+  "onPace": "on pace",
+  "aheadOfPace": "ahead of pace",
+  "ofInputTokens": "of input tokens",
+  "ofSessionTime": "{pct}% of session time",
   "tokens": "Tokens",
   "commands": "Commands",
   "paletteHint": "Type a command…",
@@ -106,7 +111,7 @@ export const PAGE_EN = {
   "assertsRemoved": "assertions removed",
   "assertsChanged": "assertions changed",
   "skipsAdded": "skips added",
-  "helpInstruments": "Context: how full this session's context window is; near full, Claude compacts the conversation. 5-hour and 7-day quota: how much of your plan's limits is used. Gauges turn yellow at 60% and red at 80%. Session cost: spend so far, with its trend since you opened this page. Turns: prompts answered. Cache hit: share of the main session's input tokens read from the prompt cache; higher is cheaper. Tokens: sent in and out, subagents included. Click Context to see what fills it. Blocked on you: the time turns waited for your approval.",
+  "helpInstruments": "Context: how full this session's context window is; near full, Claude compacts the conversation. 5-hour and 7-day quota: how much of your plan's limits is used. Gauges turn yellow at 60% and red at 80%. Session cost: spend so far, with its trend since you opened this page. Turns: prompts answered. Cache hit: share of the main session's input tokens read from the prompt cache; higher is cheaper. Tokens: sent in and out, subagents included. Click Context to see what fills it. Blocked on you: the time turns waited for your approval. Each tile shows its figure against its limit. Cache hit is green when high. Typical is the median of this project's earlier sessions, marked by a tick. The tick on a quota marks an even pace up to its reset. The pins shake slightly while the page is connected: that movement is decoration, the numbers are exact.",
   "helpWaterfall": "Every tool call in the time chosen in the agent flow, in the order it started. A bar shows when the call ran and for how long; a subagent's calls sit under it. Gaps are time the model spent thinking. The slowest call is marked, failures are red and running calls are striped. Click a call for its details.",
   "helpEvents": "What needs you, such as a waiting approval or a failed test. An item that goes away stays here, marked cleared with its time. The history starts when you open this page.",
   "helpRunning": "Each tool call running right now, who runs it and for how long.",
@@ -117,8 +122,7 @@ export const PAGE_EN = {
   "helpTasks": "Claude's to-do list for this session, and how many items are done.",
   "helpAgents": "One row per subagent: what it does, its type and model, how long it ran, its calls, tokens, cost, errors and files edited. The three dots show its duration, tokens and errors against the session's other subagents: green is fine, amber worth a look, red needs a look. Agents with the worst dots come first, running ones on top; click a column head to sort. More than eight sharing a name before a colon fold into one row. Click a row for the prompt and its calls. Keys: arrows move, Enter opens, Esc closes, f shows the agent's tool calls. FAIL means it reported failing tests; hover for why.",
   "helpFiles": "The files this session edited and read, the last eight of each, from successful calls only. Hover for the whole path.",
-  "helpLog": "Everything the session did, in order: time, who, what and the result. Press / to search. Follow keeps the newest line in view.",
-  "helpLearning": "Earlier sessions in this project: date, turns, calls, errors and cost, with the cost trend on top. Use it to see whether sessions are getting better."
+  "helpLog": "Everything the session did, in order: time, who, what and the result. Press / to search. Follow keeps the newest line in view."
 }
 
 export type Page = typeof PAGE_EN

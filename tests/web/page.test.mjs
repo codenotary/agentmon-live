@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url'
 
 import { elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
-import { agentNames, blockedOf, callTime, countWord, editsSinceGreen, firstLine, nextRow, SECTION_KEYS, withPrompts, parseIds, pushPoint, resultOf, rowUsd, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
+import { agentNames, blockedOf, callTime, countWord, editsSinceGreen, firstLine, nextRow, SECTION_KEYS, withPrompts, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
+import { bandTone, fill, isAheadOfPace, paceOf, reversedLevel, typicalOf } from '../../web/src/kpi.ts'
 import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
@@ -126,14 +127,6 @@ test('j and k stay on the rows; g keys name sections', () => {
 test('one word for one call', () => {
   assert.equal(countWord(1, PAGE_EN), '1 Call')
   assert.equal(countWord(2, PAGE_EN), '2 Calls')
-})
-
-test('the session under way costs what the header says; a past row prefers the whole session', () => {
-  const s = { session: { id: 'now' }, usage: { usd: 4.75 } }
-  assert.equal(rowUsd({ id: 'now', usd: 0.59, totalUsd: 4 }, s), 4.75)
-  assert.equal(rowUsd({ id: 'old', usd: 0.59, totalUsd: 4 }, s), 4)
-  assert.equal(rowUsd({ id: 'old', usd: 0.59 }, s), 0.59)
-  assert.equal(rowUsd({ id: 'old' }, s), undefined)
 })
 
 test('states: a running call reaches now, an approval shows, a failure shows, a lost call stays still', () => {
@@ -411,4 +404,37 @@ test('a session is idle, active, or waiting for you, and waiting wins', () => {
   assert.equal(at({}, [], [{ status: 'waiting' }]), 'waiting')
   assert.equal(at({}, [], [{ status: 'done' }]), 'idle')
   assert.equal(at({}, [], [{ status: 'running' }]), 'active')
+})
+
+test('typical needs three earlier live sessions and leaves out this one', () => {
+  const row = (id, totalUsd, live = true) => ({ id, totalUsd, live })
+  const pick = r => r.totalUsd
+  assert.equal(typicalOf([row('a', 1), row('b', 2)], 'now', pick), undefined)
+  assert.equal(typicalOf([row('a', 1), row('b', 2), row('now', 3)], 'now', pick), undefined)
+  assert.equal(typicalOf([row('a', 1), row('b', 2), row('c', 9), row('now', 500)], 'now', pick), 2)
+  assert.equal(typicalOf([row('a', 1), row('b', 2), row('c', 9, false)], 'now', pick), undefined)
+  assert.equal(typicalOf([row('a', 1), row('b', 2), row('c', undefined)], 'now', pick), undefined)
+})
+
+test('pace runs evenly over the window and is unknown without a reset ahead', () => {
+  const week = 7 * 86_400_000
+  assert.equal(paceOf('seven_day', 1000 + week / 2, 1000), 50)
+  assert.equal(paceOf('seven_day', undefined, 1000), undefined)
+  assert.equal(paceOf('seven_day', 1000, 1000), undefined)
+  assert.equal(paceOf('other', 5000, 1000), undefined)
+  assert.equal(paceOf('five_hour', 1000 + 365 * week, 1000), 0)
+  assert.equal(isAheadOfPace(55, 50), false)
+  assert.equal(isAheadOfPace(56, 50), true)
+  assert.equal(isAheadOfPace(99, undefined), false)
+})
+
+test('tones follow what is good for the figure', () => {
+  assert.deepEqual([100, 101, 150, 151].map(v => bandTone(v, 100, 150)), ['good', 'warn', 'warn', 'bad'])
+  assert.deepEqual([80, 79, 50, 49, undefined].map(reversedLevel), ['good', 'warn', 'warn', 'bad', ''])
+})
+
+test('relation text fills its values and leaves an unknown one showing', () => {
+  assert.equal(fill(PAGE_EN.relOf, { a: '1K', b: '2K' }), '1K of 2K')
+  assert.equal(fill(PAGE_EN.ofTypical, { pct: 57, v: '$4.10' }), '57% of typical $4.10')
+  assert.equal(fill('{a} {x}', { a: 0 }), '0 {x}')
 })

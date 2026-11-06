@@ -13,7 +13,6 @@ import { Palette } from './Palette.tsx'
 import { Calls } from './panels/Calls.tsx'
 import { Events } from './panels/Events.tsx'
 import { Instruments } from './panels/Instruments.tsx'
-import { Learning } from './panels/Learning.tsx'
 import { Log } from './panels/Log.tsx'
 import { Agents } from './panels/Agents.tsx'
 import { Flow } from './panels/Flow.tsx'
@@ -57,8 +56,6 @@ function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; 
       return <Files s={s} p={p} />
     case 'log':
       return <Log s={s} p={p} />
-    case 'learning':
-      return <Learning s={s} p={p} />
     default:
       return (
         <>

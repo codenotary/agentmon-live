@@ -260,7 +260,7 @@ export type WebSnapshot = {
   // Absent from a session of an older version, which cannot take the page's request.
   isPaneOpen?: boolean
   focus: WebFocus[]
-  usage: { ctxPct?: number; rate: { kind: string; pct: number }[]; usd: number }
+  usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number }
   turns: WebTurn[]
   turnCount: number
   active: Active[]

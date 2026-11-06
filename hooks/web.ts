@@ -33,6 +33,7 @@ const ENSURE_EVERY_MS = 60_000
 const KEEP_TURNS = 50
 const KEEP_FILES = 50
 const KEEP_BENCH_ROWS = 10
+const resetMs = (at: string | undefined) => (at && !Number.isNaN(Date.parse(at)) ? Date.parse(at) : undefined)
 const KEEP_ASKED = 10
 
 export type SnapshotParts = {
@@ -100,7 +101,9 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: false }))],
     usage: {
       ctxPct: p.usage.context.percent,
-      rate: p.usage.rateLimits.map(r => ({ kind: r.kind, pct: r.percentUsed })),
+      ctxTokens: p.usage.context.tokens,
+      ctxWindow: p.usage.context.window,
+      rate: p.usage.rateLimits.map(r => ({ kind: r.kind, pct: r.percentUsed, resetsAt: resetMs(r.resetsAt) })),
       usd: p.usage.cost?.usd ?? 0,
     },
     turns,

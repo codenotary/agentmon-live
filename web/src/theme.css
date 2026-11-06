@@ -153,6 +153,17 @@
 /* The numbers across the top: no card, ruled above and below. */
 .kpi-band { position: relative; min-width: 0; border-block: 1px solid var(--line); }
 .kpi-label { font-size: 13px; line-height: 18px; color: var(--ink-3); }
+/* A pin overshoots on a real change and shakes a little while idle. The reduced-motion rule below stops both. */
+.pin, .pin-wobble { transform-origin: 32px 32px; }
+.pin { transition: transform .9s cubic-bezier(.34,1.56,.64,1); }
+.ruler-pin { transition: left .9s cubic-bezier(.34,1.56,.64,1); }
+.pin-wobble { animation: pin-wobble 2.6s ease-in-out infinite; }
+.ruler-wobble { animation: ruler-wobble 2.6s ease-in-out infinite; }
+.kpi-band > :nth-child(2n) :is(.pin-wobble, .ruler-wobble) { animation-delay: -.9s; animation-duration: 3.1s; }
+.kpi-band > :nth-child(3n) :is(.pin-wobble, .ruler-wobble) { animation-delay: -1.7s; animation-duration: 2.2s; }
+.kpi-band[data-down] :is(.pin-wobble, .ruler-wobble) { animation: none; }
+@keyframes pin-wobble { 0%, 100% { transform: rotate(0); } 18% { transform: rotate(-2deg); } 42% { transform: rotate(1.4deg); } 63% { transform: rotate(-1deg); } 81% { transform: rotate(2deg); } }
+@keyframes ruler-wobble { 0%, 100% { transform: translateX(0); } 18% { transform: translateX(-1.5px); } 42% { transform: translateX(1px); } 63% { transform: translateX(-.8px); } 81% { transform: translateX(1.5px); } }
 .help-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; color: var(--ink-3); cursor: help; transition: color .15s, background-color .15s; }
 .help-btn:hover, .help-btn[aria-expanded=true] { color: var(--ink); background: var(--surface-2); }
 .help-text { padding: 8px 10px; border: 1px solid var(--info-line); border-radius: 10px; background: var(--info); font-size: 13px; line-height: 1.5; color: var(--ink-2); }

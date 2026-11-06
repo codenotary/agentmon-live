@@ -72,7 +72,7 @@ let state: State = {
   openAgents: new Set(),
   collapsed: new Set(parseIds(load(COLLAPSED_KEY))),
   notice: null,
-  theme: savedTheme === 'dark' || savedTheme === 'auto' ? savedTheme : 'light',
+  theme: savedTheme === 'light' || savedTheme === 'auto' ? savedTheme : 'dark',
   call: null,
   isPaletteOpen: false,
 }

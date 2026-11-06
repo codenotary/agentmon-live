@@ -59,7 +59,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     session: { id: 's', cwd: '/w', branch: 'main' },
     now: 1000,
     main: { model: 'm', effort: 'high' },
-    usage: { startedAt: 5, context: { window: 100, tokens: 19, percent: 19 }, cost: { usd: 2 }, rateLimits: [{ kind: 'seven_day', percentUsed: 77 }] },
+    usage: { startedAt: 5, context: { window: 100, tokens: 19, percent: 19 }, cost: { usd: 2 }, rateLimits: [{ kind: 'seven_day', percentUsed: 77 }, { kind: 'five_hour', percentUsed: 5, resetsAt: '2026-11-06T00:00:00Z' }, { kind: 'other', percentUsed: 1, resetsAt: 'soon' }] },
     ins: shapeInsights({ turns: 3, turn: { startedAt: 900, wallMs: 0, buckets: { model: 40 }, steps: 1, mode: 'shell', since: 950 } }),
     turnRing: [{ startedAt: 1, wallMs: 9, buckets: { model: 9 } }],
     doing: [{ id: 'a', who: 'main', tool: 'Bash', what: 'rm x', startedAt: 990, isAsking: true }],
@@ -82,7 +82,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   })
   expect(snap.testReview?.files[0]).toMatchObject({ changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] })
   expect(snap.v).toBe(1)
-  expect(snap.usage).toEqual({ ctxPct: 19, rate: [{ kind: 'seven_day', pct: 77 }], usd: 2 })
+  expect(snap.usage).toEqual({ ctxPct: 19, ctxTokens: 19, ctxWindow: 100, rate: [{ kind: 'seven_day', pct: 77 }, { kind: 'five_hour', pct: 5, resetsAt: Date.parse('2026-11-06T00:00:00Z') }, { kind: 'other', pct: 1 }], usd: 2 })
   expect(snap.turnCount).toBe(3)
   // The finished turn, then the one under way with the time not yet booked.
   expect(snap.turns).toEqual([{ startedAt: 1, wallMs: 9, buckets: { model: 9 } }, { startedAt: 900, wallMs: 100, buckets: { model: 40, shell: 50 }, isLive: true }])

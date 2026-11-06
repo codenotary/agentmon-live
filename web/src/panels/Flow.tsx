@@ -1,5 +1,5 @@
 import { ChevronRight, Workflow } from 'lucide-react'
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 
 import type { TraceCall, WebSnapshot } from '../../../types/index'
 import { isRunning } from '../agents.ts'
@@ -149,11 +149,34 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   const height = lanes.length * laneH + 4
   const length = Math.max(1, span.to - span.from)
   const xOf = (t: number) => label + ((t - span.from) / length) * plot
-  const inWindow = (t: number) => t >= span.from && t <= span.to
+  // Half a window drawn past the left edge and clipped, so a glide never shows a gap or drops a mark early.
+  const drawnFrom = span.from - length / 2
+  const inWindow = (t: number) => t >= drawnFrom && t <= span.to
   const yOf = new Map(lanes.map((x, i) => [x.id, i * laneH + laneH / 2 + 2]))
   const colourOf = new Map(lanes.map((x, i) => [x.id, laneColour(i, x.isMain)]))
   const names = agentNames(s.agents)
-  const marks = mergeDots(dots, span, plot)
+  const marks = mergeDots(dots, { from: drawnFrom, to: span.to }, plot * 1.5)
+  const plotBox = useRef<SVGGElement>(null)
+  const glide = useRef<{ anim: Animation; px: number } | null>(null)
+  const lastEdge = useRef({ to: span.to, ms: length, id: s.session.id })
+  // Each new frame starts where the last one was on screen and slides to its place over one step, so steps join into one motion.
+  useLayoutEffect(() => {
+    const was = lastEdge.current
+    lastEdge.current = { to: span.to, ms: length, id: s.session.id }
+    const old = glide.current
+    const rest = old ? old.px * (1 - Number(old.anim.currentTime ?? STEP_MS) / STEP_MS) : 0
+    old?.anim.cancel()
+    glide.current = null
+    const px = ((span.to - was.to) / length) * plot + rest
+    const isSameFrame = view.at === null && was.ms === length && was.id === s.session.id
+    if (!isSameFrame || px <= 0 || px > plot / 2 || !plotBox.current || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    glide.current = { px, anim: plotBox.current.animate([{ transform: `translateX(${px}px)` }, { transform: 'translateX(0)' }], { duration: STEP_MS }) }
+  }, [span.to, length, plot, view.at, s.session.id])
+  useEffect(() => {
+    const anim = glide.current?.anim
+    if (isHeld) anim?.pause()
+    else if (anim?.playState === 'paused') anim.play()
+  }, [isHeld])
   const nameOfAgent = (id: string) => names.get(id)?.short ?? id
 
   const spotOf = (e: { clientX: number; clientY: number }) => {
@@ -233,9 +256,11 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
             <Brush whole={whole} span={span} width={width} colourOf={colourOf} s={s} view={view} setView={setView} p={p} />
             <div className="relative mt-2 max-h-[320px] overflow-y-auto">
               <svg width={width} height={height} className="block" role="img" aria-label={p.flow}>
+                <clipPath id="flow-plot"><rect x={label - 4} y={0} width={width - label + 4} height={height} /></clipPath>
+                <g clipPath="url(#flow-plot)"><g ref={plotBox}>
                 {lanes.map(lane => {
                   const y = yOf.get(lane.id) ?? 0
-                  const a = Math.max(label, xOf(lane.from))
+                  const a = Math.max(xOf(drawnFrom), xOf(lane.from))
                   const b = Math.min(label + plot, xOf(lane.to))
                   return b > a ? <line key={lane.id} x1={a} x2={b} y1={y} y2={y} stroke={colourOf.get(lane.id)} strokeWidth={lane.isMain ? 2 : 1} className={lane.isRunning && !lane.isMain ? 'flow-running' : ''} /> : null
                 })}
@@ -260,7 +285,8 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
                   )
                 })}
                 {marks.map(m => <MarkDot key={m.key} m={m} x={xOf(m.at)} y={yOf.get(m.lane) ?? 0} colour={colourOf.get(m.lane)} isNarrow={isNarrow} onPick={pickMark} onTip={markTip} leave={leave} />)}
-                {inWindow(now) ? <line x1={xOf(now)} x2={xOf(now)} y1={0} y2={height} stroke="var(--signal-bright)" strokeWidth={1} pointerEvents="none" /> : null}
+                </g></g>
+                {now >= span.from && now <= span.to ? <line x1={xOf(now)} x2={xOf(now)} y1={0} y2={height} stroke="var(--signal-bright)" strokeWidth={1} pointerEvents="none" /> : null}
               </svg>
               {lanes.map(lane => {
                 const y = yOf.get(lane.id) ?? 0

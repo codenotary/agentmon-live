@@ -48,6 +48,8 @@ const links = () => page.$$eval('.nav-item', list => list.map(a => a.getAttribut
 const marked = () => page.$$eval('.nav-item[aria-current]', list => list.map(a => a.getAttribute('href')))
 const topOf = href => page.$eval(href, el => Math.round(el.getBoundingClientRect().top))
 await page.goto(url)
+// With no choice saved, the page starts dark, even on a system set to light.
+if (await page.evaluate(() => document.documentElement.dataset.theme) !== 'dark') problems.push('theme: the default is not dark')
 await page.waitForSelector('[data-testid=nav]')
 let lastY = -1
 for (const href of await links()) {
@@ -135,6 +137,26 @@ for (let i = 0; i < 7; i++) {
   await page.waitForTimeout(500)
 }
 if (steps.size > 3) problems.push(`flow: ${steps.size} positions in 3.5 s, not steps`)
+// With motion allowed, those steps join into a glide, and the glide stops under the pointer.
+const gliding = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+await gliding.goto(url)
+const lastDot = gliding.locator('#flow .flow-dot').last()
+await lastDot.waitFor({ state: 'attached' })
+await lastDot.scrollIntoViewIfNeeded()
+await gliding.waitForTimeout(3500)
+const screenX = async () => (await lastDot.boundingBox())?.x
+const glided = new Set()
+for (let i = 0; i < 7; i++) {
+  glided.add(await screenX())
+  await gliding.waitForTimeout(300)
+}
+if (glided.size < 5) problems.push(`flow: ${glided.size} positions in 2 s, not a glide`)
+await gliding.locator('[data-testid=flow] svg:not(.flow-brush)').hover({ force: true })
+await gliding.waitForTimeout(100)
+const stoppedAt = await screenX()
+await gliding.waitForTimeout(1000)
+if (await screenX() !== stoppedAt) problems.push('flow: the glide went on under the pointer')
+await gliding.close()
 // A mark that holds several calls lists them, and each opens its details.
 await page.locator('[data-testid=flow]').focus()
 for (let i = 0; i < 20 && !await page.$('#flow .flow-mark'); i++) await page.keyboard.press(']')
@@ -200,6 +222,9 @@ await page.keyboard.press('Escape')
 const other = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/snapshot.json'), 'utf8'))
 other.session.cwd = '/home/dev/other-project'
 other.session.branch = 'main'
+// Drawn as a session of an older version: no window size, no resets, no bench rows.
+other.usage = { ctxPct: other.usage.ctxPct, rate: other.usage.rate.map(({ kind, pct }) => ({ kind, pct })), usd: other.usage.usd }
+other.learned.bench = []
 other.agents = other.agents.map(a => ({ ...a, status: 'done', endedAt: a.endedAt ?? a.startedAt + 1000 }))
 await fetch(`${url.slice(0, -1)}/state/second`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(other) })
 await page.goto(url)
@@ -233,6 +258,8 @@ if (!await isFlowOpen()) problems.push('flow: folded with an agent running')
 await page.click('#picker')
 await page.click('[role=option]:has-text("other-project")')
 await page.waitForTimeout(300)
+if (await page.locator('[data-testid=instruments] [data-testid=ruler]').count() !== 1) problems.push('instruments: an older session should keep only the blocked ruler')
+if (await page.locator('[data-testid=pace-tick]').count()) problems.push('instruments: a pace tick with no reset time')
 if (await isFlowOpen()) problems.push('flow: open with no agent running')
 await folded.click()
 await page.waitForTimeout(100)
@@ -243,7 +270,21 @@ await page.waitForTimeout(100)
 if (await isFlowOpen()) problems.push('flow: the arrow did not fold it')
 await page.screenshot({ path: join(out, 'web-flow-folded.png') })
 
-await browser.close()
+// The pins shake while connected, and hold still under reduced motion and once the connection drops.
+const pinAt = target => target.locator('.pin-wobble').first().evaluate(el => getComputedStyle(el).transform)
+const moves = async target => { const a = await pinAt(target); await target.waitForTimeout(400); return a !== await pinAt(target) }
+const live = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+await live.goto(url)
+await live.waitForSelector('[data-testid=instruments]')
+await page.goto(url)
+await page.waitForSelector('[data-testid=instruments]')
+if (await moves(page)) problems.push('pins: moved under reduced motion')
+if (!await moves(live)) problems.push('pins: still while connected')
+await live.locator('[data-testid=instruments]').screenshot({ path: join(out, 'web-instruments.png') })
 server.kill()
+await live.waitForSelector('[data-testid=instruments][data-down]', { timeout: 15000 }).catch(() => problems.push('pins: the band did not see the connection drop'))
+if (await moves(live)) problems.push('pins: moved with the connection down')
+
+await browser.close()
 console.log(problems.length ? problems.join('\n') : 'no script errors, no sideways scroll')
 process.exitCode = problems.length ? 1 : 0

@@ -1,4 +1,4 @@
-import { Bot, FileText, History, LayoutDashboard, ScrollText, ShieldCheck, Terminal, type LucideIcon } from 'lucide-react'
+import { Bot, FileText, LayoutDashboard, ScrollText, ShieldCheck, Terminal, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import type { WebSnapshot } from '../../types/index'
@@ -11,16 +11,14 @@ export type Section = { id: string; label: string; icon: LucideIcon; count?: num
 // The page's sections: the rail and the page both follow this order. The palette goes to the same list.
 export function sectionsOf(s: WebSnapshot, p: Page, events: readonly FeedEvent[]): Section[] {
   const open = events.filter(e => e.clearedAt === undefined)
-  const all: (Section | false)[] = [
+  return [
     { id: 'overview', label: p.overview, icon: LayoutDashboard, count: open.length, alert: alertOf(open) },
     { id: 'calls', label: p.toolCalls, icon: Terminal, count: s.active.length },
     { id: 'verification', label: p.verification, icon: ShieldCheck },
     { id: 'agents', label: p.subagents, icon: Bot, count: s.agents.length },
     { id: 'files', label: p.files, icon: FileText },
     { id: 'log', label: p.log, icon: ScrollText },
-    (s.learned.sessions > 0 || s.learned.bench.length > 0) && { id: 'learning', label: p.learning, icon: History },
   ]
-  return all.filter(x => x !== false)
 }
 
 const CLICK_HOLD_MS = 1200

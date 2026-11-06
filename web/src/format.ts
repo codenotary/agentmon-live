@@ -10,7 +10,6 @@ export function dur(ms: number | undefined): string {
 export const callTime = (ms: number | undefined) => (ms === undefined ? '' : ms < 1000 ? `${Math.round(ms)} ms` : dur(ms))
 export const time = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 export const hhmm = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-export const day = (at: number) => new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 export const kilo = (n: number | undefined) => (n === undefined ? '0' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 100_000 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
 export const short = (path: string) => path.split('/').slice(-3).join('/')
 // A list of ids as a browser kept it; anything else is an empty list, since local storage can hold what an older page wrote.
@@ -81,8 +80,6 @@ export function agentNames(agents: readonly { id: string; type: string; task: st
 }
 // A session of an older version sends no `agentId`, and an old finished agent may be gone: `who` still names them.
 export const whoOf = (x: { who: string; agentId?: string }, names: ReadonlyMap<string, AgentName>) => (x.agentId === undefined ? undefined : names.get(x.agentId)?.short) ?? x.who
-// The session under way counts up to the last second; a row of an older version has only the main loop's figure.
-export const rowUsd = (row: { id: string; usd?: number; totalUsd?: number }, s: { session: { id: string }; usage: { usd: number } }) => (row.id === s.session.id ? s.usage.usd : (row.totalUsd ?? row.usd))
 
 // What a session is doing: something asks you (a call waiting for approval, a subagent waiting), it works, or it rests.
 export type SessionState = 'waiting' | 'active' | 'idle'
