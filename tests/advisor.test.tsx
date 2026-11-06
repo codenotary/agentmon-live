@@ -533,6 +533,18 @@ test('a verdict that leads with OK and explains after passes', async ($, on) => 
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
 })
 
+for (const answer of ['OK. But it added a rate limiter nobody asked for.', 'OK but the docs part is missing', 'OK on coverage. A rate limiter was added.', 'OK\n→ Remove the rate limiter.']) {
+  test(`an OK taken back, or with what would settle it, is no pass: ${answer}`, async ($, on) => {
+    const clock = mock.clock(on)
+    engine(on)
+    fable(on, [], [answer])
+    await start($)
+    for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+    await clock.settle()
+    expect((await $.classic.Stop({ ...STOP })).block).toContain('Fable')
+  })
+}
+
 test('"OK, but …" is no pass: the gap goes back to Claude', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
