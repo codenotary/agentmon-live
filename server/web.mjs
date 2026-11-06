@@ -80,12 +80,12 @@ function serve(port, fixture) {
       else send(res, event, data)
     }
   }
-  const packed = (id, json) => `{"id":${JSON.stringify(id)},"snapshot":${json}}`
-  const drop = id => {
+  const packed = (id, json, age) => `{"id":${JSON.stringify(id)},"snapshot":${json}${age === undefined ? '' : `,"age":${age}`}}`
+  const drop = (id, isSilent = false) => {
     sessions.delete(id)
     paneRequests.delete(id)
     if (sessions.size === 0) idleSince = Date.now()
-    broadcast('removed', JSON.stringify({ id }))
+    broadcast('removed', JSON.stringify(isSilent ? { id, isSilent } : { id }))
   }
 
   if (fixture) sessions.set('fixture', { json: JSON.stringify(JSON.parse(readFileSync(fixture, 'utf8'))), at: Infinity })
@@ -107,7 +107,8 @@ function serve(port, fixture) {
         res.writeHead(200, { ...HEADERS, 'content-type': 'text/event-stream' })
         send(res, 'build', String(stamp))
         send(res, 'sessions', JSON.stringify([...sessions.keys()]))
-        for (const [id, s] of sessions) send(res, 'snapshot', packed(id, s.json))
+        // A replay says how old it is: a dead session must not read as fresh to a tab that just connected. A fixture never ages.
+        for (const [id, s] of sessions) send(res, 'snapshot', packed(id, s.json, s.at === Infinity ? undefined : Date.now() - s.at))
         clients.add(res)
         req.on('close', () => clients.delete(res))
         return undefined
@@ -174,12 +175,11 @@ function serve(port, fixture) {
   // A crashed session sends no DELETE, so a silent one leaves by itself; the last one leaving ends the server.
   setInterval(() => {
     const now = Date.now()
-    for (const [id, s] of sessions) if (now - s.at > ttlMs) drop(id)
+    for (const [id, s] of sessions) if (now - s.at > ttlMs) drop(id, true)
     if (sessions.size === 0 && now - idleSince > idleMs) process.exit(0)
   }, envMs('AGENTMON_WEB_SWEEP_MS', 5000))
-  setInterval(() => {
-    for (const res of clients) res.write(': keep-alive\n\n')
-  }, 15_000)
+  // A named event, not an SSE comment: the page must see it to notice a connection that hangs without closing. Empty data would not dispatch.
+  setInterval(() => broadcast('ping', '1'), envMs('AGENTMON_WEB_PING_MS', 15_000))
 
   server.on('error', () => process.exit(1))
   server.listen(port, '127.0.0.1')

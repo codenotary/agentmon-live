@@ -10,6 +10,14 @@
   "labels": {
     "page": {
       "disconnected": "Disconnected from the session server. Trying again…",
+      "noSignal": "no signal",
+      "disconnectedWord": "disconnected",
+      "lastUpdate": "Last update {at} · {t} ago",
+      "sessionSilent": "This session stopped reporting. What you see is its last known state.",
+      "dismiss": "Dismiss",
+      "wasRunning": "was running",
+      "wasWaiting": "was waiting",
+      "runningThen": "Running at last update",
       "noSessions": "No session is running. Start Claude Code and this page fills in.",
       "update": "This session runs a different AgentMon Live version. Update it to see everything here.",
       "tokensIn": "in",

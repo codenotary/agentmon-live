@@ -3,6 +3,14 @@ import type { WebSnapshot } from '../../types/index'
 // With no session there are no labels, and an older session's lack the newest; a test holds this to the English the mod sends.
 export const PAGE_EN = {
   "disconnected": "Disconnected from the session server. Trying again…",
+  "noSignal": "no signal",
+  "disconnectedWord": "disconnected",
+  "lastUpdate": "Last update {at} · {t} ago",
+  "sessionSilent": "This session stopped reporting. What you see is its last known state.",
+  "dismiss": "Dismiss",
+  "wasRunning": "was running",
+  "wasWaiting": "was waiting",
+  "runningThen": "Running at last update",
   "noSessions": "No session is running. Start Claude Code and this page fills in.",
   "update": "This session runs a different AgentMon Live version. Update it to see everything here.",
   "tokensIn": "in",
@@ -148,6 +156,12 @@ export type Labels = {
 
 export function pageOf(s: { labels?: Record<string, unknown> } | undefined): Page {
   return { ...PAGE_EN, ...(s?.labels?.page as Partial<Page> | undefined) }
+}
+
+// With no signal, what a panel shows is what was true at the last update: its words say so.
+export function lastKnown(l: Labels): Labels {
+  const page = { ...l.page, running: l.page.runningThen }
+  return { ...l, page, status: { ...l.status, running: page.wasRunning, waiting: page.wasWaiting } }
 }
 
 export function labelsOf(s: WebSnapshot): Labels {

@@ -9,9 +9,9 @@ import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
 import { agentNames, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
 import { chipCounts, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
-import { currentOf, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
+import { currentOf, silentIds, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
 import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../../web/src/kpi.ts'
-import { PAGE_EN, pageOf } from '../../web/src/labels.ts'
+import { labelsOf, lastKnown, PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
 import { BUILT, builtHash, sourceHash } from '../../web/source-hash.mjs'
@@ -601,6 +601,27 @@ test('a problem that grows is one event; one that goes is cleared; different ask
 
 const sessionState = (more = {}) => ({ sessions: new Map(), trends: new Map(), events: new Map(), receivedAt: new Map(), picked: null, shown: null, whoFilter: null, flowView: { at: null, ms: 1 }, openAgents: new Set(), ...more })
 const snap = (id, more = {}) => ({ ...fixture, session: { id, cwd: '/w' }, ...more })
+
+test('a session already silent stays through a reconnect, a fresh one the server does not name goes', () => {
+  let st = withSnapshot(sessionState(), 'dead', snap('dead'), 1000)
+  st = withSnapshot(st, 'fresh', snap('fresh'), 100_000)
+  st = withLive(st, [], 100_000)
+  assert.deepEqual([...st.sessions.keys()], ['dead'])
+  assert.equal(currentOf(st).session.id, 'dead')
+})
+
+test('with no signal, the words for busy say it was so', () => {
+  const l = lastKnown(labelsOf(fixture))
+  assert.equal(l.status.running, PAGE_EN.wasRunning)
+  assert.equal(l.status.waiting, PAGE_EN.wasWaiting)
+  assert.equal(l.page.running, PAGE_EN.runningThen)
+  assert.equal(l.status.done, labelsOf(fixture).status.done)
+})
+
+test('a session is silent only past the idle heartbeat and its margin', () => {
+  const at = new Map([['fresh', 100_000], ['heartbeat', 70_000], ['edge', 55_000], ['gone', 54_999]])
+  assert.deepEqual([...silentIds(at, 100_000)], ['gone'])
+})
 
 test('the session on screen stays when another starts; leaving it resets what belonged to it', () => {
   let st = withSnapshot(sessionState(), 'a', snap('a'), 1)

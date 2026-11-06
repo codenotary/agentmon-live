@@ -5,6 +5,9 @@ import { pushPoint } from './format.ts'
 
 const HISTORY_POINTS = 600
 const KEEP_EVENTS = 100
+// An idle session posts every 30 s, a live turn every 3 s.
+// shortcut: one threshold, so a dead busy session reads live for up to this long; a faster one for busy sessions needs care, since a background agent posts at the idle rate.
+const SILENT_MS = 45_000
 
 export type Trend = { ctx: number[]; usd: number[] }
 // The state that follows the session list. Pure, so the page's state changes can be tested without a browser.
@@ -23,6 +26,11 @@ export type SessionState = {
   flowView: FlowView
   // Agent rows folded open: the flow chart's lane labels open them too.
   openAgents: ReadonlySet<string>
+}
+
+// Sessions that have posted nothing for too long, though the server may still list them.
+export function silentIds(receivedAt: ReadonlyMap<string, number>, now: number): Set<string> {
+  return new Set([...receivedAt].filter(([, at]) => now - at > SILENT_MS).map(([id]) => id))
 }
 
 // A `shown` session not here yet is on its way, in the replay after `withLive`.
@@ -66,8 +74,10 @@ export function withoutSessions<T extends SessionState>(st: T, isGone: (id: stri
 }
 
 // Who the server says is live, first thing on a connection: the rest goes, and a page just opened shows the newest, not whichever replays first.
-export function withLive<T extends SessionState>(st: T, ids: readonly string[]): T {
+// A session already silent stays, so a person can see where it stopped.
+export function withLive<T extends SessionState>(st: T, ids: readonly string[], now = 0): T {
   const live = new Set(ids)
-  const next = withoutSessions(st, id => !live.has(id))
+  const silent = silentIds(st.receivedAt, now)
+  const next = withoutSessions(st, id => !live.has(id) && !silent.has(id))
   return next.shown === null ? { ...next, shown: ids.at(-1) ?? null } : next
 }
