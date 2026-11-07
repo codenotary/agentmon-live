@@ -179,6 +179,13 @@ await page.locator('.flow-label', { hasText: 'Run the server tests' }).click()
 if (!await page.$('#calls .chip[aria-pressed=true]:has-text("Run the server tests")')) problems.push('flow: a lane name did not filter Tool calls')
 await page.locator('#calls .chip', { hasText: 'Run the server tests' }).click()
 
+// Events filter by kind: the fixture has a failed test and one other item.
+await page.locator('[data-testid=event-kinds] [data-kind=failures]').click()
+const eventRows = page.locator('[data-testid=events] li')
+if (await eventRows.count() !== 1 || !await page.locator('[data-testid=events] li.bad').count()) problems.push(`events: Failures shows ${await eventRows.count()} rows, not the one failed test`)
+await page.locator('[data-testid=event-kinds] [data-kind=all]').click()
+if (await eventRows.count() < 2) problems.push('events: All did not bring the other events back')
+
 // Every rail item is a section with a heading that folds it; the fold survives a reload, and the rail or a link opens it again.
 const heads = await page.locator('.section-head').count()
 if (heads !== (await links()).length) problems.push(`sections: ${heads} headings for ${(await links()).length} rail items`)

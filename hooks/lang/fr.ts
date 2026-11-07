@@ -12,6 +12,9 @@ export const fr: Strings = {
     page: {
       disconnected: 'Déconnecté du serveur de session. Nouvelle tentative…',
       noSignal: 'pas de signal',
+      kindWaiting: 'En attente',
+      kindMemory: 'Mémoire',
+      kindOther: 'Autres',
       lanesOutside: '{n} sous-agents hors de cette fenêtre',
       testFilesQuiet: '{n} autres fichiers de test modifiés, aucune vérification retirée',
       allTools: 'Tous les outils',

@@ -1,6 +1,7 @@
 import { Activity } from 'lucide-react'
+import { useState } from 'react'
 
-import { alertOf, isAsk, splitEvents, type FeedEvent } from '../events.ts'
+import { alertOf, EVENT_KINDS, isAsk, kindOf, splitEvents, type EventKind, type FeedEvent } from '../events.ts'
 import { hhmm, time } from '../format.ts'
 import type { Page } from '../labels.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -23,12 +24,25 @@ function Row({ e, p }: { e: FeedEvent; p: Page }) {
 }
 
 export function Events({ list, p }: { list: readonly FeedEvent[]; p: Page }) {
+  const [kind, setKind] = useState<EventKind | null>(null)
   const open = list.filter(e => e.clearedAt === undefined)
   const alert = alertOf(open)
-  const { attention, rest } = splitEvents(list)
+  const counts = new Map<EventKind, number>()
+  for (const e of list) counts.set(kindOf(e.key), (counts.get(kindOf(e.key)) ?? 0) + 1)
+  // A kind chosen before its last event went still shows, so it can be cleared.
+  const kinds = EVENT_KINDS.filter(k => counts.has(k) || k === kind)
+  const shown = kind === null ? list : list.filter(e => kindOf(e.key) === kind)
+  const { attention, rest } = splitEvents(shown)
+  const name: Record<EventKind, string> = { failures: p.failuresWord, waiting: p.kindWaiting, context: p.context, memory: p.kindMemory, other: p.kindOther }
+  const chip = (id: EventKind | null, label: string, n: number) => (
+    <button key={id ?? 'all'} type="button" className="chip" data-kind={id ?? 'all'} aria-pressed={kind === id} onClick={() => setKind(id)}>
+      {label} <span className={`tabular-nums ${id === 'failures' && n > 0 ? 'font-bold text-bad' : ''}`}>{n}</span>
+    </button>
+  )
   return (
     <Panel id="events" title={p.events} help={p.helpEvents} icon={Activity} className={alert === 'bad' ? '!border-bad' : alert === 'warn' ? '!border-warn' : ''} aside={open.length ? <span className={`font-mono text-xs tabular-nums ${alert === 'bad' ? 'text-bad' : 'text-warn'}`}>{open.length}</span> : undefined}>
-      {list.length === 0 ? <Empty text={p.none} /> : (
+      {kinds.length > 1 ? <div className="mb-2 flex flex-wrap gap-1.5" data-testid="event-kinds">{[chip(null, p.allRows, list.length), ...kinds.map(k => chip(k, name[k], counts.get(k) ?? 0))]}</div> : null}
+      {shown.length === 0 ? <Empty text={list.length ? p.noMatch : p.none} /> : (
         <div className="flex max-h-[420px] flex-col overflow-auto" data-testid="events">
           {attention.length ? (
             <>
