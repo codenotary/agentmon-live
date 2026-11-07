@@ -6,7 +6,7 @@ import { PROMPT_CHURN_EDITS } from './bench'
 import { addNote, consult } from './advisor'
 import { coverageGaps, doneGaps, droppedRuns, isDoc, isWithin, reaches, testCfg } from './gate'
 import type { Target, TestRun } from './gate'
-import { isWorkChanged, workState } from './git'
+import { changedFiles, isWorkChanged, workState } from './git'
 import type { WorkState } from './git'
 import { relPath, SOURCE } from './sizeguard'
 import { mergeEdit } from './testreview'
@@ -58,11 +58,15 @@ export function noteWorkAtStart($: EngineInterface, turn: Turn) {
 }
 
 // `sed -i` or a script edits code with no edit tool call, and without this the gate would not know code changed.
-// shortcut: the turn's start stands in for when it happened, so no check reads as stale, and another session in the same folder counts too; upgrade when false send-backs show.
+// shortcut: the turn's start stands in for when it happened, so no check reads as stale; another session in the same folder counts too, and a new file the shell made is not seen; upgrade when false send-backs or misses show.
+// The files it changed join the turn's edited files, so Fable's material and the test targets name them, also beside edit tool calls.
 export async function noteShellEdit($: EngineInterface, turn: Turn) {
-  if (turn.lastCodeEditAt !== undefined || turn.tools + turn.delegated === 0 || !turn.workAtStart) return
+  if (turn.tools + turn.delegated === 0 || !turn.workAtStart) return
   const [before, now] = await Promise.all([turn.workAtStart, workState($, projectRoot(turn)).catch(() => undefined)])
-  if (!isWorkChanged(before, now)) return
+  if (!before || !isWorkChanged(before, now)) return
+  const root = projectRoot(turn)
+  for (const path of changedFiles(before, now)) turn.edited.add(root === '/' ? `/${path}` : `${root}/${path}`)
+  if (turn.lastCodeEditAt !== undefined) return
   turn.codeEditAt ??= turn.startedAt
   turn.lastCodeEditAt = turn.startedAt
 }

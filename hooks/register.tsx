@@ -674,6 +674,7 @@ export const register: Register = on => {
       if (touched && cat === 'edit' && sameTurn) {
         turn.edited.add(touched)
         // A scratch file in /tmp is not the project's code: it makes no check stale.
+        // shortcut: an edit outside the session folder (a symlinked path, a sibling worktree, an added directory) is no code edit either; upgrade when such edits go unchecked.
         if (!isDoc(touched) && relPath(touched, cwd) !== undefined) {
           turn.codeEditAt ??= at
           turn.lastCodeEditAt = at

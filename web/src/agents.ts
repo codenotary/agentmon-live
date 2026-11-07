@@ -87,6 +87,15 @@ export function sortLines(lines: readonly AgentLine[], sort: Sort, now: number):
   return [...lines].sort((x, y) => by(x, y) || x.a.startedAt - y.a.startedAt)
 }
 
+// Rows shown before "Show all". Running ones always show, and so does one opened from elsewhere (a flow lane), or the click would open a row out of sight.
+export const AGENT_ROWS = 10
+export function shownItems(items: readonly Item[], open: ReadonlySet<string>, isAll: boolean): Item[] {
+  if (isAll) return [...items]
+  const isLive = (item: Item) => (item.kind === 'agent' ? isRunning(item.line.a) : item.lines.some(x => isRunning(x.a)))
+  const isOpen = (item: Item) => (item.kind === 'agent' ? open.has(item.line.a.id) : open.has(`group:${item.prefix}`))
+  return items.filter((item, i) => i < AGENT_ROWS || isLive(item) || isOpen(item))
+}
+
 export function groupLines(lines: readonly AgentLine[], now: number): Item[] {
   const byPrefix = new Map<string, AgentLine[]>()
   for (const l of lines) {

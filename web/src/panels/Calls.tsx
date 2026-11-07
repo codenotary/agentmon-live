@@ -8,6 +8,7 @@ import { set, useStore } from '../store.ts'
 import { Choice } from '../ui/Choice.tsx'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill } from '../ui/Pill.tsx'
+import { ShowAll } from '../ui/ShowAll.tsx'
 import { sortCalls, tableRows, type CallColumn, type CallSort } from '../waterfall.ts'
 
 const CELL = 'px-[18px] py-[11px] align-top max-sm:px-2.5'
@@ -98,7 +99,7 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
               })}
             </tbody>
           </table>
-          {all.length > ROWS_SHOWN ? <button type="button" className="chip mt-2" aria-expanded={isAll} onClick={() => setAll(!isAll)}>{isAll ? p.listFewer : `${p.listAll} (${all.length})`}</button> : null}
+          {all.length > ROWS_SHOWN ? <ShowAll isAll={isAll} count={all.length} onToggle={() => setAll(!isAll)} p={p} /> : null}
         </div>
       )}
     </Panel>

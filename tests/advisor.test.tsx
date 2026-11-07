@@ -489,6 +489,25 @@ test('a shell edit counts as a code edit: a claim with no test run goes back', a
   expect(r.block).toContain('the answer says "All tests pass", but no test ran after the last code edit')
 })
 
+test('files a shell edit changed reach Fable beside the ones edit tools changed', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts)
+  const part = (path: string, line: string) => `diff --git a/${path} b/${path}\n--- a/${path}\n+++ b/${path}\n${line}\n`
+  // `old.ts` was already changed at the prompt and stays the same: it is no edit of this turn.
+  workTree(on, [{ diff: part('src/old.ts', '+x') }, { diff: `${part('src/old.ts', '+x')}${part('src/parser.ts', '+fixed')}` }])
+  await start($)
+  await $.tool.call({ tool: 'Write', file_path: '/web/ui.tsx', content: 'x' })
+  await $.tool.call({ tool: 'Bash', command: 'python3 fix.py' })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.settle()
+  await $.classic.Stop({ ...STOP })
+  expect(prompts[0]).toContain('/src/parser.ts')
+  expect(prompts[0]).toContain('/web/ui.tsx')
+  expect(prompts[0]).not.toContain('/src/old.ts')
+})
+
 test('a work tree that did not change, or a new commit, is no shell edit', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
