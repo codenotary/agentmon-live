@@ -6,7 +6,7 @@ import { addNote } from './advisor'
 import { isDoc, parseTestRules, testCfg } from './gate'
 import { book, newClock, snapshot } from './clock'
 import { priceUsd } from './bench'
-import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, noteTestEdit, noteTestRun, openGaps, resetTurn } from './done'
+import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, noteShellEdit, noteTestEdit, noteTestRun, noteWorkAtStart, openGaps, resetTurn } from './done'
 import { isTestPath, NOTHING, weakeningOf } from './testreview'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
@@ -467,6 +467,7 @@ export const register: Register = on => {
       turn.prompt = mask(e.text)
       turn.startedAt = await $.clock.now()
       resetTurn(turn, await read($, checks))
+      noteWorkAtStart($, turn)
       blockAt = undefined
       isPassed = false
       newPrompt()
@@ -895,8 +896,9 @@ export const register: Register = on => {
     const r = await next(e)
     // Another hook already sends it back: never stack.
     if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
+    await noteShellEdit($, turn)
     // A light turn has nothing to gate; while subagents still run, the work is not over yet.
-    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0) || (await read($, agents)).some(a => a.status === 'running')) return r
+    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running')) return r
     // Fable looks at the continuation too, so the pane says whether the send-back was answered.
     const found = await openGaps($, turn, e.last_assistant_message ?? '')
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.

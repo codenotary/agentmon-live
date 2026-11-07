@@ -6,6 +6,8 @@ import { PROMPT_CHURN_EDITS } from './bench'
 import { addNote, consult } from './advisor'
 import { coverageGaps, doneGaps, droppedRuns, isDoc, isWithin, reaches, testCfg } from './gate'
 import type { Target, TestRun } from './gate'
+import { isWorkChanged, workState } from './git'
+import type { WorkState } from './git'
 import { relPath, SOURCE } from './sizeguard'
 import { mergeEdit } from './testreview'
 import type { Weakening } from './testreview'
@@ -27,7 +29,7 @@ const REQUEST_ROOM = 2000
 
 // `before` holds the checks as they stood at the prompt; `codeEditAt` and `lastCodeEditAt` are the turn's first and last edit of a file that is not a doc.
 // `docs` are the doc files the main loop read this turn; `edits` counts the edits per code file; `tests` every test run; `root` the project.
-export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number; tests: TestRun[]; root: string; testEdits: Set<string> }
+export type Turn = { prompt: string; startedAt: number; tools: number; delegated: number; trail: string[]; edited: Set<string>; edits: Map<string, number>; docs: Set<string>; before: Check[]; codeEditAt?: number; lastCodeEditAt?: number; tests: TestRun[]; root: string; testEdits: Set<string>; workAtStart?: Promise<WorkState | undefined> }
 
 // A new prompt, or `/agentmon clear` mid-turn: everything the turn gathered goes, the prompt and its start stay.
 export function resetTurn(turn: Turn, before: Check[]) {
@@ -48,6 +50,21 @@ export function resetTurn(turn: Turn, before: Check[]) {
 export async function noteTestEdit($: EngineInterface, turn: Turn, path: string, found: Weakening, at: number) {
   turn.testEdits.add(path)
   await update($, testReview, r => ({ ...r, files: mergeEdit(r.files, path, found, at), isGreen: false }))
+}
+
+// Taken when the prompt comes in, without waiting: the turn need not hold for git.
+export function noteWorkAtStart($: EngineInterface, turn: Turn) {
+  turn.workAtStart = cfg.advisorMode === 'off' ? undefined : workState($, projectRoot(turn)).catch(() => undefined)
+}
+
+// `sed -i` or a script edits code with no edit tool call, and without this the gate would not know code changed.
+// shortcut: the turn's start stands in for when it happened, so no check reads as stale, and another session in the same folder counts too; upgrade when false send-backs show.
+export async function noteShellEdit($: EngineInterface, turn: Turn) {
+  if (turn.lastCodeEditAt !== undefined || turn.tools + turn.delegated === 0 || !turn.workAtStart) return
+  const [before, now] = await Promise.all([turn.workAtStart, workState($, projectRoot(turn)).catch(() => undefined)])
+  if (!isWorkChanged(before, now)) return
+  turn.codeEditAt ??= turn.startedAt
+  turn.lastCodeEditAt = turn.startedAt
 }
 
 const isTestEdited = (turn: Turn) => turn.testEdits.size > 0

@@ -1,4 +1,4 @@
-import type { Card, Check, Task, TestReview } from '../types'
+import type { Card, Check, CheckKind, Task, TestReview } from '../types'
 import type { TestScope } from './format'
 import type { Strings } from './i18n'
 import { globToRegExp, reasonedLines } from './sizeguard'
@@ -76,7 +76,8 @@ export function coverageGaps(t: Strings, runs: readonly TestRun[], targets: read
 export type GateInput = { checks: readonly Check[]; before: readonly Check[]; tasks: readonly Task[]; agents: readonly Card[]; since: number; codeEditAt?: number; lastCodeEditAt?: number; answer?: string; runs?: readonly TestRun[]; targets?: readonly Target[]; isTestEdited?: boolean }
 
 // Prose cannot break a test, lint, typecheck or build.
-const DOC = /\.(md|mdx|markdown|txt|rst|adoc)$/i
+export const DOC_TYPES = ['md', 'mdx', 'markdown', 'txt', 'rst', 'adoc']
+const DOC = new RegExp(`\\.(${DOC_TYPES.join('|')})$`, 'i')
 export const isDoc = (path: string) => DOC.test(path)
 
 // "Tests pass", "build succeeds", "typecheck clean" and the like, in each pane language; the match is what the gap quotes.
@@ -87,6 +88,10 @@ const CLAIM = [
   /(?:测试|构建|类型检查)(?:全部)?(?:已)?(?:通过|成功)|(?:テスト|ビルド|型チェック)(?:は|が)?(?:すべて)?(?:通過|成功|パス)/,
 ]
 const NEGATED = /\b(?:not|no|never|nicht|kein|pas|sin)\b|n't|未|没有|せず|ない/i
+
+// Which check a claim speaks of; "tests pass" is not backed by a lint run.
+const CLAIM_KINDS: [CheckKind, RegExp][] = [['typecheck', /type-?check|\btsc\b|类型检查|型チェック/i], ['lint', /\blint\b/i], ['build', /\bbuild\b|构建|ビルド/i]]
+export const claimKind = (claim: string): CheckKind => CLAIM_KINDS.find(([, re]) => re.test(claim))?.[0] ?? 'test'
 
 export function claimOf(answer: string): string | undefined {
   for (const re of CLAIM) {
@@ -109,9 +114,10 @@ export function doneGaps(t: Strings, { checks, before, tasks, agents, since, cod
   }
   const isOldFail = before.some(b => b.kind === 'test' && b.result === 'failed')
   for (const gap of coverageGaps(t, runs, targets, lastCodeEditAt, { isOldFail, isTestEdited })) if (!gaps.includes(gap)) gaps.push(gap)
-  // Code changed, the answer says the checks pass, and nothing ran after the change: the claim has no evidence.
+  // Code changed, the answer says a check passes, and no check of that kind ran after the change: the claim has no evidence.
   const claim = lastCodeEditAt === undefined || gaps.length > 0 ? undefined : claimOf(answer)
-  if (claim && !checks.some(c => c.at >= lastCodeEditAt! && c.result !== 'running' && c.result !== 'failed')) gaps.push(t.gapClaim(claim))
+  const kind = claim && claimKind(claim)
+  if (claim && kind && !checks.some(c => c.kind === kind && c.at >= lastCodeEditAt! && c.result !== 'running' && c.result !== 'failed')) gaps.push(t.gapClaim(claim, t.check[kind]))
   const open = tasks.filter(k => k.status !== 'completed')
   // A list left from an earlier turn is not this turn's unfinished work.
   if (open.length > 0 && tasks.some(k => (k.at ?? 0) >= since)) gaps.push(t.gapTodos(open.length, open.slice(0, 3).map(k => k.subject).join('; ')))
