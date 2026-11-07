@@ -16,6 +16,10 @@ export type LogRow = {
   isYou: boolean
   isFailed: boolean
   isRunning: boolean
+  // A subagent's run row with its calls folded under it.
+  run?: { calls: number; failed: number }
+  // A call shown under its run row.
+  isMember?: boolean
 }
 export type LogChip = 'all' | 'failures' | 'you' | 'agents'
 export type StripBar = { count: number; isFailed: boolean; target: number; at: number }
@@ -94,6 +98,38 @@ export function logRows({ log, trace = [], turns, agents, active }: Input, you: 
   return merged
 }
 
+// One row per subagent run: its calls fold under the row its start wrote, or under its first call when the log's cap dropped that line.
+// `open` holds the agents unfolded; their calls follow the run row in time order.
+export function foldAgents(rows: readonly LogRow[], open: ReadonlySet<string>): LogRow[] {
+  const heads = new Map<string, LogRow>()
+  const calls = new Map<string, LogRow[]>()
+  for (const r of rows) {
+    if (r.agentId === undefined) continue
+    if (r.tool === undefined) {
+      if (!heads.has(r.agentId)) heads.set(r.agentId, r)
+    } else calls.set(r.agentId, [...(calls.get(r.agentId) ?? []), r])
+  }
+  const out: LogRow[] = []
+  const placed = new Set<string>()
+  for (const r of rows) {
+    const id = r.agentId
+    const head = id === undefined ? undefined : heads.get(id)
+    if (id === undefined || (r.tool === undefined && r !== head)) {
+      out.push(r)
+      continue
+    }
+    if (placed.has(id) || (r.tool !== undefined && head)) continue
+    placed.add(id)
+    const own = calls.get(id) ?? []
+    const failed = own.filter(c => c.isFailed).reduce((n, c) => n + c.count, 0)
+    const base = head ?? { ...r, key: `run:${id}`, tool: undefined, what: '', result: '', call: undefined, ms: undefined }
+    // The who column names the agent already; the run row says what it did.
+    out.push({ ...base, what: '', run: { calls: own.reduce((n, c) => n + c.count, 0), failed }, isFailed: base.isFailed || failed > 0 })
+    if (open.has(id)) out.push(...own.map(c => ({ ...c, isMember: true })))
+  }
+  return out
+}
+
 export const matchesChip = (row: LogRow, chip: LogChip) => (chip === 'all' ? true : chip === 'failures' ? row.isFailed : chip === 'you' ? row.isYou : row.agentId !== undefined)
 
 export const chipCounts = (rows: readonly LogRow[]): Record<LogChip, number> => ({
@@ -120,4 +156,4 @@ export function stripOf(rows: readonly LogRow[], bars = STRIP_BARS): (StripBar |
 }
 
 // The same row as last time, for `memo`: only a running row's clock moves it.
-export const sameRow = (a: LogRow, b: LogRow) => a.key === b.key && a.at === b.at && a.who === b.who && a.what === b.what && a.tool === b.tool && a.result === b.result && a.ms === b.ms && a.count === b.count && a.isFailed === b.isFailed && a.isRunning === b.isRunning
+export const sameRow = (a: LogRow, b: LogRow) => a.key === b.key && a.at === b.at && a.who === b.who && a.what === b.what && a.tool === b.tool && a.result === b.result && a.ms === b.ms && a.count === b.count && a.isFailed === b.isFailed && a.isRunning === b.isRunning && a.run?.calls === b.run?.calls && a.run?.failed === b.run?.failed && a.isMember === b.isMember

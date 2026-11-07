@@ -4,7 +4,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import type { TraceCall, WebSnapshot } from '../../../types/index'
 import { isRunning } from '../agents.ts'
 import { agentNames, callTime, firstLine, MAIN_KEY, prefixOf, stateOf, time } from '../format.ts'
-import { clampView, DEFAULT_VIEW, dragMode, flowOf, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
+import { clampView, DEFAULT_VIEW, dragMode, flowOf, lanesIn, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
+import { fill } from '../kpi.ts'
 import type { Labels } from '../labels.ts'
 import { clockOf, set, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
@@ -141,7 +142,11 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   const whole = wholeOf(s, now)
   const setView = (v: FlowView) => set({ flowView: clampView(v, whole) })
   const span = windowOf(view, s, now, stateOf(s) !== 'idle')
-  const { lanes, dots, arcs } = flowOf(s, l.main, now, { hideFinished })
+  const flow = flowOf(s, l.main, now, { hideFinished })
+  const { dots, arcs } = flow
+  // An agent with nothing in this window gets no row: a long session's finished agents would leave the chart empty lanes.
+  const lanes = lanesIn(flow.lanes, span)
+  const outside = flow.lanes.length - lanes.length
   const isNarrow = width < NARROW_PX
   const label = isNarrow ? NARROW_LABEL : WIDE_LABEL
   const plot = Math.max(1, width - label - RIGHT_PAD)
@@ -153,9 +158,10 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   const drawnFrom = span.from - length / 2
   const inWindow = (t: number) => t >= drawnFrom && t <= span.to
   const yOf = new Map(lanes.map((x, i) => [x.id, i * laneH + laneH / 2 + 2]))
-  const colourOf = new Map(lanes.map((x, i) => [x.id, laneColour(i, x.isMain)]))
+  // By the whole list, so an agent keeps its colour as the window moves.
+  const colourOf = new Map(flow.lanes.map((x, i) => [x.id, laneColour(i, x.isMain)]))
   const names = agentNames(s.agents)
-  const marks = mergeDots(dots, { from: drawnFrom, to: span.to }, plot * 1.5)
+  const marks = mergeDots(dots.filter(d => yOf.has(d.lane)), { from: drawnFrom, to: span.to }, plot * 1.5)
   const plotBox = useRef<SVGGElement>(null)
   const glide = useRef<{ anim: Animation; px: number } | null>(null)
   const lastEdge = useRef({ to: span.to, ms: length, id: s.session.id })
@@ -307,6 +313,7 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
                 )
               })}
             </div>
+            {outside > 0 ? <p className="mt-1 text-xs text-ink-3" data-testid="flow-outside">{fill(p.lanesOutside, { n: outside })}</p> : null}
           </>
         ) : null}
         {list ? (

@@ -649,8 +649,9 @@ export const register: Register = on => {
       const at = await $.clock.now()
       const output = String(r.text ?? (r.result as { stdout?: string } | undefined)?.stdout ?? '')
       // A denied or aborted run says nothing about the code; a failed one failed at its last check; past a pipe the output decides.
+      // That output is shared: an error from one check would mark the others, so it decides only for the last.
       const resultOf = (kind: CheckKind): Check['result'] =>
-        r.deny !== undefined ? 'unknown' : r.isError ? (kind === lastKind ? 'failed' : 'unknown') : hidesExit(command) ? outcomeOf(output, kind) : 'ok'
+        r.deny !== undefined ? 'unknown' : r.isError ? (kind === lastKind ? 'failed' : 'unknown') : hidesExit(command) ? (kind === lastKind ? outcomeOf(output, kind) : 'unknown') : 'ok'
       const sameTurn = turn.startedAt === turnAt
       const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
       // A check that fails before the turn's first code edit was broken already; it counts as failing at the prompt.
@@ -672,7 +673,8 @@ export const register: Register = on => {
       const touched = path && !failed && (cat === 'edit' || cat === 'read') ? path : undefined
       if (touched && cat === 'edit' && sameTurn) {
         turn.edited.add(touched)
-        if (!isDoc(touched)) {
+        // A scratch file in /tmp is not the project's code: it makes no check stale.
+        if (!isDoc(touched) && relPath(touched, cwd) !== undefined) {
           turn.codeEditAt ??= at
           turn.lastCodeEditAt = at
           turn.edits.set(touched, (turn.edits.get(touched) ?? 0) + 1)
@@ -833,7 +835,8 @@ export const register: Register = on => {
       output: 0,
       startedAt: await $.clock.now(),
     }
-    await update($, agents, list => trimAgents([...list, card]))
+    // A spawn the engine reports again for a known agent runs it again; it is no new agent.
+    await update($, agents, list => trimAgents(list.some(a => a.id === card.id) ? list.map(a => (a.id === card.id ? { ...a, status: 'running' as const, endedAt: undefined } : a)) : [...list, card]))
     tick($)
     pulse($)
     await addLog($, { who: e.subagentType, what: card.task, result: t.started, agentId: r.agentId })

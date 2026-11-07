@@ -19,6 +19,9 @@ const en = {
     page: {
       disconnected: 'Disconnected from the session server. Trying again…',
       noSignal: 'no signal',
+      lanesOutside: '{n} subagents outside this window',
+      testFilesQuiet: '{n} more test files edited, no checks taken out',
+      allTools: 'All tools',
       disconnectedWord: 'disconnected',
       lastUpdate: 'Last update {at} · {t} ago',
       sessionSilent: 'This session stopped reporting. What you see is its last known state.',

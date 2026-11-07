@@ -92,9 +92,11 @@ export function rank<T extends Ranked>(sections: T[], now: number, isClassic = f
     .map(x => x.s)
 }
 
+// One card per agent: a second copy got every update the first got, and the page drew it twice. The first place holds, the last copy wins.
 export function trimAgents(list: Card[]): Card[] {
-  const drop = new Set(list.filter(a => !isLive(a)).slice(0, -MAX_FINISHED))
-  return list.filter(a => !drop.has(a))
+  const one = [...new Map(list.map(a => [a.id, a])).values()]
+  const drop = new Set(one.filter(a => !isLive(a)).slice(0, -MAX_FINISHED))
+  return one.filter(a => !drop.has(a))
 }
 
 // The engine's own word on an agent beats the card's: a resumed or killed agent says so here first.

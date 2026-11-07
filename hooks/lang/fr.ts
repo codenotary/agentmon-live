@@ -12,6 +12,9 @@ export const fr: Strings = {
     page: {
       disconnected: 'Déconnecté du serveur de session. Nouvelle tentative…',
       noSignal: 'pas de signal',
+      lanesOutside: '{n} sous-agents hors de cette fenêtre',
+      testFilesQuiet: '{n} autres fichiers de test modifiés, aucune vérification retirée',
+      allTools: 'Tous les outils',
       disconnectedWord: 'déconnecté',
       lastUpdate: 'Dernière mise à jour {at} · il y a {t}',
       sessionSilent: 'Cette session ne donne plus de nouvelles. Tu vois son dernier état connu.',

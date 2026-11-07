@@ -12,6 +12,9 @@ export const es: Strings = {
     page: {
       disconnected: 'Desconectado del servidor de sesión. Reintentando…',
       noSignal: 'sin señal',
+      lanesOutside: '{n} subagentes fuera de esta ventana',
+      testFilesQuiet: '{n} archivos de prueba más editados, sin quitar comprobaciones',
+      allTools: 'Todas las herramientas',
       disconnectedWord: 'desconectado',
       lastUpdate: 'Última actualización {at} · hace {t}',
       sessionSilent: 'Esta sesión dejó de informar. Ves su último estado conocido.',

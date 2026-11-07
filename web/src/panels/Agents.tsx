@@ -14,6 +14,9 @@ import { rowsOf } from '../waterfall.ts'
 import { WaterfallRows } from './Waterfall.tsx'
 
 const usdText = (n: number) => `$${n.toFixed(2)}`
+const subOf = (a: Card) => `${a.type} · ${a.model}${a.effort ? ` ${a.effort}` : ''}`
+// Rows shown before "Show all"; running agents always show.
+const AGENT_ROWS = 10
 const dash = (n: number) => (n > 0 ? String(n) : '–')
 
 function PipSet({ pips, l }: { pips: Pips; l: Labels }) {
@@ -102,7 +105,7 @@ function Line({ id, isOpen, setOpen, dot, title, name, sub, ms, calls, tokens, u
       <td className="w-7 pl-2"><i className={`agent-dot ${dot}`} aria-hidden /></td>
       <td className={`max-w-0 min-w-0 w-full py-1 pr-2 ${isMember ? 'pl-4' : ''}`} title={title}>
         <div className="flex min-w-0 items-center gap-2"><span className="truncate text-[13px] font-medium">{name}</span></div>
-        <div className="truncate font-mono text-[11px] text-ink-3">{sub}</div>
+        {sub ? <div className="truncate font-mono text-[11px] text-ink-3">{sub}</div> : null}
       </td>
       <td className="num">{dur(ms)}</td>
       <td className="num max-sm:hidden"><Metric text={String(calls)} share={calls / most.calls} /></td>
@@ -120,11 +123,17 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const now = useClock(s)
   const [sort, setSort] = useState<Sort>(null)
+  const [isAll, setAll] = useState(false)
   const { openAgents: open } = useStore()
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const lines = sortLines(linesOf(s.agents, s.trace ?? [], now), sort, now)
   const items = groupLines(lines, now)
   const totals = totalsOf(s.agents)
+  // The type and model most agents share is said once, in the aside; a row names its own only when it differs.
+  const subs = s.agents.map(subOf)
+  const common = s.agents.length > 1 ? subs.reduce((best, x) => (subs.filter(y => y === x).length > subs.filter(y => y === best).length ? x : best), subs[0] ?? '') : ''
+  const isLiveItem = (item: (typeof items)[number]) => (item.kind === 'agent' ? isRunning(item.line.a) : item.lines.some(x => isRunning(x.a)))
+  const shown = isAll ? items : items.slice(0, Math.max(AGENT_ROWS, items.filter(isLiveItem).length))
   const hasCost = totals.usd > 0
   const most = { calls: Math.max(1, ...s.agents.map(a => a.tools)), tokens: Math.max(1, ...s.agents.map(tokensOf)) }
   const setOpen = (id: string, isOpen: boolean) => {
@@ -147,7 +156,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
         dot={dotOf(a)}
         title={[name?.full, a.testsWhy].filter(Boolean).join('\n')}
         name={<>{name?.short ?? a.type}{a.tests === 'FAIL' ? <>{' '}<Pill text="FAIL" tone="bad" /></> : null}</>}
-        sub={`${a.type} · ${a.model}${a.effort ? ` ${a.effort}` : ''}`}
+        sub={subOf(a) === common ? '' : subOf(a)}
         ms={elapsedOf(a, now)}
         calls={a.tools}
         tokens={tokensOf(a)}
@@ -187,6 +196,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
       {totals.failed ? <span className="text-bad"> · {totals.failed} {l.result.failed}</span> : null}
       {` · ${kilo(totals.tokens)} ${p.tokens}`}
       {hasCost ? ` · ${usdText(totals.usd)}` : ''}
+      {common ? ` · ${common}` : ''}
     </span>
   ) : undefined
 
@@ -210,7 +220,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
               </tr>
             </thead>
             <tbody>
-              {items.flatMap(item => {
+              {shown.flatMap(item => {
                 if (item.kind === 'agent') return agentRow(item.line, false)
                 const id = `group:${item.prefix}`
                 const isOpen = open.has(id)
@@ -241,6 +251,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
               })}
             </tbody>
           </table>
+          {items.length > AGENT_ROWS ? <button type="button" className="chip mt-2" aria-expanded={isAll} onClick={() => setAll(!isAll)}>{isAll ? p.listFewer : `${p.listAll} (${items.length})`}</button> : null}
         </div>
       )}
     </Panel>

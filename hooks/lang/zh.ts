@@ -12,6 +12,9 @@ export const zh: Strings = {
     page: {
       disconnected: '与会话服务器的连接已断开，正在重试…',
       noSignal: '无信号',
+      lanesOutside: '{n} 个子代理不在此时间窗口内',
+      testFilesQuiet: '另有 {n} 个测试文件被编辑，未移除任何检查',
+      allTools: '全部工具',
       disconnectedWord: '已断开',
       lastUpdate: '最后更新 {at} · {t}前',
       sessionSilent: '此会话已停止上报。你看到的是它最后已知的状态。',

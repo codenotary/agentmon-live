@@ -93,25 +93,25 @@ Every tool call, sortable, with filters by tool, by agent and for failures. Clic
 
 ### Verification
 
-The last test, type check, lint and build, files changed since the last passing test, and test files whose checks were removed or changed. Tasks sit beside them.
+The last test, type check, lint and build, files changed since the last passing test, and test files whose checks were removed or changed; other edited test files are only counted. Tasks sit beside them.
 
 ![Verification lights, edited test files and Tasks](docs/web/verification.png)
 
 ### Subagents
 
-One row per subagent, worst first. Health dots compare its duration, tokens and errors with the session's other subagents. Click a row for its prompt and calls.
+One row per subagent, worst first, ten at a time plus every running one. Health dots compare its duration, tokens and errors with the session's other subagents. Click a row for its prompt and calls.
 
 ![Subagent table with calls, tokens, cost, errors, files and health dots](docs/web/agents.png)
 
 ### Files
 
-Edited files, grouped by whether they still need a test: not tested since the last passing run, then edited before it. Files only read follow, most read first.
+Edited files, paths inside the project, grouped by whether they still need a test: not tested since the last passing run, then edited before it. Files only read follow, most read first.
 
 ![Files: not tested since last green, before the last passing test, and only read](docs/web/files.png)
 
 ### Session log
 
-One searchable stream of your prompts, tool calls and subagents. Equal calls merge, and a failed call keeps its own red row. Filter with the buttons, or click a red bar to go to that failure.
+One searchable stream of your prompts, tool calls and subagents. A subagent is one row that unfolds to its calls, equal calls merge, and a failed call keeps its own red row. Filter with the buttons, or click a red bar to go to that failure.
 
 ![Session log with filter buttons, activity bars and rows](docs/web/log.png)
 

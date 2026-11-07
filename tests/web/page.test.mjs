@@ -6,13 +6,13 @@ import { fileURLToPath } from 'node:url'
 
 import { elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
-import { agentNames, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
+import { agentNames, pathIn, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
-import { chipCounts, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
+import { chipCounts, foldAgents, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
 import { currentOf, silentIds, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
 import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../../web/src/kpi.ts'
 import { labelsOf, lastKnown, PAGE_EN, pageOf } from '../../web/src/labels.ts'
-import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
+import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, lanesIn, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
 import { BUILT, builtHash, sourceHash } from '../../web/source-hash.mjs'
 
@@ -616,6 +616,41 @@ test('with no signal, the words for busy say it was so', () => {
   assert.equal(l.status.waiting, PAGE_EN.wasWaiting)
   assert.equal(l.page.running, PAGE_EN.runningThen)
   assert.equal(l.status.done, labelsOf(fixture).status.done)
+})
+
+test('a subagent run is one row, its calls under it when unfolded', () => {
+  const row = (key, at, more) => ({ key, at, who: 'w', what: key, result: 'ok', count: 1, isYou: false, isFailed: false, isRunning: false, ...more })
+  const rows = [
+    row('you', 1, { isYou: true }),
+    row('start-a', 2, { agentId: 'a' }),
+    row('a1', 3, { agentId: 'a', tool: 'Bash' }),
+    row('b1', 4, { agentId: 'b', tool: 'Read', count: 2 }),
+    row('a2', 5, { agentId: 'a', tool: 'Bash', isFailed: true }),
+    row('main', 6, { tool: 'Edit' }),
+  ]
+  const folded = foldAgents(rows, new Set())
+  assert.deepEqual(folded.map(r => r.key), ['you', 'start-a', 'run:b', 'main'])
+  assert.deepEqual(folded[1].run, { calls: 2, failed: 1 })
+  assert.equal(folded[1].isFailed, true)
+  // The log's cap dropped b's start: its first call stands in, and counts every call.
+  assert.equal(folded[1].what, '')
+  assert.deepEqual([folded[2].tool, folded[2].run], [undefined, { calls: 2, failed: 0 }])
+  const open = foldAgents(rows, new Set(['a']))
+  assert.deepEqual(open.map(r => r.key), ['you', 'start-a', 'a1', 'a2', 'run:b', 'main'])
+  assert.equal(open[2].isMember, true)
+})
+
+test('the flow keeps lanes with something in the window, main and running ones', () => {
+  const lane = (id, from, to, more = {}) => ({ id, name: id, full: id, dot: 'done', from, to, isMain: false, isRunning: false, ...more })
+  const lanes = [lane('main', 0, 100, { isMain: true }), lane('old', 0, 10), lane('edge', 10, 50), lane('live', 0, 5, { isRunning: true }), lane('later', 95, 99)]
+  assert.deepEqual(lanesIn(lanes, { from: 50, to: 90 }).map(x => x.id), ['main', 'edge', 'live'])
+})
+
+test('a path reads as inside the project, a worktree as the project itself', () => {
+  assert.equal(pathIn('/p/app/src/a.ts', '/p/app'), 'src/a.ts')
+  assert.equal(pathIn('/p/app/.claude/worktrees/agent-1f2e/deploy/x.plist', '/p/app'), 'deploy/x.plist')
+  assert.equal(pathIn('/tmp/claude-1000/s/scratchpad/compile.sh', '/p/app'), 's/scratchpad/compile.sh')
+  assert.equal(pathIn('/p/app/src/a.ts', undefined), 'app/src/a.ts')
 })
 
 test('a session is silent only past the idle heartbeat and its margin', () => {
