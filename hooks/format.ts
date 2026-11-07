@@ -173,35 +173,39 @@ export function findCheck(command: string): { kind: CheckKind; part: string } | 
 
 // Every check a command runs, in command order, one entry per kind unless `isEvery`: `npm run lint && npm test` is lint, then test.
 export function findChecks(command: string, isEvery = false): { kind: CheckKind; part: string }[] {
-  // The heredoc regex is quadratic on many unterminated `<<A`; a real command never needs more than this.
-  const plain = command.slice(0, 20_000).replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '')
-  // Quoted text turns to spaces of the same length, so a part found in `blank` is cut from `plain` at the same place.
-  const blank = plain.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, q => q[0] + ' '.repeat(q.length - 2) + q[0])
-  const parts: { head: string; part: string }[] = []
-  let start = 0
-  for (const m of blank.matchAll(/&&|\|\||;|\||\n|$/g)) {
-    const head = blank.slice(start, m.index).trim()
-    parts.push({ head: head.replace(/^(?:\w+=\S*\s+)*(?:(?:npx(?:\s+(?:(?:-p|--package)(?:=|\s+)\S+|-y|--yes))*|bunx|sudo|time|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''), part: plain.slice(start, m.index).trim() })
-    start = m.index + m[0].length
-    if (m[0] === '') break
-  }
   const found: { kind: CheckKind; part: string }[] = []
-  for (const p of parts) {
+  for (const p of partsOf(command).parts) {
     const kind = CHECKS.find(([, re]) => re.test(p.head))?.[0]
     if (kind && (isEvery || !found.some(f => f.kind === kind))) found.push({ kind, part: p.part })
   }
   return found
 }
 
+// The commands a shell line runs, each with where it ends in `blank`: heredoc bodies dropped, quoted text blanked, a backslash-newline joined.
+function partsOf(command: string): { blank: string; parts: { head: string; part: string; end: number }[] } {
+  // The heredoc regex is quadratic on many unterminated `<<A`; a real command never needs more than this.
+  const plain = command.slice(0, 20_000).replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(?=\n|$)/g, '').replace(/\\\n/g, '  ')
+  // Quoted text turns to spaces of the same length, so a part found in `blank` is cut from `plain` at the same place.
+  const blank = plain.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, q => q[0] + ' '.repeat(q.length - 2) + q[0])
+  const parts: { head: string; part: string; end: number }[] = []
+  let start = 0
+  for (const m of blank.matchAll(/&&|\|\||;|\||\n|$/g)) {
+    const head = blank.slice(start, m.index).trim()
+    parts.push({ end: m.index, head: head.replace(/^(?:\w+=\S*\s+)*(?:(?:npx(?:\s+(?:(?:-p|--package)(?:=|\s+)\S+|-y|--yes))*|bunx|sudo|time|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''), part: plain.slice(start, m.index).trim() })
+    start = m.index + m[0].length
+    if (m[0] === '') break
+  }
+  return { blank, parts }
+}
+
 // A pipe hides the check's own exit status unless pipefail is set, so success there is only `unknown`.
 // `||` turns a failure into exit 0 the same way, and so does a command after `;` or a newline: the shell reports the last one.
 export function hidesExit(command: string): boolean {
   if (/\|\|/.test(command) || (/[^|]\|[^|]/.test(command) && !/pipefail/.test(command))) return true
-  const first = findChecks(command, true)[0]
-  if (!first) return false
-  // Quoted text is no separator. The first check counts: `npm run lint; npm test` hides the lint.
-  const after = command.slice(command.indexOf(first.part) + first.part.length).replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, '')
-  return /[;\n]\s*\S/.test(after)
+  const { blank, parts } = partsOf(command)
+  const first = parts.find(p => CHECKS.some(([, re]) => re.test(p.head)))
+  // The first check counts: `npm run lint; npm test` hides the lint. In `blank` quoted text and heredocs are no separators.
+  return first !== undefined && /[;\n]\s*\S/.test(blank.slice(first.end))
 }
 
 const FAIL_COUNT = /\b[1-9]\d*\s+(?:tests?\s+)?fail(?:ed|ures?|ing)?\b|\bfail(?:ed|ures?)?:?\s+[1-9]/i

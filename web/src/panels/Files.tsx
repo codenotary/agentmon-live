@@ -9,6 +9,7 @@ import type { Page } from '../labels.ts'
 import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill, toneVar } from '../ui/Pill.tsx'
+import { ShowAll } from '../ui/ShowAll.tsx'
 
 const READ_ROWS_FOLDED = 2
 // A busy session edits hundreds of files: the latest ones lead, the rest wait behind a button.
@@ -38,7 +39,7 @@ function EditedRows({ rows, tone, now, p, cwd }: { rows: readonly FileRow[]; ton
         </li>
       ))}
     </ul>
-    {rows.length > EDITED_ROWS_FOLDED ? <button type="button" className="chip mt-2" aria-expanded={isAll} onClick={() => setAll(!isAll)}>{isAll ? p.listFewer : `${p.listAll} (${rows.length})`}</button> : null}
+    {rows.length > EDITED_ROWS_FOLDED ? <ShowAll isAll={isAll} count={rows.length} onToggle={() => setAll(!isAll)} p={p} /> : null}
     </>
   )
 }
@@ -69,7 +70,7 @@ export function Files({ s, p }: { s: WebSnapshot; p: Page }) {
                   </li>
                 ))}
               </ul>
-              {g.readOnly.length > READ_ROWS_FOLDED ? <button type="button" className="chip mt-2" aria-expanded={isReadOpen} onClick={() => setReadOpen(!isReadOpen)}>{isReadOpen ? p.listFewer : p.listAll}</button> : null}
+              {g.readOnly.length > READ_ROWS_FOLDED ? <ShowAll isAll={isReadOpen} onToggle={() => setReadOpen(!isReadOpen)} p={p} /> : null}
             </div>
           ) : null}
         </div>

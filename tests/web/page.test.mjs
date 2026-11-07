@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, sortLines, totalsOf } from '../../web/src/agents.ts'
+import { AGENT_ROWS, elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, shownItems, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
 import { agentNames, pathIn, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
@@ -616,6 +616,14 @@ test('with no signal, the words for busy say it was so', () => {
   assert.equal(l.status.waiting, PAGE_EN.wasWaiting)
   assert.equal(l.page.running, PAGE_EN.runningThen)
   assert.equal(l.status.done, labelsOf(fixture).status.done)
+})
+
+test('subagent rows: ten, plus running ones and one opened from elsewhere; Show all lists every one', () => {
+  const item = (id, status = 'done') => ({ kind: 'agent', line: { a: { id, status }, pips: {}, worst: 0 } })
+  const items = Array.from({ length: 15 }, (_, i) => item(`a${i}`, i === 13 ? 'running' : 'done'))
+  assert.deepEqual(shownItems(items, new Set(), false).map(x => x.line.a.id), [...items.slice(0, AGENT_ROWS), items[13]].map(x => x.line.a.id))
+  assert.ok(shownItems(items, new Set(['a14']), false).some(x => x.line.a.id === 'a14'))
+  assert.equal(shownItems(items, new Set(), true).length, 15)
 })
 
 test('a subagent run is one row, its calls under it when unfolded', () => {

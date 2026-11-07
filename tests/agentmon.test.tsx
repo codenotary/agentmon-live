@@ -418,6 +418,8 @@ test('shell commands are told apart by the check they run', () => {
   expect(hidesExit('npm test -- -t "a;b"')).toBe(false)
   expect(hidesExit('npm test && echo "x;y"')).toBe(false)
   expect(hidesExit('ls; echo done')).toBe(false)
+  expect(hidesExit('npm run build \\\n  --mode prod')).toBe(false)
+  expect(hidesExit("cat <<'EOF' > x\nnpm test; echo\nEOF\nnpm test")).toBe(false)
   expect(outcomeOf(' 40 pass\n 0 fail\nRan 40 tests across 1 file.', 'test')).toBe('ok')
   expect(outcomeOf(' 39 pass\n 1 fail', 'test')).toBe('failed')
   expect(outcomeOf('Tests: 2 failed, 10 passed', 'test')).toBe('failed')

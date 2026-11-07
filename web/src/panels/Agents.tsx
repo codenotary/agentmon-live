@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Bot, ChevronRight, Copy, Terminal, TriangleAlert } 
 import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 
 import type { Card, WebSnapshot } from '../../../types/index'
-import { dotOf, elapsedOf, endOf, groupLines, isRunning, LEVEL_TONE, linesOf, sortLines, tokensOf, totalsOf, type AgentLine, type Pips, type Sort, type SortKey } from '../agents.ts'
+import { AGENT_ROWS, dotOf, elapsedOf, endOf, groupLines, shownItems, isRunning, LEVEL_TONE, linesOf, sortLines, tokensOf, totalsOf, type AgentLine, type Pips, type Sort, type SortKey } from '../agents.ts'
 import { agentNames, dur, hhmm, kilo, time, type AgentName } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { jumpTo } from '../Nav.tsx'
@@ -10,13 +10,13 @@ import { copyText } from '../Palette.tsx'
 import { set, useClock, useStore } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill, toneVar } from '../ui/Pill.tsx'
+import { ShowAll } from '../ui/ShowAll.tsx'
 import { rowsOf } from '../waterfall.ts'
 import { WaterfallRows } from './Waterfall.tsx'
 
 const usdText = (n: number) => `$${n.toFixed(2)}`
 const subOf = (a: Card) => `${a.type} · ${a.model}${a.effort ? ` ${a.effort}` : ''}`
-// Rows shown before "Show all"; running agents always show.
-const AGENT_ROWS = 10
+
 const dash = (n: number) => (n > 0 ? String(n) : '–')
 
 function PipSet({ pips, l }: { pips: Pips; l: Labels }) {
@@ -132,8 +132,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
   // The type and model most agents share is said once, in the aside; a row names its own only when it differs.
   const subs = s.agents.map(subOf)
   const common = s.agents.length > 1 ? subs.reduce((best, x) => (subs.filter(y => y === x).length > subs.filter(y => y === best).length ? x : best), subs[0] ?? '') : ''
-  const isLiveItem = (item: (typeof items)[number]) => (item.kind === 'agent' ? isRunning(item.line.a) : item.lines.some(x => isRunning(x.a)))
-  const shown = isAll ? items : items.slice(0, Math.max(AGENT_ROWS, items.filter(isLiveItem).length))
+  const shown = shownItems(items, open, isAll)
   const hasCost = totals.usd > 0
   const most = { calls: Math.max(1, ...s.agents.map(a => a.tools)), tokens: Math.max(1, ...s.agents.map(tokensOf)) }
   const setOpen = (id: string, isOpen: boolean) => {
@@ -251,7 +250,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
               })}
             </tbody>
           </table>
-          {items.length > AGENT_ROWS ? <button type="button" className="chip mt-2" aria-expanded={isAll} onClick={() => setAll(!isAll)}>{isAll ? p.listFewer : `${p.listAll} (${items.length})`}</button> : null}
+          {items.length > AGENT_ROWS ? <ShowAll isAll={isAll} count={items.length} onToggle={() => setAll(!isAll)} p={p} /> : null}
         </div>
       )}
     </Panel>

@@ -46,17 +46,32 @@ export async function readBase($: EngineInterface, cwd: string, fetch: boolean):
   return { base, ...counts, files: names.split('\n').filter(Boolean).map(f => `${root}/${f}`) }
 }
 
-// The commit and what differs from it, docs left out: compared at a turn's start and end to see edits no edit tool made.
-export type WorkState = { head: string; text: string }
+// The commit and what tracked files differ from it, docs left out (untracked build or test output is no edit): compared at a turn's start and end to see edits no edit tool made.
+export type WorkState = { head: string; text: string; diff: string }
 const NOT_DOCS = ['.', ...DOC_TYPES.map(x => `:!*.${x}`)]
 
 // Undefined when it cannot say: no repo, no commit, a timeout, or more output than the host hands over. No optional locks: a status must not get in the way of Claude's own git.
 export async function workState($: EngineInterface, cwd: string): Promise<WorkState | undefined> {
   const run = (args: string[]) => $.process.run(['git', '--no-optional-locks', ...args], { cwd, timeoutMs: 3000 })
-  const [head, status, diff] = await Promise.all([run(['rev-parse', 'HEAD']), run(['status', '--porcelain', '--', ...NOT_DOCS]), run(['diff', 'HEAD', '--no-ext-diff', '--no-color', '--', ...NOT_DOCS])])
+  const [head, status, diff] = await Promise.all([run(['rev-parse', 'HEAD']), run(['status', '--porcelain', '--untracked-files=no', '--', ...NOT_DOCS]), run(['diff', 'HEAD', '--relative', '--no-ext-diff', '--no-color', '--', ...NOT_DOCS])])
   if ([head, status, diff].some(r => r.exitCode !== 0 || r.isStdoutTruncated)) return undefined
-  return { head: head.stdout.trim(), text: `${status.stdout}\n${diff.stdout}` }
+  return { head: head.stdout.trim(), text: `${status.stdout}\n${diff.stdout}`, diff: diff.stdout }
 }
 
 // A new commit moves the diff without any edit: that says nothing.
-export const isWorkChanged = (a: WorkState | undefined, b: WorkState | undefined) => a !== undefined && b !== undefined && a.head === b.head && a.text !== b.text
+export const isWorkChanged = (a: WorkState | undefined, b: WorkState | undefined): b is WorkState => a !== undefined && b !== undefined && a.head === b.head && a.text !== b.text
+
+// Each file's part of a `git diff --relative`, by its path in the session folder.
+// shortcut: a path git quotes (spaces, non-ASCII) has no part here, so the edit counts but its name is missing; upgrade when such names matter.
+function partsByFile(diff: string): Map<string, string> {
+  return new Map(diff.split(/^(?=diff --git )/m).flatMap(part => {
+    const path = part.match(/^diff --git a\/(.+?) b\//)?.[1]
+    return path === undefined ? [] : [[path, part] as const]
+  }))
+}
+
+// The files whose diff against the commit changed between two states: what the turn edited, by any means.
+export function changedFiles(a: WorkState, b: WorkState): string[] {
+  const [x, y] = [partsByFile(a.diff), partsByFile(b.diff)]
+  return [...new Set([...x.keys(), ...y.keys()])].filter(path => x.get(path) !== y.get(path))
+}

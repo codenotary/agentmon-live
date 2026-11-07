@@ -299,6 +299,32 @@ if (!await logPage.locator('[data-testid=files-green]').isVisible() || !await lo
 await logPage.locator('#files').screenshot({ path: join(out, 'web-files-green.png') })
 await logPage.close()
 
+// A busy session: 30 more subagents bring the filter dropdowns, folded log runs and a subagent table with Show all.
+const busyAt = other.now
+const busyAgents = Array.from({ length: 30 }, (_, i) => ({ ...other.agents[0], id: `busy${i}`, task: `Wave ${Math.floor(i / 10)} ${'ABCDEFGHIJ'[i % 10]}: part ${i}`, status: 'done', startedAt: busyAt - (120 - i * 4) * 60_000, endedAt: busyAt - (117 - i * 4) * 60_000 }))
+const busyCalls = busyAgents.flatMap(a => Array.from({ length: 5 }, (_, k) => ({ id: `${a.id}c${k}`, at: a.startedAt + k * 9000, who: a.type, agentId: a.id, tool: k % 2 ? 'Bash' : `mcp__t${k}${a.id.slice(-1)}__x`, what: `step ${k}`, ms: 800 })))
+const busy = { ...other, session: { ...other.session, id: 'busy', cwd: '/home/dev/busy-project' }, agents: [...other.agents, ...busyAgents], trace: [...(other.trace ?? []), ...busyCalls].sort((a, b) => a.at - b.at), log: [...other.log, ...busyAgents.map(a => ({ at: a.startedAt, who: a.type, what: a.task, result: 'started', agentId: a.id }))].sort((a, b) => a.at - b.at) }
+await fetch(`${url}state/busy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(busy) })
+const busyPage = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+busyPage.on('pageerror', e => problems.push(`busy: ${e.message}`))
+await busyPage.goto(url)
+await busyPage.click('#picker')
+await busyPage.click('[role=option]:has-text("busy-project")')
+await busyPage.waitForSelector('[data-testid=who-filter]', { timeout: 5000 }).catch(() => problems.push('busy: no agent dropdown'))
+await busyPage.click('[data-testid=who-filter]')
+await busyPage.click('[role=option]:has-text("part 5")')
+if (!await busyPage.locator('[data-testid=who-filter]', { hasText: 'part 5' }).count() || await busyPage.locator('#calls tbody tr').count() !== 5) problems.push('busy: the dropdown did not filter to one agent')
+const runRows = busyPage.locator('[data-testid=log-rows] > *')
+const runsFolded = await runRows.count()
+await busyPage.locator('[data-testid=log-rows] [data-run=busy3]').click()
+if (await runRows.count() !== runsFolded + 5) problems.push(`busy: a log run did not unfold its 5 calls (${runsFolded} rows, then ${await runRows.count()})`)
+const agentRows = busyPage.locator('[data-testid=agents] tr[data-line]')
+const fewRows = await agentRows.count()
+await busyPage.locator('#agents .chip', { hasText: 'Show all' }).click()
+if (fewRows >= 30 || await agentRows.count() <= fewRows) problems.push(`busy: Show all went from ${fewRows} to ${await agentRows.count()} subagent rows`)
+await busyPage.close()
+await fetch(`${url}state/busy`, { method: 'DELETE', headers: { 'content-type': 'application/json' } })
+
 // The pins shake while connected, and hold still under reduced motion and once the connection drops.
 const pinAt = target => target.locator('.pin-wobble').first().evaluate(el => getComputedStyle(el).transform)
 const moves = async target => { const a = await pinAt(target); await target.waitForTimeout(400); return a !== await pinAt(target) }
