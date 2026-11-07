@@ -449,6 +449,35 @@ function workTree(on: On, states: { head?: string; diff: string }[]) {
   })
 }
 
+test('in a chain, the shared output decides only the last check: one error does not fail the others', async ($, on) => {
+  const clock = mock.clock(on)
+  // No summary line: the error is all the output says, and it is the build's.
+  const cmd = 'npm test; npm run build'
+  engine(on, { [cmd]: 'error TS2322: old' })
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: cmd })
+  await clock.settle()
+  const r = await $.classic.Stop({ ...STOP, last_assistant_message: 'Done.' })
+  expect(r.block).toContain('build failed: npm run build')
+  expect(r.block).not.toContain('test failed')
+})
+
+test('an edit outside the project makes no check stale', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'Fix the parser', turnId: 'm1' })
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Write', file_path: '/tmp/scratch/fix.py', content: 'x' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
+})
+
 test('a shell edit counts as a code edit: a claim with no test run goes back', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)

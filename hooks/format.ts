@@ -181,7 +181,7 @@ export function findChecks(command: string, isEvery = false): { kind: CheckKind;
   let start = 0
   for (const m of blank.matchAll(/&&|\|\||;|\||\n|$/g)) {
     const head = blank.slice(start, m.index).trim()
-    parts.push({ head: head.replace(/^(?:\w+=\S*\s+)*(?:(?:npx|bunx|sudo|time|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''), part: plain.slice(start, m.index).trim() })
+    parts.push({ head: head.replace(/^(?:\w+=\S*\s+)*(?:(?:npx(?:\s+(?:(?:-p|--package)(?:=|\s+)\S+|-y|--yes))*|bunx|sudo|time|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''), part: plain.slice(start, m.index).trim() })
     start = m.index + m[0].length
     if (m[0] === '') break
   }

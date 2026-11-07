@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import type { WebSnapshot } from '../../../types/index'
 import { agentNames, dur, editsSinceGreen, kilo, resultOf, time, whoOf } from '../format.ts'
 import type { Labels, Page } from '../labels.ts'
+import { fill } from '../kpi.ts'
 import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill, toneVar } from '../ui/Pill.tsx'
@@ -36,11 +37,14 @@ function TestEdits({ s, l }: { s: WebSnapshot; l: Labels }) {
   const review = s.testReview
   if (!review || review.files.length === 0) return null
   const name = (path: string) => path.slice(path.lastIndexOf('/') + 1)
+  // A test file edited with no check taken out needs no look of its own: it is counted, not listed.
+  const flagged = review.files.filter(f => f.removed > 0 || f.skips > 0 || (f.changed ?? 0) > 0)
+  const quiet = review.files.filter(f => !flagged.includes(f))
   return (
     <div className="mt-3" data-testid="test-edits">
       <span className="eyebrow">{l.page.testEdits}</span>
       <ul className="mt-1 flex flex-col gap-1 text-xs">
-        {review.files.map(f => (
+        {flagged.map(f => (
           <li key={f.path} className="flex flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2" title={f.path}>
               <span className="min-w-0 truncate font-mono">{name(f.path)}</span>
@@ -55,6 +59,7 @@ function TestEdits({ s, l }: { s: WebSnapshot; l: Labels }) {
             ) : null}
           </li>
         ))}
+        {quiet.length ? <li className="text-ink-3" title={quiet.map(f => f.path).join('\n')} data-testid="test-edits-quiet">{fill(l.page.testFilesQuiet, { n: quiet.length })}</li> : null}
         {review.isGreen ? review.dropped.map(line => <li key={line} className="text-warn">{line}</li>) : null}
       </ul>
     </div>

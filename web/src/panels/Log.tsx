@@ -2,9 +2,9 @@ import { ScrollText } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, callTime, resultOf, time, tone } from '../format.ts'
+import { agentNames, callTime, countWord, resultOf, time, tone } from '../format.ts'
 import type { Labels } from '../labels.ts'
-import { chipCounts, logRows, matchesChip, sameRow, stripOf, type LogChip, type LogRow } from '../logrows.ts'
+import { chipCounts, foldAgents, logRows, matchesChip, sameRow, stripOf, type LogChip, type LogRow } from '../logrows.ts'
 import { useClock } from '../store.ts'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { toneVar } from '../ui/Pill.tsx'
@@ -19,9 +19,9 @@ function Marked({ text, q }: { text: string; q: string }) {
   return <>{text.slice(0, at)}<mark>{text.slice(at, at + q.length)}</mark><Marked text={text.slice(at + q.length)} q={q} /></>
 }
 
-type RowProps = { row: LogRow; q: string; now: number; l: Labels; title: string | undefined; lang: string }
+type RowProps = { row: LogRow; q: string; now: number; l: Labels; title: string | undefined; lang: string; isOpen?: boolean; onToggle?: (id: string) => void }
 
-const Row = memo(function Row({ row, q, now, l, title }: RowProps) {
+const Row = memo(function Row({ row, q, now, l, title, isOpen, onToggle }: RowProps) {
   const shown = row.tool === undefined ? { text: row.result, tone: tone(row.result) } : resultOf(row.result, l)
   const ms = row.isRunning ? now - row.at : row.ms
   const cells = (
@@ -32,6 +32,7 @@ const Row = memo(function Row({ row, q, now, l, title }: RowProps) {
         {row.tool === undefined ? null : <span className="text-ink-3"><Marked text={row.tool} q={q} /> </span>}
         <Marked text={row.what} q={q} />
         {row.count > 1 ? <span className="ml-1.5 text-ink-2">×{row.count}</span> : null}
+        {row.run ? <span className="ml-1.5 text-ink-2">{row.what ? '· ' : ''}{countWord(row.run.calls, l.page)}{row.run.failed ? <span className="text-bad"> · {row.run.failed} {l.result.failed}</span> : null} {isOpen ? '▾' : '▸'}</span> : null}
       </span>
       <span className="whitespace-nowrap text-ink-3 tabular-nums max-sm:col-start-2 sm:text-right">{callTime(ms)}</span>
       <span className={`max-sm:col-start-2 [overflow-wrap:anywhere] sm:text-right ${row.isFailed ? 'font-bold' : ''}`} style={{ color: row.isFailed ? 'var(--bad)' : toneVar(shown.tone) }}>
@@ -40,10 +41,14 @@ const Row = memo(function Row({ row, q, now, l, title }: RowProps) {
       </span>
     </>
   )
-  const grid = `row-in grid w-full grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 rounded px-1 py-0.5 text-left sm:grid-cols-[72px_190px_minmax(0,1fr)_56px_minmax(48px,140px)] ${row.isFailed ? 'bg-bad-soft' : ''}`
+  const grid = `row-in grid w-full ${row.isMember ? 'opacity-80 [&>span:nth-child(2)]:pl-3' : ''} grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 rounded px-1 py-0.5 text-left sm:grid-cols-[72px_190px_minmax(0,1fr)_56px_minmax(48px,140px)] ${row.isFailed ? 'bg-bad-soft' : ''}`
   const { call } = row
+  if (row.run && row.agentId !== undefined && onToggle) {
+    const id = row.agentId
+    return <button type="button" className={`${grid} cursor-pointer hover:bg-surface-2`} aria-expanded={isOpen} data-run={id} onClick={() => onToggle(id)}>{cells}</button>
+  }
   return call ? <button type="button" className={`${grid} cursor-pointer hover:bg-surface-2`} aria-label={`${l.page.details}: ${call.tool} ${call.what}`} onClick={() => openTrace(call)}>{cells}</button> : <div className={grid}>{cells}</div>
-}, (a, b) => sameRow(a.row, b.row) && a.q === b.q && a.title === b.title && a.lang === b.lang && (!a.row.isRunning || a.now === b.now))
+}, (a, b) => sameRow(a.row, b.row) && a.q === b.q && a.title === b.title && a.lang === b.lang && a.isOpen === b.isOpen && (!a.row.isRunning || a.now === b.now))
 
 export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
@@ -51,12 +56,20 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
   const [query, setQuery] = useState('')
   const [chip, setChip] = useState<LogChip>('all')
   const [follow, setFollow] = useState(true)
+  const [openRuns, setOpenRuns] = useState<ReadonlySet<string>>(new Set())
   const box = useRef<HTMLDivElement>(null)
   const q = query.toLowerCase()
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const all = useMemo(() => logRows(s, p.you, names), [s.log, s.trace, s.turns, s.active, names, p.you])
   const counts = chipCounts(all)
-  const rows = all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text}`.toLowerCase().includes(q)))
+  const flat = all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text}`.toLowerCase().includes(q)))
+  // A search or the failures chip lists the calls themselves; otherwise a subagent run is one row.
+  const rows = q || chip === 'failures' ? flat : foldAgents(flat, openRuns)
+  const toggleRun = (id: string) => setOpenRuns(open => {
+    const next = new Set(open)
+    if (!next.delete(id)) next.add(id)
+    return next
+  })
   const strip = stripOf(rows)
   const tallest = Math.max(1, ...strip.map(b => b?.count ?? 0))
 
@@ -101,7 +114,7 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
               if (atEnd !== follow) setFollow(atEnd)
             }}
           >
-            {rows.map(x => <Row key={x.key} row={x} q={q} now={now} l={l} lang={s.lang} title={x.agentId === undefined ? undefined : names.get(x.agentId)?.full} />)}
+            {rows.map(x => <Row key={x.key} row={x} q={q} now={now} l={l} lang={s.lang} title={x.agentId === undefined ? undefined : names.get(x.agentId)?.full} isOpen={x.run && x.agentId !== undefined ? openRuns.has(x.agentId) : undefined} onToggle={toggleRun} />)}
           </div>
         </>
       )}

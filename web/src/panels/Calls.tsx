@@ -5,6 +5,7 @@ import type { WebSnapshot } from '../../../types/index'
 import { agentNames, chipsWith, firstLine, MAIN_KEY, resultOf, time, whoKey, whoOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { set, useStore } from '../store.ts'
+import { Choice } from '../ui/Choice.tsx'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { Pill } from '../ui/Pill.tsx'
 import { sortCalls, tableRows, type CallColumn, type CallSort } from '../waterfall.ts'
@@ -12,6 +13,8 @@ import { sortCalls, tableRows, type CallColumn, type CallSort } from '../waterfa
 const CELL = 'px-[18px] py-[11px] align-top max-sm:px-2.5'
 // A scroller of its own would catch the wheel on its way down the page.
 const ROWS_SHOWN = 8
+// Past this many values a filter is a dropdown: one chip per tool and per agent filled rows of their own.
+const CHIPS_MAX = 8
 
 export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
@@ -48,8 +51,10 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
     <>
       <input className="field !h-[26px] !w-40" type="search" aria-label={p.filterCalls} placeholder={p.filterCalls} value={text} onChange={e => setText(e.target.value)} />
       <button type="button" className="chip" aria-pressed={onlyFailures} onClick={() => set({ onlyFailures: !onlyFailures })}>{p.onlyFailures}</button>
-      {tools.length > 1 || tool ? chipsWith(tools, tool).map(name => <button key={name} type="button" className="chip font-mono" aria-pressed={tool === name} onClick={() => setTool(tool === name ? null : name)}>{name}</button>) : null}
-      {people.length > 1 || who ? (
+      {tools.length > CHIPS_MAX ? <Choice label={p.what} value={tool} options={chipsWith(tools, tool).map(name => [name, name] as const)} anyText={p.allTools} onChange={setTool} testId="tool-filter" />
+        : tools.length > 1 || tool ? chipsWith(tools, tool).map(name => <button key={name} type="button" className="chip font-mono" aria-pressed={tool === name} onClick={() => setTool(tool === name ? null : name)}>{name}</button>) : null}
+      {people.length > CHIPS_MAX ? <Choice label={p.who} value={who} options={people} anyText={p.everyone} onChange={key => set({ whoFilter: key })} testId="who-filter" />
+        : people.length > 1 || who ? (
         <>
           <button type="button" className="chip" aria-pressed={who === null} onClick={() => set({ whoFilter: null })}>{p.everyone}</button>
           {people.map(([key, name]) => <button key={key} type="button" className="chip" aria-pressed={who === key} onClick={() => set({ whoFilter: who === key ? null : key })}>{name}</button>)}

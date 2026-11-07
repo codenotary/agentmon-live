@@ -62,6 +62,11 @@ export function flowOf(d: FlowInput, mainName: string, now: number, opts: FlowOp
   return { lanes, dots, arcs }
 }
 
+// The lanes worth a row in this window: main, what runs, and what did something in it. The rest only says how many.
+export function lanesIn(lanes: readonly Lane[], span: Span): Lane[] {
+  return lanes.filter(x => x.isMain || x.isRunning || (x.from <= span.to && x.to >= span.from))
+}
+
 const RANK: Record<DotState, number> = { ok: 0, running: 1, failed: 2, asking: 3 }
 
 // Dots closer than a few pixels become one mark with a count, so a 60-call agent stays legible.

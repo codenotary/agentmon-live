@@ -4,7 +4,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { ago, findCheck, hidesExit, outcomeOf, resetTime, smoothBar, spinner } from '../hooks/format'
 import { brief, fit, gitCommand, kilo, modelName, testsOf } from '../hooks/format'
-import { rank } from '../hooks/state'
+import { rank, trimAgents } from '../hooks/state'
 import { withOptions } from './options-helper'
 
 // The kit declares the hook-adding `on` without exporting its type.
@@ -386,6 +386,8 @@ test('shell commands are told apart by the check they run', () => {
   expect(findCheck('npm test')?.kind).toBe('test')
   expect(findCheck('claude plugin test .')?.kind).toBe('test')
   expect(findCheck('ls tests')?.kind).toBe(undefined)
+  expect(findCheck('npx -p typescript tsc --noEmit -p .')?.kind).toBe('typecheck')
+  expect(findCheck('npx --yes --package=typescript tsc')?.kind).toBe('typecheck')
   expect(findCheck('npx tsc --noEmit')?.kind).toBe('typecheck')
   expect(findCheck('npm run lint')?.kind).toBe('lint')
   expect(findCheck('cargo build --release')?.kind).toBe('build')
@@ -1452,4 +1454,10 @@ test('a hidden pane stays hidden through a new start, and a survey keeps the ban
   const survey = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true } })
   expect(await survey.find({ key: 'pane:show' })).toBe(undefined)
   await survey.unmount()
+})
+
+test('one card per agent: a copy goes, the first place holds and the last copy wins', async () => {
+  const card = (id: string, tools: number) => ({ id, type: 'general-purpose', model: 'm', effort: '', task: id, status: 'done' as const, files: 0, tools, others: 0, input: 0, output: 0, startedAt: 0 })
+  const list = trimAgents([card('a', 1), card('b', 1), card('a', 5)])
+  expect(list.map(a => [a.id, a.tools])).toEqual([['a', 5], ['b', 1]])
 })

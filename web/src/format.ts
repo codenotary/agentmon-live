@@ -12,6 +12,12 @@ export const time = (at: number) => new Date(at).toLocaleTimeString('en-GB', { h
 export const hhmm = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 export const kilo = (n: number | undefined) => (n === undefined ? '0' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 100_000 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
 export const short = (path: string) => path.split('/').slice(-3).join('/')
+// A path as the person knows it: inside an agent's worktree as inside the project, then relative to the project; elsewhere its last parts.
+export function pathIn(path: string, cwd: string | undefined): string {
+  const inTree = path.replace(/^.*\/\.claude\/worktrees\/[^/]+\//, `${cwd ?? ''}/`)
+  const root = cwd ? `${cwd.replace(/\/+$/, '')}/` : undefined
+  return root && inTree.startsWith(root) ? inTree.slice(root.length) : short(path)
+}
 // A list of ids as a browser kept it; anything else is an empty list, since local storage can hold what an older page wrote.
 export function parseIds(text: string | null): string[] {
   try {
