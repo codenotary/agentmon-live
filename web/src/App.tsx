@@ -7,7 +7,7 @@ import type { WebSnapshot } from '../../types/index'
 import { CallDetail } from './CallDetail.tsx'
 import type { FeedEvent } from './events.ts'
 import { nextRow, SECTION_KEYS, titleFor } from './format.ts'
-import { labelsOf, pageOf, type Labels, type Page } from './labels.ts'
+import { labelsOf, lastKnown, pageOf, type Labels, type Page } from './labels.ts'
 import { jumpTo, Nav, sectionsOf, type Section } from './Nav.tsx'
 import { Palette } from './Palette.tsx'
 import { Calls } from './panels/Calls.tsx'
@@ -20,8 +20,8 @@ import { Files } from './panels/Files.tsx'
 import { Checks, Insights, Running, Tasks } from './panels/Side.tsx'
 import { TurnClock } from './panels/TurnClock.tsx'
 import { Waterfall } from './panels/Waterfall.tsx'
-import { currentOf, set, setCollapsed, useStore, type Trend } from './store.ts'
-import { TopBar } from './TopBar.tsx'
+import { currentOf, dismiss, hasNoSignal, set, setCollapsed, useStore, type Trend } from './store.ts'
+import { LastUpdate, TopBar } from './TopBar.tsx'
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
 
@@ -95,9 +95,11 @@ function PageSection({ x, isCollapsed, children }: { x: Section; isCollapsed: bo
 export function App() {
   const st = useStore()
   const s = currentOf(st)
-  const p = pageOf(s)
+  const isStopped = s !== undefined && hasNoSignal(st, s.session.id)
   const isCurrent = s?.v === 1
-  const l = s && isCurrent ? labelsOf(s) : undefined
+  const known = s && isCurrent ? labelsOf(s) : undefined
+  const l = known && isStopped ? lastKnown(known) : known
+  const p = l?.page ?? pageOf(s)
   const events = s ? (st.events.get(s.session.id) ?? []) : []
   const sections = s && l ? sectionsOf(s, p, events) : []
   const isFirstDraw = useRef(true)
@@ -118,10 +120,12 @@ export function App() {
     else document.documentElement.dataset.theme = st.theme
   }, [st.theme])
 
+  const isQuiet = st.isDown || st.silent.size > 0
   useEffect(() => {
     document.documentElement.lang = s?.lang ?? 'en'
-    document.title = isCurrent && s ? titleFor(s.focus) : 'AgentMon Live'
-  }, [s, isCurrent])
+    // A tab left in the background must not read as all well.
+    document.title = `${isQuiet ? '⚠ ' : ''}${isCurrent && s ? titleFor(s.focus) : 'AgentMon Live'}`
+  }, [s, isCurrent, isQuiet])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -156,8 +160,9 @@ export function App() {
       <TopBar s={s} p={p} />
       <div className="flex flex-col lg:flex-row">
       {sections.length ? <Nav sections={sections} label={p.jumpTo} /> : null}
-      <main className="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-[26px] pb-10 sm:px-8">
-        {st.isDown ? <div className="panel !border-bad bg-bad-soft px-3.5 py-2.5 text-[13px] text-bad" role="status">{p.disconnected}</div> : null}
+      <main className="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-[26px] pb-10 sm:px-8" data-no-signal={isStopped || undefined}>
+        {st.isDown ? <div className="panel !border-bad bg-bad-soft px-3.5 py-2.5 text-[13px] text-bad" role="status">{p.disconnected}{s ? <> <LastUpdate s={s} p={p} className="lg:hidden" /></> : null}</div> : null}
+        {s && !st.isDown && isStopped ? <div className="panel flex flex-wrap items-center gap-x-3 gap-y-1 !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status" data-testid="silent-banner">{p.sessionSilent} <LastUpdate s={s} p={p} className="lg:hidden" /><button type="button" className="ml-auto underline" data-testid="dismiss" onClick={() => dismiss(s.session.id)}>{p.dismiss}</button></div> : null}
         {s && !isCurrent ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status">{p.update}</div> : null}
         {!s && !st.isDown ? <Standby text={p.noSessions} /> : null}
         {s && l ? <div key={s.session.id} className="fade-in flex min-w-0 flex-col gap-4">{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><Part view={x.id} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PageSection>)}</div> : null}

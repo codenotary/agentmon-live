@@ -194,9 +194,14 @@ export function findChecks(command: string, isEvery = false): { kind: CheckKind;
 }
 
 // A pipe hides the check's own exit status unless pipefail is set, so success there is only `unknown`.
-// `||` turns a failure into exit 0 the same way.
+// `||` turns a failure into exit 0 the same way, and so does a command after `;` or a newline: the shell reports the last one.
 export function hidesExit(command: string): boolean {
-  return /\|\|/.test(command) || (/[^|]\|[^|]/.test(command) && !/pipefail/.test(command))
+  if (/\|\|/.test(command) || (/[^|]\|[^|]/.test(command) && !/pipefail/.test(command))) return true
+  const first = findChecks(command, true)[0]
+  if (!first) return false
+  // Quoted text is no separator. The first check counts: `npm run lint; npm test` hides the lint.
+  const after = command.slice(command.indexOf(first.part) + first.part.length).replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, '')
+  return /[;\n]\s*\S/.test(after)
 }
 
 const FAIL_COUNT = /\b[1-9]\d*\s+(?:tests?\s+)?fail(?:ed|ures?|ing)?\b|\bfail(?:ed|ures?)?:?\s+[1-9]/i

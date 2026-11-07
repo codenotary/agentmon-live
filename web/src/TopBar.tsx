@@ -2,9 +2,10 @@ import * as Select from '@radix-ui/react-select'
 import { Check, ChevronDown, Command, Monitor, Moon, PanelRightClose, PanelRightOpen, Sun, X } from 'lucide-react'
 
 import type { WebSnapshot } from '../../types/index'
-import { sessionNames, stateOf } from './format.ts'
+import { dur, sessionNames, stateOf, time } from './format.ts'
+import { fill } from './kpi.ts'
 import { labelsOf, type Page } from './labels.ts'
-import { pick, requestPane, set, setTheme, useStore, type Theme } from './store.ts'
+import { hasNoSignal, pick, requestPane, set, setTheme, useClock, useStore, type State, type Theme } from './store.ts'
 
 const NEXT: Record<Theme, Theme> = { auto: 'dark', dark: 'light', light: 'auto' }
 
@@ -19,26 +20,35 @@ function choose(id: string) {
 
 const whereOf = (s: WebSnapshot) => `${s.session.cwd}${s.session.branch ? ` · ${s.session.branch}` : ''}`
 
-const stateWord = (x: WebSnapshot, p: Page) => ({ waiting: labelsOf(x).status.waiting ?? 'waiting', active: p.live, idle: p.idle })[stateOf(x)]
+const stateWord = (x: WebSnapshot, p: Page, st: State) => hasNoSignal(st, x.session.id) ? p.noSignal : ({ waiting: labelsOf(x).status.waiting ?? 'waiting', active: p.live, idle: p.idle })[stateOf(x)]
+
+// When the session last said anything; `useClock` only makes the age tick.
+export function LastUpdate({ s, p, className }: { s: WebSnapshot; p: Page; className: string }) {
+  useClock(s)
+  const at = useStore().receivedAt.get(s.session.id)
+  return at === undefined ? null : <span className={className} data-testid="last-update">{fill(p.lastUpdate, { at: time(at), t: dur(Date.now() - at) })}</span>
+}
 
 function StateDot({ s, p }: { s: WebSnapshot; p: Page }) {
+  const st = useStore()
   // An older version's snapshot may lack what this reads.
-  return s.v === 1 ? <i className={`state-dot ${stateOf(s)}`} title={stateWord(s, p)} aria-hidden /> : null
+  return s.v === 1 ? <i className={`state-dot ${hasNoSignal(st, s.session.id) ? 'silent' : stateOf(s)}`} title={stateWord(s, p, st)} aria-hidden /> : null
 }
 
 // What sets a session apart in the list, besides its folder.
-function detailOf(x: WebSnapshot, p: Page): string {
+function detailOf(x: WebSnapshot, p: Page, st: State): string {
   if (x.v !== 1) return ''
   const urgent = x.focus.filter(f => f.isUrgent).length
-  return [stateWord(x, p), x.main.model, urgent ? `${p.events}: ${urgent}` : '', x.build ?? ''].filter(Boolean).join(' · ')
+  return [stateWord(x, p, st), x.main.model, urgent ? `${p.events}: ${urgent}` : '', x.build ?? ''].filter(Boolean).join(' · ')
 }
 
 // With several sessions the working directory is the switch between them.
 function SessionPicker({ s, p, sessions }: { s: WebSnapshot; p: Page; sessions: ReadonlyMap<string, WebSnapshot> }) {
+  const st = useStore()
   const names = sessionNames(sessions)
   return (
     <Select.Root value={s.session.id} onValueChange={choose}>
-      <Select.Trigger className="select-trigger" id="picker" aria-label={`${whereOf(s)}, ${s.v === 1 ? stateWord(s, p) : ''}`} title={whereOf(s)}>
+      <Select.Trigger className="select-trigger" id="picker" aria-label={`${whereOf(s)}, ${s.v === 1 ? stateWord(s, p, st) : ''}`} title={whereOf(s)}>
         <StateDot s={s} p={p} />
         <span className="min-w-0 flex-1 truncate text-left"><Select.Value>{whereOf(s)}</Select.Value></span>
         <Select.Icon><ChevronDown size={14} className="flex-none text-ink-3" aria-hidden /></Select.Icon>
@@ -51,7 +61,7 @@ function SessionPicker({ s, p, sessions }: { s: WebSnapshot; p: Page; sessions: 
                 <Select.ItemIndicator className="select-check"><Check size={14} aria-hidden /></Select.ItemIndicator>
                 <StateDot s={x} p={p} />
                 <Select.ItemText>{names.get(id)}</Select.ItemText>
-                <span className="select-detail">{detailOf(x, p)}</span>
+                <span className="select-detail">{detailOf(x, p, st)}</span>
               </Select.Item>
             ))}
             <Select.Item value={START_ITEM} className="select-item select-foot" data-testid="start-link"><Select.ItemText>{p.startLink}</Select.ItemText></Select.Item>
@@ -67,8 +77,9 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
   // Only a current snapshot is sure to hold these.
   const live = s?.v === 1 ? s : undefined
   const now = live ? stateOf(live) : 'idle'
-  const isLive = now === 'active'
-  const state = st.isDown ? { text: <X size={12} aria-label={p.disconnected} />, cls: 'text-bad', dot: 'var(--bad)' } : live && now === 'waiting' ? { text: stateWord(live, p), cls: 'text-signal', dot: 'var(--signal-bright)' } : isLive ? { text: p.live, cls: 'text-good', dot: 'var(--good)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
+  const isSilent = live !== undefined && st.silent.has(live.session.id)
+  const isLive = now === 'active' && !isSilent
+  const state = st.isDown ? { text: <><X size={12} aria-hidden /><span title={p.disconnected}>{p.disconnectedWord}</span></>, cls: 'text-bad', dot: 'var(--bad)' } : isSilent ? { text: p.noSignal, cls: 'text-warn', dot: 'var(--warn)' } : live && now === 'waiting' ? { text: stateWord(live, p, st), cls: 'text-signal', dot: 'var(--signal-bright)' } : isLive ? { text: p.live, cls: 'text-good', dot: 'var(--good)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
   // A result from before this prompt says nothing about the turn under way.
   const gate = live?.gate && live.gate.at >= (live.main.turnAt ?? 0) ? live.gate : undefined
   const themeLabel = { auto: p.themeAuto, dark: p.themeDark, light: p.themeLight }[st.theme]
@@ -82,6 +93,7 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
           <i className={`size-2 rounded-full ${isLive && !st.isDown ? 'rec' : ''}`} style={{ background: state.dot }} aria-hidden />
           {state.text}
         </span>
+        {s && hasNoSignal(st, s.session.id) ? <LastUpdate s={s} p={p} className="hidden font-mono text-[11px] whitespace-nowrap text-ink-2 lg:inline" /> : null}
         {live ? <span className="text-[13px] font-bold text-signal">{live.main.model}{live.main.effort ? ` (${live.main.effort})` : ''}</span> : null}
         {s && st.sessions.size > 1 ? <SessionPicker s={s} p={p} sessions={st.sessions} /> : s ? <span className="min-w-0 font-mono text-xs text-ink-2 [overflow-wrap:anywhere] lg:truncate">{whereOf(s)}</span> : null}
         {gate ? <span className={`font-mono text-[11px] whitespace-nowrap ${gate.ok ? 'text-good' : 'text-warn'}`} title={gate.text || undefined} data-testid="gate-chip">{gate.ok ? p.gatePassed : gate.isSent ? p.gateSent : p.gateOpen}</span> : null}

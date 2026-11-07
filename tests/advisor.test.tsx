@@ -259,7 +259,7 @@ test('an answer that says the tests pass with no check after the last edit is se
   // No claim, or a negated one: nothing to back up.
   expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'I did not run the tests yet.' })).block).toBe(undefined)
   const r = await $.classic.Stop({ ...STOP, last_assistant_message: 'Fixed the parser. All tests pass.' })
-  expect(r.block).toContain('the answer says "All tests pass", but no test, lint, typecheck or build ran after the last code edit')
+  expect(r.block).toContain('the answer says "All tests pass", but no test ran after the last code edit')
 
   // A check after the edit backs the claim.
   await $.turn.start({ text: 'again', turnId: 'm2' })
@@ -437,6 +437,60 @@ test('a declared target is expected with no test run, and a full one takes no fi
   expect(await attempt($, clock, 'm3', [API], ['cd packages/api && npx vitest run'])).toBe(undefined)
 })
 
+// Git answers with `states` in turn: one work tree state per `workState` call, `HEAD` the head.
+function workTree(on: On, states: { head?: string; diff: string }[]) {
+  let call = -1
+  on('process.run', (_, e) => {
+    const args = e.argv.join(' ')
+    if (args.includes('rev-parse HEAD')) call += 1
+    const state = states[Math.min(call, states.length - 1)]!
+    const stdout = args.includes('rev-parse HEAD') ? (state.head ?? 'c1') : args.includes(' diff HEAD ') ? state.diff : ''
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+}
+
+test('a shell edit counts as a code edit: a claim with no test run goes back', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  workTree(on, [{ diff: '' }, { diff: '+edited' }])
+  await start($)
+  await $.tool.call({ tool: 'Bash', command: "sed -i 's/a/b/' src/parser.ts" })
+  await clock.settle()
+  const r = await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })
+  expect(r.block).toContain('the answer says "All tests pass", but no test ran after the last code edit')
+})
+
+test('a work tree that did not change, or a new commit, is no shell edit', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  workTree(on, [{ diff: '+old' }, { diff: '+old' }, { diff: '+old' }, { head: 'c2', diff: '' }])
+  await start($)
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
+  await $.turn.start({ text: 'commit', turnId: 'm2' })
+  await $.tool.call({ tool: 'Bash', command: 'git commit -m x' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toBe(undefined)
+})
+
+test('a check of another kind does not back a claim', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'All tests pass.' })).block).toContain('no test ran after the last code edit')
+  await $.turn.start({ text: 'again', turnId: 'm2' })
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'b', new_string: 'c' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP, last_assistant_message: 'Lint is clean.' })).block).toBe(undefined)
+})
+
 test('claims are found in each language and negations are not claims', async () => {
   expect(claimOf('Build succeeds and lint is clean.')).toBe('Build succeeds')
   expect(claimOf("The tests didn't pass.")).toBe(undefined)
@@ -532,6 +586,18 @@ test('a verdict that leads with OK and explains after passes', async ($, on) => 
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
 })
+
+for (const answer of ['OK. But it added a rate limiter nobody asked for.', 'OK but the docs part is missing', 'OK on coverage. A rate limiter was added.', 'OK\n→ Remove the rate limiter.']) {
+  test(`an OK taken back, or with what would settle it, is no pass: ${answer}`, async ($, on) => {
+    const clock = mock.clock(on)
+    engine(on)
+    fable(on, [], [answer])
+    await start($)
+    for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+    await clock.settle()
+    expect((await $.classic.Stop({ ...STOP })).block).toContain('Fable')
+  })
+}
 
 test('"OK, but …" is no pass: the gap goes back to Claude', async ($, on) => {
   const clock = mock.clock(on)
@@ -906,4 +972,19 @@ test('an edit of only a fragment of an assertion is still seen as changing it', 
   expect(await ui.find({ type: 'Text', text: /Green run after test edits: parser\.test\.ts: assertions changed: 1/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /\+ expect\(2 \+ 2\)\.toBe\(4\)/ })).toBeTruthy()
   await ui.unmount()
+})
+
+test('Fable is asked about unasked features, and its verdict goes back to Claude', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts, ['A rate limiter was added that nobody asked for.\n→ Remove it, or say why the task needs it.'])
+  await start($)
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+
+  await clock.settle()
+  const r = await $.classic.Stop({ ...STOP, last_assistant_message: 'Parser fixed, and I added a rate limiter.' })
+  expect(prompts[0]).toContain('Did the work add a feature, option or abstraction the task did not ask for?')
+  expect(r.block).toContain('- Fable, a reviewing model that may be wrong, says: A rate limiter was added that nobody asked for.')
+  expect(r.block).toContain('- → Fable, a reviewing model that may be wrong, says: Remove it, or say why the task needs it.')
 })

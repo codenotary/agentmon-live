@@ -29,7 +29,8 @@ const TEMPLATES: [GapKind, (l: Strings) => string][] = [
   ['fable', l => l.fableSays(HOLE)],
   ['agent', l => l.gapAgent(HOLE, HOLE)],
   ['stale', l => l.gapStale(HOLE, HOLE)],
-  ['claim', l => l.gapClaim(HOLE)],
+  // The second hole also takes the older wording, which named all four checks.
+  ['claim', l => l.gapClaim(HOLE, HOLE)],
   ['uncovered', l => l.gapUncovered(HOLE, HOLE)],
   ['dropped', l => l.gapDropped(HOLE, N, N, N, N)],
   ['empty', l => l.gapEmpty(HOLE)],

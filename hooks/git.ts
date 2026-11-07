@@ -1,5 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
+import { DOC_TYPES } from './gate'
+
 // Where the branch stands against its base: `behind` commits on the base HEAD lacks, `files` the base changed since they split (absolute paths, as the session sees them).
 export type BaseDrift = { base: string; ahead: number; behind: number; files: string[] }
 
@@ -43,3 +45,18 @@ export async function readBase($: EngineInterface, cwd: string, fetch: boolean):
   const names = counts.behind > 0 ? ((await git($, ['-c', 'core.quotePath=false', 'diff', '--name-only', `HEAD...${base}`])) ?? '') : ''
   return { base, ...counts, files: names.split('\n').filter(Boolean).map(f => `${root}/${f}`) }
 }
+
+// The commit and what differs from it, docs left out: compared at a turn's start and end to see edits no edit tool made.
+export type WorkState = { head: string; text: string }
+const NOT_DOCS = ['.', ...DOC_TYPES.map(x => `:!*.${x}`)]
+
+// Undefined when it cannot say: no repo, no commit, a timeout, or more output than the host hands over. No optional locks: a status must not get in the way of Claude's own git.
+export async function workState($: EngineInterface, cwd: string): Promise<WorkState | undefined> {
+  const run = (args: string[]) => $.process.run(['git', '--no-optional-locks', ...args], { cwd, timeoutMs: 3000 })
+  const [head, status, diff] = await Promise.all([run(['rev-parse', 'HEAD']), run(['status', '--porcelain', '--', ...NOT_DOCS]), run(['diff', 'HEAD', '--no-ext-diff', '--no-color', '--', ...NOT_DOCS])])
+  if ([head, status, diff].some(r => r.exitCode !== 0 || r.isStdoutTruncated)) return undefined
+  return { head: head.stdout.trim(), text: `${status.stdout}\n${diff.stdout}` }
+}
+
+// A new commit moves the diff without any edit: that says nothing.
+export const isWorkChanged = (a: WorkState | undefined, b: WorkState | undefined) => a !== undefined && b !== undefined && a.head === b.head && a.text !== b.text

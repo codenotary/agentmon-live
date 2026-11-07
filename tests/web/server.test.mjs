@@ -131,6 +131,34 @@ test('fonts come from a fixed list, nothing else on disk', async () => {
   assert.equal((await call(47412, '/fonts/OFL-manrope.txt')).status, 404)
 })
 
+test('a session that went silent is named so when it leaves', async () => {
+  startServer(47503, { AGENTMON_WEB_TTL_MS: '150', AGENTMON_WEB_SWEEP_MS: '50' })
+  await waitUp(47503)
+  const seen = readEvents(47503, t => t.includes('event: removed'))
+  await new Promise(done => setTimeout(done, 50))
+  await post(47503, 's1', { v: 1 })
+  assert.match(await seen, /event: removed\ndata: {"id":"s1","isSilent":true}/)
+})
+
+test('a replay says how old the snapshot is, a new post does not', async () => {
+  startServer(47504)
+  await waitUp(47504)
+  await post(47504, 's1', { v: 1, n: 1 })
+  await new Promise(done => setTimeout(done, 60))
+  const seen = readEvents(47504, t => t.includes('"n":2'))
+  await new Promise(done => setTimeout(done, 60))
+  await post(47504, 's1', { v: 1, n: 2 })
+  const text = await seen
+  assert.ok(Number(/"n":1},"age":(\d+)}/.exec(text)?.[1]) >= 50)
+  assert.match(text, /"n":2}}\n/)
+})
+
+test('the stream carries a ping the page can see, with data so that it dispatches', async () => {
+  startServer(47502, { AGENTMON_WEB_PING_MS: '50' })
+  await waitUp(47502)
+  assert.match(await readEvents(47502, t => t.includes('event: ping')), /event: ping\ndata: 1\n\n/)
+})
+
 test('a posted snapshot replays on /events, a later one follows, DELETE says removed', async () => {
   startServer(47413)
   await waitUp(47413)

@@ -119,7 +119,7 @@ One searchable stream of your prompts, tool calls and subagents. Equal calls mer
 
 - **Your session stays on your machine.** The web view listens on `127.0.0.1` only, and what AgentMon learns is kept in Claude Code's local plugin store. Secrets are masked before they are shown.
 - **The web view has no login.** On a machine shared with other people, they can read your session from the local port. Set `web` to `off` there.
-- **One optional model call.** Before Claude stops, Fable, a second model, may check that every part of your request got an answer: a small call with about 12,000 characters of session text, at most 30 per session by default. Set `advisorMode` to `gate` for no model calls at all.
+- **One optional model call.** Before Claude stops, Fable, a second model, may check that every part of your request got an answer and that nothing you did not ask for got built: a small call with about 12,000 characters of session text, at most 30 per session by default. Set `advisorMode` to `gate` for no model calls at all.
 - **One network check.** It asks GitHub for the latest release. No session data goes with it.
 
 To remove it: `claude plugin uninstall agentmon-live`.

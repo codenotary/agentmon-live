@@ -11,6 +11,9 @@ const TIMEOUT_MS = 30_000
 // After a failed answer the model is left alone this long: a hanging API must not stall every stop for TIMEOUT_MS.
 const BACKOFF_MS = 5 * 60_000
 
+// A verdict in any pane language may take its OK back with one of these.
+const OBJECTION = /\b(?:but|however|yet|although|though|except|aber|jedoch|allerdings|mais|cependant|pero|sin embargo)\b|但|不过|然而|ただし|しかし|ですが/i
+
 export type Verdict = { ok: boolean; text: string; fix?: string }
 
 // One Fable call, awaited: undefined when it was not asked (off, busy, budget used) or gave no usable answer.
@@ -54,8 +57,8 @@ export async function consult($: EngineInterface, question: string, body: string
   const [head = '', ...rest] = r.text.split('\n').map(l => l.trim()).filter(Boolean)
   const text = rest.filter(l => !l.startsWith('→')).reduce((a, l) => `${a} ${l}`, head)
   const fix = rest.find(l => l.startsWith('→'))?.replace(/^→\s*/, '') || undefined
-  // A verdict may lead with OK ("OK. All covered.") or reason first and end in OK; "not OK" and "OK, but …" are no pass.
-  const ok = /^OK\b(?!\s*,)/i.test(text) || /(^|[.!]\s+)OK\.?$/i.test(rest.filter(l => !l.startsWith('→')).at(-1) ?? head)
+  // A verdict may lead with OK ("OK. All covered.") or reason first and end in OK; "not OK", "OK, but …", "OK on coverage. …" and one that says what would settle it are no pass.
+  const ok = !fix && ((/^OK\s*(?:[.!:—–-]|$)/i.test(head) && !OBJECTION.test(text)) || /(^|[.!]\s+)OK\.?$/i.test(rest.filter(l => !l.startsWith('→')).at(-1) ?? head))
   return { ok, text: ok ? '' : text, fix: ok ? undefined : fix }
 }
 

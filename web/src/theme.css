@@ -291,6 +291,10 @@ button.wf-row:hover { background: var(--surface-2); }
 .state-dot.active { background: var(--good); animation: rec 1.6s ease-in-out infinite; }
 .state-dot.waiting { background: var(--signal-bright); }
 .state-dot.idle { background: var(--ink-3); }
+main[data-no-signal] :is(.rec, .spin, .agent-dot.running, .pin-wobble, .ruler-wobble, .flat-sweep) { animation: none; }
+main[data-no-signal] :is(.rec, .spin, .agent-dot.running) { opacity: .4; }
+main[data-no-signal] .wf-bar:is(.running, .asking)::before { animation: none; opacity: .35; }
+.state-dot.silent { border: 2px solid var(--ink-3); background: transparent; box-sizing: border-box; }
 .select-trigger .state-dot { margin-right: 0; }
 .select-trigger { display: inline-flex; flex: 0 1 auto; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; height: 32px; padding: 0 12px; border: 1px solid var(--line-input); border-radius: 8px; background: var(--surface); font: 400 12px var(--font-mono); color: var(--ink-2); cursor: pointer; }
 .select-trigger:hover { color: var(--ink); background: var(--surface-1); }
