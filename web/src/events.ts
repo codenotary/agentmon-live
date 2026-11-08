@@ -9,6 +9,18 @@ export function alertOf(open: readonly FeedEvent[]): 'bad' | 'warn' | undefined 
   return urgent.length === 0 ? undefined : urgent.some(e => !isAsk(e)) ? 'bad' : 'warn'
 }
 
+// The kind an event is, by its key's prefix (its tag is translated text): what the filter buttons go by.
+// A prefix nobody mapped is `other`, so a new kind of event never drops out of a filter.
+export type EventKind = 'failures' | 'waiting' | 'context' | 'memory' | 'other'
+export const EVENT_KINDS: readonly EventKind[] = ['failures', 'waiting', 'context', 'memory', 'other']
+const KIND_OF: Record<string, EventKind> = {
+  ...Object.fromEntries(['check', 'agent', 'streak', 'loop', 'sameErr', 'testReview', 'flaky', 'recur', 'gate', 'redo'].map(k => [k, 'failures'])),
+  ...Object.fromEntries(['ask', 'wait', 'silent', 'slow', 'long'].map(k => [k, 'waiting'])),
+  ...Object.fromEntries(['context', 'jump', 'big', 'fresh', 'cache', 'cold', 'ctxplan', 'mcp', 'unused'].map(k => [k, 'context'])),
+  mem: 'memory',
+}
+export const kindOf = (key: string): EventKind => KIND_OF[key.split(':')[0] ?? ''] ?? 'other'
+
 // What needs the person on top; everything else newest first, open or cleared, so the times read in order.
 export function splitEvents(list: readonly FeedEvent[]): { attention: FeedEvent[]; rest: FeedEvent[] } {
   const needs = (e: FeedEvent) => e.isUrgent && e.clearedAt === undefined

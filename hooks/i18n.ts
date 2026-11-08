@@ -19,6 +19,9 @@ const en = {
     page: {
       disconnected: 'Disconnected from the session server. Trying again…',
       noSignal: 'no signal',
+      kindWaiting: 'Waiting',
+      kindMemory: 'Memory',
+      kindOther: 'Other',
       lanesOutside: '{n} subagents outside this window',
       testFilesQuiet: '{n} more test files edited, no checks taken out',
       allTools: 'All tools',

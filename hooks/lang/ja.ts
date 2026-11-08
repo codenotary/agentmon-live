@@ -12,6 +12,9 @@ export const ja: Strings = {
     page: {
       disconnected: 'セッションサーバーとの接続が切れました。再試行しています…',
       noSignal: '信号なし',
+      kindWaiting: '待機中',
+      kindMemory: 'メモリ',
+      kindOther: 'その他',
       lanesOutside: 'このウィンドウ外のサブエージェント {n} 件',
       testFilesQuiet: 'ほかに {n} 件のテストファイルを編集（チェックの削除なし）',
       allTools: 'すべてのツール',

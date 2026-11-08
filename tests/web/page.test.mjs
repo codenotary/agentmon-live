@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { AGENT_ROWS, elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, shownItems, sortLines, totalsOf } from '../../web/src/agents.ts'
-import { alertOf, nextEvents, splitEvents } from '../../web/src/events.ts'
+import { alertOf, kindOf, nextEvents, splitEvents } from '../../web/src/events.ts'
 import { agentNames, pathIn, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
 import { chipCounts, foldAgents, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
@@ -624,6 +624,18 @@ test('subagent rows: ten, plus running ones and one opened from elsewhere; Show 
   assert.deepEqual(shownItems(items, new Set(), false).map(x => x.line.a.id), [...items.slice(0, AGENT_ROWS), items[13]].map(x => x.line.a.id))
   assert.ok(shownItems(items, new Set(['a14']), false).some(x => x.line.a.id === 'a14'))
   assert.equal(shownItems(items, new Set(), true).length, 15)
+})
+
+test('an event kind comes from its key, and an unknown key is other', () => {
+  assert.deepEqual(['check:test:1', 'ask:agent:a1', 'context:16', 'mcp', 'mem:staleRef:x', 'size:a.ts', 'brandnew:x', 'ctx'].map(kindOf), ['failures', 'waiting', 'context', 'context', 'memory', 'other', 'other', 'other'])
+})
+
+test('every event key prefix the hooks make has its filter kind; Other only for the ones meant there', () => {
+  const OTHER = ['base', 'churn', 'docs', 'habit', 'model', 'pace', 'peak', 'reread', 'sink', 'size', 'switches']
+  const hooks = readdirSync(join(ROOT, 'hooks')).filter(f => f.endsWith('.ts')).map(f => readFileSync(join(ROOT, 'hooks', f), 'utf8')).join('\n')
+  const prefixes = new Set([...hooks.matchAll(/key: (?:`(\w+):|'(\w+)', score)/g)].map(m => m[1] ?? m[2]))
+  assert.ok(prefixes.has('check') && prefixes.has('mcp'), 'the key search found nothing; did the hooks change shape?')
+  for (const prefix of prefixes) assert.equal(kindOf(`${prefix}:x`) === 'other', OTHER.includes(prefix), `${prefix}: map it in KIND_OF (web/src/events.ts) or add it to OTHER here`)
 })
 
 test('a subagent run is one row, its calls under it when unfolded', () => {

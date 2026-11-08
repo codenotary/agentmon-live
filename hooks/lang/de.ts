@@ -12,6 +12,9 @@ export const de: Strings = {
     page: {
       disconnected: 'Verbindung zum Sitzungsserver getrennt. Neuer Versuch…',
       noSignal: 'kein Signal',
+      kindWaiting: 'Wartet',
+      kindMemory: 'Speicher',
+      kindOther: 'Sonstiges',
       lanesOutside: '{n} Subagenten außerhalb dieses Fensters',
       testFilesQuiet: '{n} weitere Testdateien bearbeitet, keine Prüfungen entfernt',
       allTools: 'Alle Werkzeuge',
