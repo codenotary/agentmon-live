@@ -100,7 +100,7 @@ export function groupLines(lines: readonly AgentLine[], now: number): Item[] {
   const byPrefix = new Map<string, AgentLine[]>()
   for (const l of lines) {
     const prefix = prefixOf(l.a.task)
-    if (prefix) byPrefix.set(prefix, [...(byPrefix.get(prefix) ?? []), l])
+    if (prefix) (byPrefix.get(prefix) ?? byPrefix.set(prefix, []).get(prefix)!).push(l)
   }
   const done = new Set<string>()
   const items: Item[] = []

@@ -37,6 +37,9 @@ const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trac
 const KEEP_TRACE = 500
 const TRACE_TEXT = 300
 const AGENT_PROMPT = 500
+// Enough for the answer's gist in the web view's log; 50 turns of it keep the snapshot small.
+const ANSWER_TEXT = 1500
+const NAME_TEXT = 60
 const TURN_PROMPT = 120
 const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
@@ -205,7 +208,7 @@ async function watchCache($: EngineInterface, at: number) {
 }
 
 // The main turn ended: its time joins the session's, and the window is broken down once, locally.
-async function finishTurn($: EngineInterface, durationMs: number, docs?: string[]) {
+async function finishTurn($: EngineInterface, durationMs: number, docs?: string[], answer?: string) {
   if (!clk.inTurn) return
   const endedAt = await $.clock.now()
   book(clk, endedAt)
@@ -213,6 +216,7 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
   // The engine's figure for the turn's length, when it has one, over the clock's.
   done.wallMs = Math.max(done.wallMs, durationMs || 0)
   if (docs?.length) done.docs = docs
+  if (answer) done.answer = answer
   clk.inTurn = false
   const ended = await update($, insights, v => {
     const session = { ...v.session }
@@ -562,7 +566,10 @@ export const register: Register = on => {
     if (e.tool === 'Agent' && e.effort && e.tool_use_id) effortByCall.set(e.tool_use_id, e.effort)
     const cat = category(e.tool, e)
     const tab = viewOf(e.tool, cat)
-    const what = describe(e.tool, e)
+    // A message names its recipient, so the flow chart can draw it from lane to lane.
+    const rawTo = e.tool === 'SendMessage' ? (e as { to?: unknown }).to : undefined
+    const to = typeof rawTo === 'string' && rawTo ? mask(rawTo).slice(0, NAME_TEXT) : undefined
+    const what = to === undefined ? describe(e.tool, e) : `→ ${to}`
     const callId = e.tool_use_id ?? `call-${++callCount}`
     const [list, m, startedAt] = await Promise.all([read($, agents), read($, main), $.clock.now()])
     const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)
@@ -605,7 +612,7 @@ export const register: Register = on => {
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
       update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt, ...(id === undefined ? {} : { agentId: id }) }]).then(() => (tick($), pulse($))),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
-      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...(id === undefined ? {} : { agentId: id }) }].slice(-KEEP_TRACE)),
+      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
@@ -648,10 +655,14 @@ export const register: Register = on => {
       const error = failed ? mask(String(r.deny ?? r.text ?? '')).slice(0, 2000) : undefined
       const at = await $.clock.now()
       const output = String(r.text ?? (r.result as { stdout?: string } | undefined)?.stdout ?? '')
-      // A denied or aborted run says nothing about the code; a failed one failed at its last check; past a pipe the output decides.
+      // A denied or aborted run says nothing about the code; a failed one with one kind of check failed at it; past a pipe the output decides.
       // That output is shared: an error from one check would mark the others, so it decides only for the last.
+      // Several kinds and an error: `&&` stops at the first failure, so only a test summary may blame the tests, and only when they ran last: a later check's output would decide it otherwise. The rest is unknown.
+      const isChain = new Set(found.map(f => f.kind)).size > 1
       const resultOf = (kind: CheckKind): Check['result'] =>
-        r.deny !== undefined ? 'unknown' : r.isError ? (kind === lastKind ? 'failed' : 'unknown') : hidesExit(command) ? (kind === lastKind ? outcomeOf(output, kind) : 'unknown') : 'ok'
+        r.deny !== undefined ? 'unknown'
+        : r.isError ? (isChain ? (kind === 'test' && kind === lastKind && testCounts(output) ? outcomeOf(output, 'test') : 'unknown') : kind === lastKind ? 'failed' : 'unknown')
+        : hidesExit(command) ? (kind === lastKind ? outcomeOf(output, kind) : 'unknown') : 'ok'
       const sameTurn = turn.startedAt === turnAt
       const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
       // A check that fails before the turn's first code edit was broken already; it counts as failing at the prompt.
@@ -828,6 +839,7 @@ export const register: Register = on => {
       task: mask(e.description),
       callId: e.tool_use_id,
       prompt: mask(e.prompt).slice(0, AGENT_PROMPT),
+      ...(e.name ? { name: e.name.slice(0, NAME_TEXT) } : {}),
       status: 'running',
       files: 0,
       tools: 0,
@@ -879,7 +891,7 @@ export const register: Register = on => {
       // Docs read and code changed: the docs-vs-code hint in Focus; a refactor changes the code on purpose.
       const isRefactor = /refactor|refaktor|重构|重構|リファクタ/i.test(turn.prompt)
       await benchPrompt($, turn, blockAt, isPassed)
-      await finishTurn($, e.durationMs, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined)
+      await finishTurn($, e.durationMs, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined, mask(e.answer).trim().slice(0, ANSWER_TEXT))
       isTurnLive = false
       await update($, main, v => ({ ...v, turnLive: false }))
       void debug($, 'turn.complete', { ms: e.durationMs, tools: turn.tools, edited: turn.edited.size })
@@ -901,8 +913,9 @@ export const register: Register = on => {
     // Another hook already sends it back: never stack.
     if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
     await noteShellEdit($, turn)
-    // A light turn has nothing to gate; while subagents still run, the work is not over yet.
-    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running')) return r
+    // A light turn has nothing to gate; while this turn's subagents still run, the work is not over yet.
+    // A background agent from an earlier turn does not hold every later turn's gate.
+    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running' && a.startedAt >= turn.startedAt)) return r
     // Fable looks at the continuation too, so the pane says whether the send-back was answered.
     const found = await openGaps($, turn, e.last_assistant_message ?? '')
     // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
@@ -921,6 +934,13 @@ export const register: Register = on => {
     noteGaps(block)
     return { ...r, block }
   }).catch(($, e, next) => failOpen($, 'classic.Stop', next.error, () => next(e)))
+
+  // How this session began, when not fresh: a resume, a /clear or a fork. A compaction logs itself.
+  on('classic.SessionStart', async ($, e, next) => {
+    const what = e.source === 'resume' || e.source === 'clear' || e.source === 'fork' ? t.began[e.source] : undefined
+    if (what) await addLog($, { who: t.mainSession, what, result: '' })
+    return next(e)
+  }).catch(($, e, next) => failOpen($, 'classic.SessionStart', next.error, () => next(e)))
 
   // /model fires no turn.step until the next prompt: the title follows the switch now.
   on('classic.PostModelSwitch', async ($, e, next) => {

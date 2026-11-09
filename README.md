@@ -77,7 +77,7 @@ Context, quotas, cache hits, cost and turns measured against their limits or you
 
 ![Top band: dials for context, quotas and cache hits, rulers for cost, turns and time blocked on you, and a bar splitting tokens in and out](docs/web/band.png)
 
-The agent flow shows who started whom, when each subagent handed back, and where a call failed. Dashed lanes are still running; dotted verticals are check runs, such as tests. Drag the strip on top to pick a time, and the waterfall below follows it.
+The agent flow shows who started whom, when each subagent handed back, the messages agents sent each other, and where a call failed. Dashed lanes are still running; dotted verticals are check runs, such as tests. Drag the strip on top to pick a time, or press 1, 5 or 15 min, and the waterfall below follows it.
 
 ![Agent flow: the main session starts six subagents, one reports failing tests, and two still run](docs/web/flow.png)
 
@@ -87,7 +87,7 @@ The waterfall shows every call in that time, nested under the agent that made it
 
 ### Tool calls
 
-Every tool call, sortable, with filters by tool, by agent and for failures. Click a row for its details. Insights lists the slowest calls, the largest results and approvals asked more than once.
+Every tool call, sortable, with filters by tool (one per MCP server), by agent and for failures. Click a row for its details. Insights lists the slowest calls, the largest results and approvals asked more than once.
 
 ![Tool calls table with filters, and Insights](docs/web/calls.png)
 
@@ -111,7 +111,7 @@ Edited files, paths inside the project, grouped by whether they still need a tes
 
 ### Session log
 
-One searchable stream of your prompts, tool calls and subagents. A subagent is one row that unfolds to its calls, equal calls merge, and a failed call keeps its own red row. Filter with the buttons, or click a red bar to go to that failure.
+One searchable stream of your prompts, Claude's answers, tool calls and subagents. A subagent is one row that unfolds to its calls, equal calls merge, and a failed call keeps its own red row. Filter with the buttons, or click a red bar to go to that failure.
 
 ![Session log with filter buttons, activity bars and rows](docs/web/log.png)
 

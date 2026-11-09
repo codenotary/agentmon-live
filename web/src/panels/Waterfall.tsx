@@ -10,8 +10,8 @@ import { Empty, Panel } from '../ui/Panel.tsx'
 import { rowsOf, ticksOf, xOf, type Row } from '../waterfall.ts'
 
 export function openTrace(call: TraceCall): void {
-  // The drawer reads the live state; this is what it shows for a call that has left the trace.
-  const result = traceResult(call, true)
+  // The drawer reads the live state; this is what it shows for a call that has left the trace: no end there means lost, not running.
+  const result = traceResult(call, false)
   set({ call: { id: call.id, ...(call.agentId === undefined ? {} : { agentId: call.agentId }), at: call.at, who: call.who, view: call.tool, what: call.what, result, ...(call.error ? { error: call.error } : {}), ...(call.ms === undefined ? {} : { ms: call.ms }) } })
 }
 

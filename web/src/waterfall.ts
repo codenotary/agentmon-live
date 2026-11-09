@@ -4,7 +4,8 @@ import { endOf, isRunning } from './agents.ts'
 import { agentNames, traceResult } from './format.ts'
 import type { Detail } from './store.ts'
 
-export type BarState = 'ok' | 'failed' | 'running' | 'asking'
+// `unknown`: no end, and the session no longer runs it (lost, for example to a module reload), as `traceResult` says.
+export type BarState = 'ok' | 'failed' | 'running' | 'asking' | 'unknown'
 export type Row = { key: string; name: string; full?: string; what: string; depth: number; from: number; to: number; ms?: number; state: BarState; isAgent: boolean; isSlowest: boolean; call?: TraceCall }
 export type WaterfallInput = { trace?: TraceCall[]; agents: Card[]; active: Active[] }
 
@@ -61,7 +62,7 @@ export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, no
   const running = new Map(d.active.map(a => [a.id, a]))
   const callRow = (c: TraceCall, depth: number): Row => {
     const live = running.get(c.id)
-    const state: BarState = c.isFailed ? 'failed' : c.ms !== undefined || !live ? 'ok' : live.isAsking ? 'asking' : 'running'
+    const state: BarState = c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : !live ? 'unknown' : live.isAsking ? 'asking' : 'running'
     const end = c.ms !== undefined ? c.at + c.ms : live ? now : c.at
     return { key: c.id, name: c.tool, what: c.what, depth, from: c.at, to: end, ...(c.ms === undefined ? {} : { ms: c.ms }), state, isAgent: false, isSlowest: false, call: c }
   }

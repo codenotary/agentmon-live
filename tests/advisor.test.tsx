@@ -542,6 +542,7 @@ test('a check of another kind does not back a claim', async ($, on) => {
 test('claims are found in each language and negations are not claims', async () => {
   expect(claimOf('Build succeeds and lint is clean.')).toBe('Build succeeds')
   expect(claimOf("The tests didn't pass.")).toBe(undefined)
+  expect(claimOf('The build did not pass at first; now all tests pass.')).toBe('all tests pass')
   expect(claimOf('Die Tests laufen durch.')).toBe('Tests laufen durch')
   expect(claimOf('测试全部通过。')).toBe('测试全部通过')
   expect(claimOf('テストはすべて成功しました')).toBe('テストはすべて成功')
@@ -707,6 +708,23 @@ test('an unanswered Fable lets Claude stop', async ($, on) => {
   for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
   await clock.settle()
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
+})
+
+test('a background subagent from an earlier turn does not hold a later turn\'s gate', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [])
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+  await start($)
+  await $.agent.spawn({ tool_use_id: 't1', prompt: 'p', description: 'watch', subagentType: 'general-purpose', provider: { plugin: 'engine', tier: 'core' }, parentModel: 'claude-opus-5-5', background: true, fork: false })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
+  await clock.advance(60_000)
+  await $.turn.start({ text: 'Fix the lexer', turnId: 'm2' })
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/lexer.ts', old_string: 'a', new_string: 'b' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test -- fail' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toContain('npm test')
 })
 
 test('no gate while a subagent still runs', async ($, on) => {

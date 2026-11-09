@@ -997,11 +997,12 @@ test('two Skill calls at once each name their own caller', async ($, on) => {
   await ui.unmount()
 })
 
-test('a compound command gets a row per check; a failure blames the last one', async ($, on) => {
+test('a compound command gets a row per check; a failure blames the tests only when their summary says so', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   let fails = false
-  on('tool.call', () => (fails ? { result: {}, text: 'test failed', isError: true } : { result: {} }))
+  let text = 'error TS2322: Type string is not assignable'
+  on('tool.call', () => (fails ? { result: {}, text, isError: true } : { result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'Bash', command: 'npm run lint && npm test' })
@@ -1012,8 +1013,18 @@ test('a compound command gets a row per check; a failure blames the last one', a
   fails = true
   await $.tool.call({ tool: 'Bash', command: 'npm run lint && npm test' })
   await clock.settle()
+  // `&&` stopped at the lint: nothing says the tests ran, let alone failed.
   expect(await ui.find({ type: 'Text', text: /^lint\s+unknown npm run lint/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^test\s+unknown npm test/ })).toBeTruthy()
+  text = 'Tests:       1 failed, 2 passed, 3 total'
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint && npm test' })
+  await clock.settle()
   expect(await ui.find({ type: 'Text', text: /FAILED\s+test npm test/ })).toBeTruthy()
+  // The tests ran first and passed; the lint's errors at the end are no test failure.
+  text = 'Tests:       3 passed, 3 total\n\n✖ 3 problems (3 errors, 0 warnings)'
+  await $.tool.call({ tool: 'Bash', command: 'npm test && npm run lint' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /FAILED\s+test npm test/ })).toBeFalsy()
   await ui.unmount()
 })
 

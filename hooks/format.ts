@@ -49,14 +49,16 @@ export function brief(call: object): string {
 // After a bare space only a secret-looking value counts (a digit, 16+ characters or a quote), so `token refresh bug` stays.
 // A JSON key's closing quote may sit before the separator: `{"token": "x"}`. `sig` must end there, so `signal 9` stays.
 const SECRET_NAME = /((?<![a-z])(?:(?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40}|sig(?:nature)?(?![a-z])))(["']?\s*[=:]\s*|\s+(?=["']|(?:bearer|basic|token)\s|[^\s"']*\d|[^\s"']{16}))(?:(["'])((?:bearer|basic|token)\s+)?[^"'\n]{1,200}\3|((?:bearer|basic|token)\s+)?[^\s"'&]+)/gi
-// camelCase and prefixed names (`accessToken`, `PGPASSWORD`), only with `=` or `:`, and only when the name ends there: `maxTokens: 4000` stays.
+// camelCase and prefixed names (`accessToken`, `PGPASSWORD`, `DB_PASS`, `privateKey`, `credentials`), only with `=` or `:`, and only when the name ends there: `maxTokens: 4000` stays.
 // The prefix is bounded, so a long word cannot make it quadratic.
-const PREFIXED_SECRET = /\b([a-z_]{1,40}(?:password|passwd|secret|token|api_?key))(?![a-z])(["']?\s*[=:]\s*)(?:(["'])[^"'\n]{1,200}\3|[^\s"',;]+)/gi
+const PREFIXED_SECRET = /\b([a-z_]{0,40}(?:password|passwd|pass(?:phrase)?|secret|token|api_?key|credentials?|private_?key))(?![a-z])(["']?\s*[=:]\s*)(?:(["'])[^"'\n]{1,200}\3|[^\s"',;]+)/gi
 // Only `[^\s:@/]` and `[^\s@/]` follow `://`, so each scan stops at the next slash or space: linear.
 const URL_CREDENTIALS = /:\/\/([^\s:@/]+):[^\s@/]+@/g
 const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|[sr]k_(?:live|test)_\w{16,}|gh[pousr]_\w{20,}|hf_\w{20,}|whsec_\w{20,}|ya29\.[\w-]{20,}|xapp-[\w-]{10,}|hooks\.slack\.com\/services\/[\w/]+|github_pat_\w{20,}|glpat-[\w-]{20,}|xox[abprs]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|npm_\w{36}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]+)/g
 // `curl -u user:pw`, `mysql -ppw`, `sshpass -p pw`, `redis-cli -a pw`, `--password pw` and cookie headers carry secrets without a telling name.
 const FLAG_SECRET = /(\s(?:-u\s*|--user[=\s]\s*)[^\s:"']+:)[^\s"']+|(\b(?:mysql|mysqldump|mariadb)\b[^|;&\n]{0,200}?\s-p)[^\s"']+|(\bsshpass\s+-p\s*|\bredis-cli\b[^|;&\n]{0,200}?\s-a\s+|--password[=\s]\s*)[^\s"']+|(\b(?:set-)?cookie\s*:\s*)[^\n"']+/gi
+// A bearer token on its own, with no `Authorization:` before it.
+const BARE_BEARER = /\b(Bearer)\s+[\w.~+/-]{8,}=*/gi
 // A PEM private key spans lines: masked whole, up to its END line or the end of the text.
 const PRIVATE_KEY = /(-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----)[\s\S]*?(?:-----END[^\n]*|$)/g
 
@@ -69,6 +71,7 @@ export function mask(s: string): string {
     .replace(SECRET_NAME, (_, name, sep, quote, quotedScheme, scheme) => (quote ? `${name}${sep}${quote}${quotedScheme ?? ''}***${quote}` : `${name}${sep}${scheme ?? ''}***`))
     .replace(PREFIXED_SECRET, (_, name, sep, quote = '') => `${name}${sep}${quote}***${quote}`)
     .replace(SECRET_SHAPE, '***')
+    .replace(BARE_BEARER, '$1 ***')
 }
 
 // What a call shows in the detail tabs and under Running now: `git push`, `npm test`, `sentry search_issues crash`.
@@ -130,7 +133,22 @@ export function resetTime(ms: number, now: number): string {
 }
 
 // A failure anywhere wins over a pass count: "3 passed, 2 failed" is a FAIL.
-const ANSWER_FAIL = /\b([1-9]\d*)\s+(?:tests?\s+)?fail(?:ed|ing)?\b/i
+const ANSWER_FAIL = /\b([1-9]\d*)\s+(?:tests?\s+)?fail(?:ed|ing)?\b/gi
+// "Fixed the 2 failing tests" names failures already known, not this run's; "the 2 failing tests still fail" is this run's.
+const FIXED_BEFORE = /\b(?:fix(?:ed|es)?|resolved|repaired|addressed)\s+(?:\w+\s+){0,2}$/i
+// "The 3 failing cases" describes known ones; "the 2 tests fail" says they fail now.
+const NAMED_BEFORE = /\b(?:the|those|these)\s+(?:\w+\s+){0,2}$/i
+
+function failsIn(text: string): boolean {
+  return text.split(/[.;!?\n]/).some(clause => {
+    const isStill = /\bstill\b|\bremain/i.test(clause)
+    return [...clause.matchAll(ANSWER_FAIL)].some(m => {
+      const before = clause.slice(0, m.index)
+      const isKnown = FIXED_BEFORE.test(before) || (/fail(?:ed|ing)$/i.test(m[0]) && NAMED_BEFORE.test(before))
+      return isStill || !isKnown
+    })
+  })
+}
 
 // Quoted text and code are what an agent read, not what it ran: a file that says '1 failing' is no failed test.
 const prose = (s: string) =>
@@ -140,7 +158,7 @@ const prose = (s: string) =>
     .replace(/"[^"\n]*"|(?<!\w)'[^'\n]*'(?!\w)/g, ' ')
 
 export function testsOf(answer: string): string | undefined {
-  if (ANSWER_FAIL.test(prose(answer))) return 'FAIL'
+  if (failsIn(prose(answer))) return 'FAIL'
   const pass =
     answer.match(/(\d+)\s+(?:tests?|Tests)\s+(?:passed|bestanden|passing)/i) ??
     answer.match(/\bPASS(?:ED)?\b\D{0,12}(\d+)\s+tests?/i)
@@ -150,7 +168,7 @@ export function testsOf(answer: string): string | undefined {
 
 // The line of an answer that made it a FAIL, so the person can judge whether it is real.
 export function failLine(answer: string): string | undefined {
-  return answer.split('\n').find(l => ANSWER_FAIL.test(prose(l)))?.trim().slice(0, 200)
+  return answer.split('\n').find(l => failsIn(prose(l)))?.trim().slice(0, 200)
 }
 
 // `pnpm --filter web test`, `npm --prefix api test`, `yarn workspace web test` run the same script in one package.
@@ -208,7 +226,7 @@ export function hidesExit(command: string): boolean {
   return first !== undefined && /[;\n]\s*\S/.test(blank.slice(first.end))
 }
 
-const FAIL_COUNT = /\b[1-9]\d*\s+(?:tests?\s+)?fail(?:ed|ures?|ing)?\b|\bfail(?:ed|ures?)?:?\s+[1-9]/i
+const FAIL_COUNT = /\b[1-9]\d*\s+(?:tests?\s+)?(?:fail(?:ed|ures?|ing)?|errors?)\b|\bfail(?:ed|ures?)?:?\s+[1-9]/i
 // `fail 0` is node's test runner summary.
 const PASSES = /\b0\s+(?:fail(?:ed|ures?)?|errors?|problems?)\b|\bfail(?:ed|ures?)?:?\s+0\b|\b\d+\s+(?:tests?\s+)?pass(?:ed|ing)?\b|✔|\bpassed\b|\bno (?:errors|problems)\b/i
 

@@ -90,3 +90,20 @@ test('isNewer compares release numbers, not text', () => {
   expect(isNewer('0.17.0', '')).toBe(false)
   expect(isNewer('latest', '0.16.0')).toBe(false)
 })
+
+test('testsOf: failures fixed or named as known are no FAIL; a tally or "still" is', () => {
+  expect(testsOf('Fixed the 2 failing tests; all 40 tests now pass.')).toBe(undefined)
+  expect(testsOf('The 3 failing cases were a stale fixture.')).toBe(undefined)
+  expect(testsOf('I fixed 2 failing tests.')).toBe(undefined)
+  expect(testsOf('3 passed, 2 failed')).toBe('FAIL')
+  expect(testsOf('Tests: 1 failed, 4 passed')).toBe('FAIL')
+  expect(testsOf('the 2 failing tests still fail')).toBe('FAIL')
+  expect(testsOf('Done, but the 2 tests fail on Windows paths.')).toBe('FAIL')
+})
+
+test('outcomeOf counts errors as failures', () => {
+  expect(outcomeOf('==== 2 passed, 1 error in 0.12s ====', 'test')).toBe('failed')
+  expect(outcomeOf('Found 1 error in a.ts', 'typecheck')).toBe('failed')
+  expect(outcomeOf('0 errors, 3 passed', 'test')).toBe('ok')
+})
+

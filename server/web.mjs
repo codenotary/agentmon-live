@@ -240,6 +240,8 @@ async function ensure(startPort) {
         await new Promise(done => setTimeout(done, 50))
         found = await probe(port)
       }
+      // Still free: our server is slow to start, not refused. Trying the next port would start a second one beside it; the session retries.
+      if (found.state === 'free') return 1
     }
     if (found.state === 'ours') {
       process.stdout.write(`${JSON.stringify({ port })}\n`)

@@ -146,3 +146,9 @@ export function rampColour(ranked: readonly string[], key: string): string {
   const i = ranked.indexOf(key)
   return i >= 0 && i < RAMP_STEPS ? `var(--ramp-${i + 1})` : 'var(--ramp-other)'
 }
+
+// An MCP tool goes by its server, so one server's tools share one filter button: `mcp__github__get_issue` is `mcp github`.
+export function toolGroup(tool: string): string {
+  const [head, server] = tool.split('__')
+  return head === 'mcp' && server ? `mcp ${server}` : tool
+}
