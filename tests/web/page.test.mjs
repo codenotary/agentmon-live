@@ -5,8 +5,8 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { AGENT_ROWS, elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, shownItems, sortLines, totalsOf } from '../../web/src/agents.ts'
-import { alertOf, kindOf, nextEvents, splitEvents } from '../../web/src/events.ts'
-import { agentNames, pathIn, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, whoOf } from '../../web/src/format.ts'
+import { alertOf, keepEvents, keptEvents, kindOf, nextEvents, splitEvents } from '../../web/src/events.ts'
+import { agentNames, pathIn, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, toolGroup, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
 import { chipCounts, foldAgents, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
 import { currentOf, silentIds, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
@@ -128,7 +128,7 @@ test('states: a running call reaches now, an approval shows, a failure shows, a 
   const trace = [call('run', MAIN, 10), call('ask', MAIN, 20), call('bad', MAIN, 30, { ms: 1, isFailed: true }), call('lost', MAIN, 40)]
   const active = [{ id: 'run', who: MAIN, tool: 'Bash', what: '', startedAt: 10 }, { id: 'ask', who: MAIN, tool: 'Bash', what: '', startedAt: 20, isAsking: true }]
   const rows = rowsOf({ ...empty, trace, active }, { from: 0, to: 100 }, 100)
-  assert.deepEqual(rows.map(r => [r.key, r.state, r.to]), [['run', 'running', 100], ['ask', 'asking', 100], ['bad', 'failed', 31], ['lost', 'ok', 40]])
+  assert.deepEqual(rows.map(r => [r.key, r.state, r.to]), [['run', 'running', 100], ['ask', 'asking', 100], ['bad', 'failed', 31], ['lost', 'unknown', 40]])
 })
 
 test('an event stays when it leaves Focus, cleared once, and comes back open', () => {
@@ -227,7 +227,7 @@ const OPEN = { hideFinished: false }
 
 test('the flow draws a lane per agent, arcs each way, and calls on their own lane', () => {
   const agents = [agent('a', { startedAt: 20, endedAt: 60, callId: 'spawn' }), agent('b', { startedAt: 30, endedAt: undefined, status: 'running' })]
-  const trace = [call('spawn', MAIN, 10, { tool: 'Agent' }), call('x', 't', 25, { agentId: 'a', tool: 'Bash', ms: 1 }), call('y', 't', 50, { agentId: 'a', tool: 'Read', ms: 1 }), call('z', 't', 35, { agentId: 'b' })]
+  const trace = [call('spawn', MAIN, 10, { tool: 'Agent', ms: 40 }), call('x', 't', 25, { agentId: 'a', tool: 'Bash', ms: 1 }), call('y', 't', 50, { agentId: 'a', tool: 'Read', ms: 1 }), call('z', 't', 35, { agentId: 'b' })]
   const { lanes, dots, arcs } = flowOf(flowInput({ agents, trace, active: [{ id: 'z', isAsking: true }] }), MAIN, 100, OPEN)
   assert.deepEqual(lanes.map(l => l.id), ['main', 'a', 'b'])
   assert.deepEqual(dots.map(d => [d.key, d.lane, d.state, d.isBig]), [['spawn', 'main', 'ok', false], ['x', 'a', 'ok', true], ['y', 'a', 'ok', false], ['z', 'b', 'asking', true]])
@@ -726,5 +726,50 @@ test('a page just opened shows the newest session, not whichever replays first',
   st = withSnapshot(st, 'new', snap('new'), 2)
   assert.equal(currentOf(st).session.id, 'new')
   assert.equal(withLive(sessionState(), []).shown, null)
+})
+
+test('a finished turn\'s answer closes it in the log, after its calls; a live turn has none yet', () => {
+  const turns = [{ startedAt: 10, wallMs: 50, prompt: 'fix it', answer: 'Fixed.\nDetails here' }, { startedAt: 100, wallMs: 5, prompt: 'next', answer: 'old', isLive: true }]
+  const rows = rowsOf2({ turns, trace: [call('c1', MAIN, 20, { ms: 1 })] })
+  assert.deepEqual(rows.map(r => [r.key, r.what]), [['you:10', 'fix it'], ['call:c1', 'c1'], ['answer:10', 'Fixed.'], ['you:100', 'next']])
+  assert.equal(rows[2].answer, 'Fixed.\nDetails here')
+  assert.equal(rows[2].who, 'Claude')
+})
+
+test('a message draws from the sender\'s lane to the agent it names, by name or id; an unknown name draws nothing', () => {
+  const agents = [agent('a1', { name: 'scout', startedAt: 5 }), agent('a2', { startedAt: 6 })]
+  const trace = [call('m1', MAIN, 20, { tool: 'SendMessage', to: 'scout' }), call('m2', 'x', 30, { tool: 'SendMessage', to: 'a1', agentId: 'a2' }), call('m3', MAIN, 40, { tool: 'SendMessage', to: 'nobody' })]
+  const { arcs } = flowOf(flowInput({ agents, trace }), MAIN, 100, OPEN)
+  assert.deepEqual(arcs.filter(a => a.kind === 'message').map(a => [a.fromLane, a.toLane, a.fromAt]), [['main', 'a1', 20], ['a2', 'a1', 30]])
+})
+
+test('an MCP server\'s tools share one filter value; other tools keep their name', () => {
+  assert.equal(toolGroup('mcp__github__get_issue'), 'mcp github')
+  assert.equal(toolGroup('mcp__plugin_context-mode_context-mode__ctx_search'), 'mcp plugin_context-mode_context-mode')
+  assert.equal(toolGroup('Bash'), 'Bash')
+})
+
+test('events kept in the browser come back per session, malformed ones left out, ten sessions at most', () => {
+  const ev = { key: 'ask:1', tag: 'Approval', text: 'Bash ls', isUrgent: true, at: 5 }
+  let raw = keepEvents(null, 's1', [ev, { ...ev, key: 'check:x', clearedAt: 9 }], 10)
+  assert.deepEqual(keptEvents(raw, 's1'), [ev, { ...ev, key: 'check:x', clearedAt: 9 }])
+  assert.deepEqual(keptEvents(raw, 's2'), [])
+  assert.deepEqual(keptEvents('{"s1":[{"key":1},null]}', 's1'), [])
+  assert.deepEqual(keptEvents('not json', 's1'), [])
+  for (let i = 2; i <= 12; i += 1) raw = keepEvents(raw, `s${i}`, [ev], 10)
+  assert.deepEqual(Object.keys(JSON.parse(raw)), ['s3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's12'])
+  // A session already kept moves to the newest place.
+  assert.equal(Object.keys(JSON.parse(keepEvents(raw, 's3', [], 10))).at(-1), 's3')
+  // An event still open after a reload keeps the time it first showed.
+  assert.equal(nextEvents(keptEvents(keepEvents(null, 's', [ev], 10), 's'), [ev], 500, 100)[0].at, 5)
+})
+
+test('a plan-context or long-turn item whose number grows is the same item, not a cleared one and a new one', () => {
+  const at50 = { key: 'ctxplan:10', tag: 't', text: '50%', isUrgent: false }
+  const at55 = { key: 'ctxplan:11', tag: 't', text: '55%', isUrgent: false }
+  const feed = nextEvents(nextEvents([], [at50], 100, 10), [at55], 200, 10)
+  assert.deepEqual(feed.map(e => [e.key, e.at, e.clearedAt]), [['ctxplan:11', 100, undefined]])
+  const long = nextEvents(nextEvents([], [{ ...at50, key: 'long:3' }], 100, 10), [{ ...at50, key: 'long:4' }], 200, 10)
+  assert.deepEqual(long.map(e => e.key), ['long:4'])
 })
 

@@ -189,6 +189,7 @@ button.wf-row:hover { background: var(--surface-2); }
 .wf-bar { position: absolute; top: 3px; bottom: 3px; min-width: 3px; border-radius: 2px; background: var(--ink-3); opacity: .7; }
 .wf-bar.slowest { background: var(--signal-bright); opacity: 1; }
 .wf-bar.failed { background: var(--bad); opacity: 1; }
+.wf-bar.unknown { background: var(--warn); opacity: .7; }
 .wf-bar.agent { background: var(--signal-soft); box-shadow: inset 0 0 0 1px var(--signal-bright); opacity: 1; }
 .wf-bar.agent.failed { background: var(--bad-soft); box-shadow: inset 0 0 0 1px var(--bad); }
 .wf-bar.running, .wf-bar.asking { background-color: transparent; opacity: 1; overflow: hidden; }
@@ -229,6 +230,8 @@ button.wf-row:hover { background: var(--surface-2); }
 .flow-count { font: 400 8px var(--font-mono); fill: var(--surface); pointer-events: none; }
 .flow-arc { stroke-width: 1.5; stroke-opacity: .6; stroke-dasharray: 1; animation: arc-in .3s ease-out; transition: stroke-opacity .15s; }
 .flow-arc.hot { stroke-opacity: 1; }
+/* A message, not a start or a hand-back: dashed, in units of the path's length of 1. */
+.flow-msg { stroke-dasharray: .03 .02; }
 /* Dashes that hold still: a moving stroke repainted the whole chart on every frame, about 20% of a core. The chart's glide and the now line show it runs. */
 .flow-running { stroke-dasharray: 6 4; }
 @keyframes dot-in { from { transform: scale(0); } 70% { transform: scale(1.6); } }

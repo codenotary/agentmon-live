@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Terminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, chipsWith, firstLine, MAIN_KEY, resultOf, time, whoKey, whoOf } from '../format.ts'
+import { agentNames, chipsWith, firstLine, MAIN_KEY, resultOf, time, toolGroup, whoKey, whoOf } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { set, useStore } from '../store.ts'
 import { Choice } from '../ui/Choice.tsx'
@@ -27,7 +27,7 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
 
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const list = useMemo(() => tableRows(s), [s])
-  const tools = useMemo(() => [...new Set(list.map(c => c.view))].sort(), [list])
+  const tools = useMemo(() => [...new Set(list.map(c => toolGroup(c.view)))].sort(), [list])
   const agentTypes = useMemo(() => new Set(s.agents.map(a => a.type)), [s.agents])
   // Label by key: two agents can show one name.
   const people = useMemo(() => {
@@ -40,7 +40,7 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   }, [list, names, agentTypes, l.main])
   const rows = useMemo(() => {
     const q = text.toLowerCase()
-    return list.filter(c => (!tool || c.view === tool) && (!who || whoKey(c, agentTypes) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.view} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
+    return list.filter(c => (!tool || toolGroup(c.view) === tool) && (!who || whoKey(c, agentTypes) === who) && (!onlyFailures || resultOf(c.result, l).tone === 'bad') && (!q || `${whoOf(c, names)} ${c.view} ${c.what} ${c.result} ${c.error ?? ''}`.toLowerCase().includes(q)))
   }, [list, text, tool, who, onlyFailures, l, names, agentTypes])
 
   const all = useMemo(() => sortCalls(rows, sort, c => whoOf(c, names)), [rows, sort, names])

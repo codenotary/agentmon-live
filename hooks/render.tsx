@@ -6,7 +6,7 @@ import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, pe
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
-import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, shares, sparkline, topCounts } from './insights'
+import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, needsYou, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
 import { openBrowser, setPane } from './web'
@@ -157,32 +157,26 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Each item: its row, a key to put it away by (none: it cannot be dismissed), and a prompt to look into it.
   type Item = { key?: string; row: RenderChildren; prompt?: string }
   const errorOf = (c: Check) => recent.find(x => x.at === c.at && x.error)?.error
-  const items: Item[] = [
-    ...doing.filter(a => a.isAsking).map(a => ({
-      row: (
-        <Text>
-          {chip(t.approval, 'yellow')} <Text bold>{a.tool}</Text> {cut(a.what, whatRoom)}
-        </Text>
-      ),
-    })),
-    // Keyed by turn alone, so a dismissed streak stays away as it grows.
-    ...((st.streak ?? 0) >= 3
-      ? [{ key: `streak:${m.turnAt ?? 0}`, row: <Text>{chip(t.status.error, 'red')} {t.errorsInRow(st.streak ?? 0)}</Text>, prompt: t.investigateErrors(st.streak ?? 0) }]
-      : []),
-    ...checked.filter(c => c.result === 'failed').map(c => ({
-      key: `check:${c.kind}:${c.at}`,
-      row: (
-        <Text>
-          {chip(t.failed, 'red')} <Text bold>{t.check[c.kind]}</Text> {cut(c.command, whatRoom)}
-        </Text>
-      ),
-      prompt: t.investigateCheck(t.check[c.kind], c.command, (errorOf(c) ?? '').slice(0, 600)),
-    })),
-    // A subagent's failure needs the person until the main session's next turn, which has read its answer.
-    ...list
-      .filter(a => (a.tests === 'FAIL' || a.status === 'error') && (a.endedAt ?? 0) >= (m.turnAt ?? 0))
-      .map(a => ({
-        key: `agent:${a.id}:${a.endedAt ?? 0}`,
+  // Approvals and waiting subagents cannot be put away here: they leave when answered.
+  const items: Item[] = needsYou({ doing, streak: st.streak ?? 0, checks: checked, agents: list, turnAt: m.turnAt }).map((u): Item => {
+    if (u.kind === 'ask') return { row: <Text>{chip(t.approval, 'yellow')} <Text bold>{u.call.tool}</Text> {cut(u.call.what, whatRoom)}</Text> }
+    if (u.kind === 'streak') return { key: u.key, row: <Text>{chip(t.status.error, 'red')} {t.errorsInRow(u.n)}</Text>, prompt: t.investigateErrors(u.n) }
+    if (u.kind === 'check') {
+      const c = u.check
+      return {
+        key: u.key,
+        row: (
+          <Text>
+            {chip(t.failed, 'red')} <Text bold>{t.check[c.kind]}</Text> {cut(c.command, whatRoom)}
+          </Text>
+        ),
+        prompt: t.investigateCheck(t.check[c.kind], c.command, (errorOf(c) ?? '').slice(0, 600)),
+      }
+    }
+    const a = u.agent
+    if (u.kind === 'agent')
+      return {
+        key: u.key,
         row: (
           <Text>
             {chip(a.tests === 'FAIL' ? 'FAIL' : t.status.error, 'red')} <Text bold>{a.type}</Text> {cut(a.task, 22)}
@@ -190,15 +184,9 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           </Text>
         ),
         prompt: t.investigateAgent(a.type, a.task, a.tests === 'FAIL' ? (a.testsWhy ?? 'FAIL') : t.status.error),
-      })),
-    ...list.filter(a => a.status === 'waiting').map(a => ({
-      row: (
-        <Text>
-          {chip(t.status.waiting, 'yellow')} <Text bold>{a.type}</Text> {cut(a.task, 22)}
-        </Text>
-      ),
-    })),
-  ]
+      }
+    return { row: <Text>{chip(t.status.waiting, 'yellow')} <Text bold>{a.type}</Text> {cut(a.task, 22)}</Text> }
+  })
   const dismissed = new Set(lay.dismissed ?? [])
   const urgent = items.filter(x => !x.key || !dismissed.has(x.key))
   // Below what needs the person: what is worth a look, most important first.

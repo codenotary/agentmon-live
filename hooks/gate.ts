@@ -94,9 +94,10 @@ const CLAIM_KINDS: [CheckKind, RegExp][] = [['typecheck', /type-?check|\btsc\b|ç
 export const claimKind = (claim: string): CheckKind => CLAIM_KINDS.find(([, re]) => re.test(claim))?.[0] ?? 'test'
 
 export function claimOf(answer: string): string | undefined {
+  // Every match counts: "the build did not pass at first; now all tests pass" still claims the tests.
   for (const re of CLAIM) {
-    const m = answer.match(re)?.[0]
-    if (m && !NEGATED.test(m)) return m.trim().slice(0, 60)
+    const m = [...answer.matchAll(new RegExp(re.source, `${re.flags}g`))].map(x => x[0]).find(x => !NEGATED.test(x))
+    if (m) return m.trim().slice(0, 60)
   }
   return undefined
 }

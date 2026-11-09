@@ -44,3 +44,15 @@ test('mask on a long secret-ish line stays fast', () => {
   brief({ command: s })
   expect(performance.now() - t).toBeLessThan(500)
 })
+
+test('mask hides pass, passphrase, credentials, private keys and a bare bearer token', () => {
+  expect(mask('privateKey: abcdef123')).toBe('privateKey: ***')
+  expect(mask('DB_PASS=hunter2')).toBe('DB_PASS=***')
+  expect(mask('export PASS=hunter2')).toBe('export PASS=***')
+  expect(mask('passphrase=hunter2xx')).toBe('passphrase=***')
+  expect(mask('credentials=abc123')).toBe('credentials=***')
+  expect(mask('curl -H "Bearer abcdefghijkl"')).toBe('curl -H "Bearer ***"')
+  expect(mask('passes: 3')).toBe('passes: 3')
+  expect(mask('maxTokens: 4000')).toBe('maxTokens: 4000')
+})
+

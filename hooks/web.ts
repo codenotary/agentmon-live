@@ -5,7 +5,7 @@ import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main
 import { debug } from './debuglog'
 import type { Strings } from './i18n'
 import type { Insight } from './insights'
-import { bucketName, focusList, liveBuckets } from './insights'
+import { bucketName, focusList, liveBuckets, needsYou } from './insights'
 import { learnedItems } from './learn'
 import { droppedLines } from './testreview'
 import { cfg, INIT, liveStatus, liveTurn, PANE, shapeInsights } from './state'
@@ -68,15 +68,14 @@ export type SnapshotParts = {
 // The pane's list of what needs the person, in its order and with its keys, so a dismissal holds on both surfaces.
 export function urgentItems(p: SnapshotParts): WebFocus[] {
   const { t } = p
-  const items: (WebFocus & { key: string })[] = [
-    ...p.doing.filter(a => a.isAsking).map(a => ({ key: `ask:${a.id}`, tag: t.approval, text: `${a.tool} ${a.what}`, isUrgent: true })),
-    ...(p.streak >= 3 ? [{ key: `streak:${p.main.turnAt ?? 0}`, tag: t.status.error, text: t.errorsInRow(p.streak), isUrgent: true }] : []),
-    ...p.checks.filter(c => c.result === 'failed').map(c => ({ key: `check:${c.kind}:${c.at}`, tag: t.failed, text: `${t.check[c.kind]} ${c.command}`, isUrgent: true })),
-    ...p.agents
-      .filter(a => (a.tests === 'FAIL' || a.status === 'error') && (a.endedAt ?? 0) >= (p.main.turnAt ?? 0))
-      .map(a => ({ key: `agent:${a.id}:${a.endedAt ?? 0}`, tag: a.tests === 'FAIL' ? 'FAIL' : t.status.error, text: `${a.type} ${a.testsWhy ?? a.task}`, isUrgent: true })),
-    ...p.agents.filter(a => a.status === 'waiting').map(a => ({ key: `ask:agent:${a.id}`, tag: t.status.waiting, text: `${a.type} ${a.task}`, isUrgent: true })),
-  ]
+  const items = needsYou({ doing: p.doing, streak: p.streak, checks: p.checks, agents: p.agents, turnAt: p.main.turnAt }).map((u): WebFocus => {
+    const base = { key: u.key, isUrgent: true }
+    if (u.kind === 'ask') return { ...base, tag: t.approval, text: `${u.call.tool} ${u.call.what}` }
+    if (u.kind === 'streak') return { ...base, tag: t.status.error, text: t.errorsInRow(u.n) }
+    if (u.kind === 'check') return { ...base, tag: t.failed, text: `${t.check[u.check.kind]} ${u.check.command}` }
+    if (u.kind === 'agent') return { ...base, tag: u.agent.tests === 'FAIL' ? 'FAIL' : t.status.error, text: `${u.agent.type} ${u.agent.testsWhy ?? u.agent.task}` }
+    return { ...base, tag: t.status.waiting, text: `${u.agent.type} ${u.agent.task}` }
+  })
   return items.filter(x => !p.dismissed.includes(x.key))
 }
 
@@ -140,7 +139,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
 
 export function pushTurn(ring: WebTurn[], last: TurnTime | undefined): WebTurn[] {
   if (!last || ring.at(-1)?.startedAt === last.startedAt) return ring
-  return [...ring, { startedAt: last.startedAt, wallMs: last.wallMs, buckets: last.buckets, ...(last.prompt === undefined ? {} : { prompt: last.prompt }) }].slice(-KEEP_TURNS)
+  return [...ring, { startedAt: last.startedAt, wallMs: last.wallMs, buckets: last.buckets, ...(last.prompt === undefined ? {} : { prompt: last.prompt }), ...(last.answer === undefined ? {} : { answer: last.answer }) }].slice(-KEEP_TURNS)
 }
 
 // shortcut: the turn ring restarts on a module reload, keep it in the store when people ask for history across reloads.

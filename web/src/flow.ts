@@ -8,9 +8,9 @@ export type FlowInput = { trace?: TraceCall[]; agents: Card[]; active: readonly 
 export type FlowOptions = { hideFinished: boolean }
 export type Span = { from: number; to: number }
 export type Lane = { id: string; name: string; full: string; dot: string; from: number; to: number; isMain: boolean; isRunning: boolean; agentId?: string }
-export type DotState = 'ok' | 'failed' | 'running' | 'asking'
+export type DotState = 'ok' | 'failed' | 'running' | 'asking' | 'unknown'
 export type Dot = { key: string; lane: string; at: number; state: DotState; isBig: boolean; call: TraceCall }
-export type ArcKind = 'spawn' | 'handback' | 'ask'
+export type ArcKind = 'spawn' | 'handback' | 'ask' | 'message'
 export type Arc = { key: string; kind: ArcKind; fromLane: string; fromAt: number; toLane: string; toAt: number; agent: string }
 export type Mark = { key: string; lane: string; at: number; to: number; state: DotState; count: number; dots: Dot[] }
 // How wide the window is and where its right edge sits; a null edge follows the session.
@@ -42,7 +42,7 @@ export function flowOf(d: FlowInput, mainName: string, now: number, opts: FlowOp
     const lane = isMain ? MAIN_LANE : (c.agentId as string)
     if (!hasLane.has(lane)) continue
     const running = live.get(c.id)
-    const state: DotState = c.isFailed ? 'failed' : running?.isAsking ? 'asking' : c.ms === undefined && running ? 'running' : 'ok'
+    const state: DotState = c.isFailed ? 'failed' : running?.isAsking ? 'asking' : c.ms !== undefined ? 'ok' : running ? 'running' : 'unknown'
     dots.push({ key: c.id, lane, at: c.at, state, isBig: IS_BIG.test(c.tool), call: c })
     if (!isMain) {
       lastAt.set(c.agentId as string, c.at)
@@ -56,6 +56,13 @@ export function flowOf(d: FlowInput, mainName: string, now: number, opts: FlowOp
     arcs.push({ key: `spawn:${a.id}`, kind: 'spawn', fromLane: MAIN_LANE, fromAt: from ?? a.startedAt, toLane: a.id, toAt: firstOf.get(a.id) ?? a.startedAt, agent: a.id })
     if (a.endedAt !== undefined) arcs.push({ key: `back:${a.id}`, kind: 'handback', fromLane: a.id, fromAt: lastAt.get(a.id) ?? a.endedAt, toLane: MAIN_LANE, toAt: a.endedAt, agent: a.id })
   }
+  // A message goes to the agent the call names, by the name it was given or its id; a name no lane has draws nothing.
+  for (const c of trace) {
+    if (c.tool !== 'SendMessage' || !c.to) continue
+    const target = [...shown].reverse().find(a => a.name === c.to || a.id === c.to)
+    const fromLane = c.agentId ?? MAIN_LANE
+    if (target && hasLane.has(fromLane) && target.id !== fromLane) arcs.push({ key: `msg:${c.id}`, kind: 'message', fromLane, fromAt: c.at, toLane: target.id, toAt: c.at, agent: target.id })
+  }
   for (const dot of dots) {
     if (dot.state === 'asking' && dot.lane !== MAIN_LANE) arcs.push({ key: `ask:${dot.key}`, kind: 'ask', fromLane: dot.lane, fromAt: dot.at, toLane: MAIN_LANE, toAt: dot.at, agent: dot.call.agentId ?? '' })
   }
@@ -67,13 +74,18 @@ export function lanesIn(lanes: readonly Lane[], span: Span): Lane[] {
   return lanes.filter(x => x.isMain || x.isRunning || (x.from <= span.to && x.to >= span.from))
 }
 
-const RANK: Record<DotState, number> = { ok: 0, running: 1, failed: 2, asking: 3 }
+const RANK: Record<DotState, number> = { ok: 0, unknown: 1, running: 2, failed: 3, asking: 4 }
 
 // Dots closer than a few pixels become one mark with a count, so a 60-call agent stays legible.
 export function mergeDots(dots: readonly Dot[], span: Span, widthPx: number): Mark[] {
   const pxPerMs = widthPx / Math.max(1, span.to - span.from)
   const byLane = new Map<string, Dot[]>()
-  for (const d of dots) if (d.at >= span.from && d.at <= span.to) byLane.set(d.lane, [...(byLane.get(d.lane) ?? []), d])
+  for (const d of dots) {
+    if (d.at < span.from || d.at > span.to) continue
+    const list = byLane.get(d.lane)
+    if (list) list.push(d)
+    else byLane.set(d.lane, [d])
+  }
   const marks: Mark[] = []
   for (const [lane, list] of byLane) {
     let run: Dot[] = []

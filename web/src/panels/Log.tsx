@@ -43,6 +43,15 @@ const Row = memo(function Row({ row, q, now, l, title, isOpen, onToggle }: RowPr
   )
   const grid = `row-in grid w-full ${row.isMember ? 'opacity-80 [&>span:nth-child(2)]:pl-3' : ''} grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 rounded px-1 py-0.5 text-left sm:grid-cols-[72px_190px_minmax(0,1fr)_56px_minmax(48px,140px)] ${row.isFailed ? 'bg-bad-soft' : ''}`
   const { call } = row
+  // One child per row, so the strip's jump by index still lands on it.
+  if (row.answer !== undefined && onToggle) {
+    return (
+      <div>
+        <button type="button" className={`${grid} cursor-pointer hover:bg-surface-2`} aria-expanded={isOpen} data-answer={row.key} onClick={() => onToggle(row.key)}>{cells}</button>
+        {isOpen ? <div className="mb-1 ml-[86px] max-h-80 overflow-auto rounded border border-line-soft bg-surface-1 px-2 py-1.5 font-sans text-[13px] whitespace-pre-wrap [overflow-wrap:anywhere] max-sm:ml-0"><Marked text={row.answer} q={q} /></div> : null}
+      </div>
+    )
+  }
   if (row.run && row.agentId !== undefined && onToggle) {
     const id = row.agentId
     return <button type="button" className={`${grid} cursor-pointer hover:bg-surface-2`} aria-expanded={isOpen} data-run={id} onClick={() => onToggle(id)}>{cells}</button>
@@ -60,9 +69,9 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
   const box = useRef<HTMLDivElement>(null)
   const q = query.toLowerCase()
   const names = useMemo(() => agentNames(s.agents), [s.agents])
-  const all = useMemo(() => logRows(s, p.you, names), [s.log, s.trace, s.turns, s.active, names, p.you])
+  const all = useMemo(() => logRows(s, p.you, names, p.claude), [s.log, s.trace, s.turns, s.active, names, p.you, p.claude])
   const counts = chipCounts(all)
-  const flat = all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text}`.toLowerCase().includes(q)))
+  const flat = all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text} ${x.answer ?? ''}`.toLowerCase().includes(q)))
   // A search or the failures chip lists the calls themselves; otherwise a subagent run is one row.
   const rows = q || chip === 'failures' ? flat : foldAgents(flat, openRuns)
   const toggleRun = (id: string) => setOpenRuns(open => {
@@ -114,7 +123,7 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
               if (atEnd !== follow) setFollow(atEnd)
             }}
           >
-            {rows.map(x => <Row key={x.key} row={x} q={q} now={now} l={l} lang={s.lang} title={x.agentId === undefined ? undefined : names.get(x.agentId)?.full} isOpen={x.run && x.agentId !== undefined ? openRuns.has(x.agentId) : undefined} onToggle={toggleRun} />)}
+            {rows.map(x => <Row key={x.key} row={x} q={q} now={now} l={l} lang={s.lang} title={x.agentId === undefined ? undefined : names.get(x.agentId)?.full} isOpen={x.answer !== undefined ? openRuns.has(x.key) : x.run && x.agentId !== undefined ? openRuns.has(x.agentId) : undefined} onToggle={toggleRun} />)}
           </div>
         </>
       )}

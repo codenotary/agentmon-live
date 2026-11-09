@@ -25,6 +25,8 @@ export type Card = {
   // The Agent call that started it, and its prompt, masked and cut short.
   callId?: string
   prompt?: string
+  // The name the Agent call gave it, the address SendMessage uses.
+  name?: string
   // Input read from the prompt cache, its cost so far, and its failed calls.
   cached?: number
   usd?: number
@@ -39,6 +41,8 @@ export type TurnTime = {
   startedAt: number
   // The prompt that started it, masked and cut short.
   prompt?: string
+  // Claude's final answer, masked and cut short; absent while the turn runs.
+  answer?: string
   wallMs: number
   buckets: Record<string, number>
   steps: number
@@ -183,7 +187,8 @@ export type View = 'git' | 'shell' | 'mcp'
 export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string; agentId?: string }
 
 // Every tool call of the session, for the web view's waterfall; `ms` once it reported back.
-export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; ms?: number; isFailed?: boolean; error?: string; agentId?: string }
+// `to` is a SendMessage's recipient, as the call names it.
+export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; ms?: number; isFailed?: boolean; error?: string; agentId?: string; to?: string }
 
 export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
@@ -243,7 +248,7 @@ export type TestEdit = { path: string; removed: number; skips: number; at: numbe
 export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: number; skipped: number; ranNow: number; skippedNow: number }[]; isGreen: boolean }
 
 // One turn on the web view's clock; `isLive` while it still runs.
-export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean; prompt?: string }
+export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean; prompt?: string; answer?: string }
 
 export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean }
 

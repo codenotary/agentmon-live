@@ -22,6 +22,8 @@ const MAX_LANE = 50
 const CHART_LANES_H = 150
 const DOT_HIT_R = 8
 const STEP_MS = 3000
+// One click to the recent past, beside dragging on the strip.
+const QUICK_MINUTES = [1, 5, 15]
 
 // The ramp's palest step is too faint for a dot on white.
 const laneColour = (i: number, isMain: boolean) => (isMain ? 'var(--ink-2)' : `var(--ramp-${(i % 4) + 1})`)
@@ -70,7 +72,7 @@ function MarkDot({ m, x, y, colour, isNarrow, onPick, onTip, leave }: { m: Mark;
   const first = m.dots[0]
   if (!first) return null
   const open = (e: { clientX: number; clientY: number }) => onPick(e, m)
-  const fill = m.state === 'failed' ? 'var(--bad)' : m.state === 'asking' ? 'var(--surface)' : colour
+  const fill = m.state === 'failed' ? 'var(--bad)' : m.state === 'asking' ? 'var(--surface)' : m.state === 'unknown' ? 'var(--warn)' : colour
   const stroke = m.state === 'asking' ? 'var(--warn)' : undefined
   if (m.count > 1) {
     return (
@@ -142,7 +144,8 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   const whole = wholeOf(s, now)
   const setView = (v: FlowView) => set({ flowView: clampView(v, whole) })
   const span = windowOf(view, s, now, stateOf(s) !== 'idle')
-  const flow = flowOf(s, l.main, now, { hideFinished })
+  // A hover redraws the panel for its tooltip; the layout only changes with a new frame.
+  const flow = useMemo(() => flowOf(s, l.main, now, { hideFinished }), [s, now, l.main, hideFinished])
   const { dots, arcs } = flow
   // An agent with nothing in this window gets no row: a long session's finished agents would leave the chart empty lanes.
   const lanes = lanesIn(flow.lanes, span)
@@ -160,8 +163,12 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   const yOf = new Map(lanes.map((x, i) => [x.id, i * laneH + laneH / 2 + 2]))
   // By the whole list, so an agent keeps its colour as the window moves.
   const colourOf = new Map(flow.lanes.map((x, i) => [x.id, laneColour(i, x.isMain)]))
-  const names = agentNames(s.agents)
-  const marks = mergeDots(dots.filter(d => yOf.has(d.lane)), { from: drawnFrom, to: span.to }, plot * 1.5)
+  const names = useMemo(() => agentNames(s.agents), [s.agents])
+  const laneIds = lanes.map(x => x.id).join('\n')
+  const marks = useMemo(() => {
+    const shown = new Set(laneIds.split('\n'))
+    return mergeDots(dots.filter(d => shown.has(d.lane)), { from: drawnFrom, to: span.to }, plot * 1.5)
+  }, [dots, laneIds, drawnFrom, span.to, plot])
   const plotBox = useRef<SVGGElement>(null)
   const glide = useRef<{ anim: Animation; px: number } | null>(null)
   const lastEdge = useRef({ to: span.to, ms: length, id: s.session.id })
@@ -208,7 +215,8 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   }
   const arcTip = (e: { clientX: number; clientY: number }, a: Arc) => {
     const name = nameOfAgent(a.agent)
-    placeTip(e, a.kind === 'spawn' ? `${l.main} → ${name} · ${p.spawned} ${time(a.fromAt)}` : a.kind === 'handback' ? `${name} → ${l.main} · ${p.handedBack} ${time(a.toAt)}` : `${name} → ${l.main} · ${l.status.waiting}`)
+    const from = a.fromLane === MAIN_LANE ? l.main : nameOfAgent(a.fromLane)
+    placeTip(e, a.kind === 'spawn' ? `${l.main} → ${name} · ${p.spawned} ${time(a.fromAt)}` : a.kind === 'handback' ? `${name} → ${l.main} · ${p.handedBack} ${time(a.toAt)}` : a.kind === 'message' ? `${from} → ${name} · ${p.messaged} ${time(a.fromAt)}` : `${name} → ${l.main} · ${l.status.waiting}`)
   }
   const leave = () => {
     setTip(null)
@@ -242,6 +250,7 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   const aside = !isOpen ? fold : (
     <>
       {s.agents.length ? <button type="button" className="chip" aria-pressed={hideFinished} onClick={() => setHideFinished(!hideFinished)}>{p.hideFinished}</button> : null}
+      {QUICK_MINUTES.map(n => <button key={n} type="button" className="chip tabular-nums" aria-pressed={view.at === null && view.ms === n * 60_000} onClick={() => setView({ ms: n * 60_000, at: null })}>{fill(p.lastMinutes, { n })}</button>)}
       <button type="button" className="chip" aria-pressed={view.at === null} onClick={() => setView({ ms: view.ms, at: null })}>{p.follow}</button>
       {fold}
     </>
@@ -281,7 +290,7 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
                   return (
                     <g key={a.key} onMouseEnter={e => { setHotArc(a.key); arcTip(e, a) }} onMouseMove={e => arcTip(e, a)} onMouseLeave={leave}>
                       <path d={d} fill="none" stroke="transparent" strokeWidth={8} />
-                      <path d={d} pathLength={1} fill="none" className={`flow-arc ${hotArc === a.key ? 'hot' : ''}`} stroke={a.kind === 'ask' ? 'var(--warn)' : colourOf.get(a.fromLane)} />
+                      <path d={d} pathLength={1} fill="none" className={`flow-arc ${a.kind === 'message' ? 'flow-msg' : ''} ${hotArc === a.key ? 'hot' : ''}`} stroke={a.kind === 'ask' ? 'var(--warn)' : colourOf.get(a.fromLane)} />
                     </g>
                   )
                 })}

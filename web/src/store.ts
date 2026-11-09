@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 
 import type { Call, WebSnapshot } from '../../types/index'
+import { keepEvents, keptEvents } from './events.ts'
 import { DEFAULT_VIEW } from './flow.ts'
 import { parseIds } from './format.ts'
 import { currentOf, silentIds, withLive, withoutSessions, withSnapshot, type SessionState } from './sessions.ts'
@@ -10,6 +11,9 @@ export { currentOf }
 const PICK_KEY = 'agentmon-live-session'
 const THEME_KEY = 'agentmon-live-theme'
 const COLLAPSED_KEY = 'agentmon-live-collapsed'
+// Each session's events, so a reload keeps their history.
+const EVENTS_KEY = 'agentmon-live-events'
+const KEEP_EVENT_SESSIONS = 10
 const THEME_FADE_MS = 200
 const NOTICE_MS = 2500
 const NOTICE_BAD_MS = 10_000
@@ -153,10 +157,22 @@ export function useClock(s: WebSnapshot, everyMs = 1000): number {
 const focusKeys = (s: WebSnapshot | undefined) => s?.focus?.map(f => f.key).join('\n')
 
 // Only the session on screen redraws at once; a hidden tab waits too, unless what needs the person changed, which the tab title shows.
+const savedEvents = new Map<string, string>()
 function received(id: string, snapshot: WebSnapshot, age = 0): void {
   const before = focusKeys(state.sessions.get(id))
   const now = Date.now()
+  if (!state.events.has(id)) {
+    const kept = keptEvents(load(EVENTS_KEY), id)
+    if (kept.length) state = { ...state, events: new Map(state.events).set(id, kept) }
+  }
   state = withSnapshot(state, id, snapshot, now - age)
+  // Saved when an event comes, goes or clears; texts that count up every second (a quiet agent's time) are no reason to write.
+  const list = state.events.get(id)
+  const shape = list?.map(e => `${e.key}|${e.at}|${e.clearedAt ?? ''}`).join('\n')
+  if (list && shape !== savedEvents.get(id)) {
+    savedEvents.set(id, shape ?? '')
+    save(EVENTS_KEY, keepEvents(load(EVENTS_KEY), id, list, KEEP_EVENT_SESSIONS))
+  }
   // At once, not on the next watch: a fresh snapshot ends "no signal", and an old replay starts it.
   state = { ...state, silent: silentIds(state.receivedAt, now) }
   const isShown = currentOf(state)?.session.id === id

@@ -247,6 +247,19 @@ test('ensure starts one detached server; a second ensure finds it', async () => 
   assert.equal((await waitUp(47430)).status, 200)
 })
 
+test('three sessions starting at once share one server on one port', async () => {
+  const env = { ...process.env, AGENTMON_WEB_TTL_MS: '500', AGENTMON_WEB_IDLE_MS: '500', AGENTMON_WEB_SWEEP_MS: '100' }
+  const run = () => new Promise(done => {
+    const child = spawn(process.execPath, [WEB, 'ensure', '47460'], { env, stdio: ['ignore', 'pipe', 'ignore'] })
+    let out = ''
+    child.stdout.on('data', d => { out += d })
+    child.on('exit', code => done({ code, out }))
+  })
+  const all = await Promise.all([run(), run(), run()])
+  assert.deepEqual(all.map(r => [r.code, JSON.parse(r.out).port]), [[0, 47460], [0, 47460], [0, 47460]])
+  assert.equal(await call(47461, '/health').then(() => 'up', () => 'down'), 'down')
+})
+
 test('ensure moves past a port someone else holds', async () => {
   const foreign = createServer((_, res) => res.end('not ours'))
   await new Promise(done => foreign.listen(47440, '127.0.0.1', done))

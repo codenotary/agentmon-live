@@ -20,6 +20,8 @@ export type LogRow = {
   run?: { calls: number; failed: number }
   // A call shown under its run row.
   isMember?: boolean
+  // Claude's whole answer, on the row that closes a turn.
+  answer?: string
 }
 export type LogChip = 'all' | 'failures' | 'you' | 'agents'
 export type StripBar = { count: number; isFailed: boolean; target: number; at: number }
@@ -31,7 +33,7 @@ const LAUNCH_TOOLS = /^(Agent|Task)$/
 type Input = {
   log: readonly LogLine[]
   trace?: readonly TraceCall[] | undefined
-  turns: readonly { startedAt: number; prompt?: string }[]
+  turns: readonly { startedAt: number; wallMs?: number; prompt?: string; answer?: string; isLive?: boolean }[]
   agents: readonly Pick<Card, 'id' | 'task' | 'status' | 'startedAt' | 'endedAt'>[]
   active: readonly Pick<Active, 'id'>[]
 }
@@ -70,7 +72,7 @@ function logLineRows(log: readonly LogLine[], agents: Input['agents'], names: Re
 
 const canMerge = (a: LogRow | undefined, b: LogRow): a is LogRow => a !== undefined && a.tool !== undefined && !a.isFailed && !a.isRunning && !b.isFailed && !b.isRunning && a.who === b.who && a.tool === b.tool && a.what === b.what
 
-export function logRows({ log, trace = [], turns, agents, active }: Input, you: string, names: ReadonlyMap<string, AgentName>): LogRow[] {
+export function logRows({ log, trace = [], turns, agents, active }: Input, you: string, names: ReadonlyMap<string, AgentName>, claude = 'Claude'): LogRow[] {
   const running = new Set(active.map(a => a.id))
   const calls = trace.filter(c => !LAUNCH_TOOLS.test(c.tool)).map((c): LogRow => ({
     key: `call:${c.id}`,
@@ -88,7 +90,9 @@ export function logRows({ log, trace = [], turns, agents, active }: Input, you: 
     isRunning: traceResult(c, running.has(c.id)) === 'running',
   }))
   const asked = turns.flatMap((t): LogRow[] => (t.prompt ? [{ key: `you:${t.startedAt}`, at: t.startedAt, who: you, what: firstLine(t.prompt), result: '', count: 1, isYou: true, isFailed: false, isRunning: false }] : []))
-  const ordered = [...logLineRows(log, agents, names), ...calls, ...asked].sort((a, b) => a.at - b.at)
+  // The answer closes its turn: placed at the turn's end, after the done gate's line.
+  const answered = turns.flatMap((t): LogRow[] => (t.answer && !t.isLive ? [{ key: `answer:${t.startedAt}`, at: t.startedAt + (t.wallMs ?? 0), who: claude, what: firstLine(t.answer), answer: t.answer, result: '', count: 1, isYou: false, isFailed: false, isRunning: false }] : []))
+  const ordered = [...logLineRows(log, agents, names), ...calls, ...asked, ...answered].sort((a, b) => a.at - b.at)
   const merged: LogRow[] = []
   for (const row of ordered) {
     const last = merged.at(-1)
@@ -107,7 +111,7 @@ export function foldAgents(rows: readonly LogRow[], open: ReadonlySet<string>): 
     if (r.agentId === undefined) continue
     if (r.tool === undefined) {
       if (!heads.has(r.agentId)) heads.set(r.agentId, r)
-    } else calls.set(r.agentId, [...(calls.get(r.agentId) ?? []), r])
+    } else (calls.get(r.agentId) ?? calls.set(r.agentId, []).get(r.agentId)!).push(r)
   }
   const out: LogRow[] = []
   const placed = new Set<string>()

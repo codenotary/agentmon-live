@@ -1,4 +1,4 @@
-import type { Active, Card, Insights, TurnTime, TestReview } from '../types'
+import type { Active, Card, Check, Insights, TurnTime, TestReview } from '../types'
 import { needsReview, reviewLines, reviewText } from './testreview'
 import { fenced } from './lang/fenced'
 import { clockTime, decimal, isHigh, kilo, limitName, modelName, pad, shortPath } from './format'
@@ -398,3 +398,25 @@ export function peakEnd(now: number): number | undefined {
   if (part('weekday') === 'Sat' || part('weekday') === 'Sun' || minute < 5 * 60 || minute >= 11 * 60) return undefined
   return now - (now % 60_000) + (11 * 60 - minute) * 60_000
 }
+
+// What needs the person, in order, for the pane and the page alike, each with the key a dismissal holds by.
+export type Urgent =
+  | { kind: 'ask'; key: string; call: Active }
+  | { kind: 'streak'; key: string; n: number }
+  | { kind: 'check'; key: string; check: Check }
+  | { kind: 'agent'; key: string; agent: Card }
+  | { kind: 'waiting'; key: string; agent: Card }
+
+export function needsYou(p: { doing: readonly Active[]; streak: number; checks: readonly Check[]; agents: readonly Card[]; turnAt?: number }): Urgent[] {
+  const since = p.turnAt ?? 0
+  return [
+    ...p.doing.filter(a => a.isAsking).map(call => ({ kind: 'ask' as const, key: `ask:${call.id}`, call })),
+    // Keyed by turn alone, so a dismissed streak stays away as it grows.
+    ...(p.streak >= 3 ? [{ kind: 'streak' as const, key: `streak:${since}`, n: p.streak }] : []),
+    ...p.checks.filter(c => c.result === 'failed').map(check => ({ kind: 'check' as const, key: `check:${check.kind}:${check.at}`, check })),
+    // A subagent's failure needs the person until the main session's next turn, which has read its answer.
+    ...p.agents.filter(a => (a.tests === 'FAIL' || a.status === 'error') && (a.endedAt ?? 0) >= since).map(agent => ({ kind: 'agent' as const, key: `agent:${agent.id}:${agent.endedAt ?? 0}`, agent })),
+    ...p.agents.filter(a => a.status === 'waiting').map(agent => ({ kind: 'waiting' as const, key: `ask:agent:${agent.id}`, agent })),
+  ]
+}
+
