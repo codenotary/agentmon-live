@@ -17,6 +17,9 @@ const children = []
 const TOKEN = 'ab'.repeat(32)
 process.env.AGENTMON_WEB_TOKEN_FILE = join(mkdtempSync(join(tmpdir(), 'agentmon-token-')), 'web.token')
 writeFileSync(process.env.AGENTMON_WEB_TOKEN_FILE, TOKEN)
+// No server these tests start lists the Kiro Crew chats of whoever runs them.
+process.env.KIROCREW_HOME = join(mkdtempSync(join(tmpdir(), 'agentmon-kiro-')), 'none')
+process.env.AGENTMON_KIRO_FILE = join(process.env.KIROCREW_HOME, 'kiro.json')
 const sign = text => createHmac('sha256', TOKEN).update(text).digest('hex')
 // What a tab of this account holds: made for one port and one server run.
 const passFor = (port, boot) => sign(`browser:${port}:${boot}`)
@@ -308,7 +311,7 @@ function olderCopy() {
   const dir = mkdtempSync(join(tmpdir(), 'agentmon-old-'))
   cpSync(dirname(WEB), dir, { recursive: true })
   const then = new Date('2020-01-01')
-  for (const f of ['web.mjs', 'app.html']) utimesSync(join(dir, f), then, then)
+  for (const f of ['web.mjs', 'kiro.mjs', 'app.html']) utimesSync(join(dir, f), then, then)
   return join(dir, 'web.mjs')
 }
 const SHORT = { AGENTMON_WEB_TTL_MS: '500', AGENTMON_WEB_IDLE_MS: '500', AGENTMON_WEB_SWEEP_MS: '100' }

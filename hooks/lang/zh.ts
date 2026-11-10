@@ -32,6 +32,7 @@ export const zh: Strings = {
       context: '上下文',
       quota: '7 天配额',
       cost: '会话费用',
+      credits: '积分',
       turns: '轮次',
       events: '事件',
       cleared: '已解除',

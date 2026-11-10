@@ -265,7 +265,8 @@ export type WebSnapshot = {
   // Absent from a session of an older version, which cannot take the page's request.
   isPaneOpen?: boolean
   focus: WebFocus[]
-  usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number }
+  // `credits` only from a Kiro Crew chat on kiro-cli, which reports them in place of tokens and cost.
+  usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number; credits?: number }
   turns: WebTurn[]
   turnCount: number
   active: Active[]

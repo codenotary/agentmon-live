@@ -32,6 +32,7 @@ export const es: Strings = {
       context: 'Contexto',
       quota: 'Cuota de 7 días',
       cost: 'Coste de la sesión',
+      credits: 'Créditos',
       turns: 'Turnos',
       events: 'Eventos',
       cleared: 'resuelto',

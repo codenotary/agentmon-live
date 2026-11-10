@@ -6,10 +6,13 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { kiroHome, kiroHost, readKiro } from './kiro.mjs'
+
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
 // A snapshot at the publisher's caps is about 700 KB of characters; in Chinese or Japanese each takes three bytes.
 const MAX_BODY = 4 * 1024 * 1024
+const KIRO_RESEND_MS = 15_000
 const MAX_BACKLOG = 16 * 1024 * 1024
 const PORT_TRIES = 20
 const TOKEN = /^[0-9a-f]{64}$/
@@ -38,7 +41,7 @@ const HEADERS = {
 
 // Which server is newer: file times, because a rebuild keeps the version and a total order stops two sessions replacing each other in turn.
 function stampOfFiles() {
-  return Math.max(statSync(join(HERE, 'app.html')).mtimeMs, statSync(fileURLToPath(import.meta.url)).mtimeMs)
+  return Math.max(...['app.html', 'web.mjs', 'kiro.mjs'].map(f => statSync(join(HERE, f)).mtimeMs))
 }
 
 // One secret per account, in a file only that account reads: another account's process on this machine can reach the port, not the sessions.
@@ -179,7 +182,11 @@ function serve(port, fixture, isOpen) {
     const [path, query = ''] = (req.url ?? '/').split('?')
 
     if (req.method === 'GET') {
-      if (path === '/') return reply(res, 200, 'text/html; charset=utf-8', page)
+      if (path === '/') {
+        // Kiro Crew's own page may show this one in a tab, while its gateway runs; no other page may.
+        const frames = fixture ? [] : (kiroHost()?.origins ?? [])
+        return reply(res, 200, 'text/html; charset=utf-8', page, frames.length ? { 'content-security-policy': HEADERS['content-security-policy'].replace("frame-ancestors 'none'", `frame-ancestors ${frames.join(' ')}`) } : {})
+      }
       if (path === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, pid: process.pid, sessions: sessions.size, stamp, isLocked, boot }))
       // `ensure` proves it holds the secret and gets this run's key, with a proof that the server holds it too. The port and the run are in both proofs: one caught on another port, or from another run, is no use here.
       if (path === '/key') {
@@ -291,8 +298,25 @@ function serve(port, fixture, isOpen) {
   setInterval(() => {
     const now = Date.now()
     for (const [id, s] of sessions) if (now - s.at > ttlMs) drop(id, true)
-    if (sessions.size === 0 && now - idleSince > idleMs) process.exit(0)
+    if (sessions.size === 0 && now - idleSince > idleMs && (fixture || !kiroHost())) process.exit(0)
   }, envMs('AGENTMON_WEB_SWEEP_MS', 5000))
+  // A chat on the Claude harness with the mod loaded posts under the same id, and its own snapshot says more: that one stays.
+  const kiroCache = new Map()
+  const kiroIdleMs = envMs('AGENTMON_KIRO_IDLE_MS', 30 * 60_000)
+  if (!fixture) setInterval(() => {
+    const now = Date.now()
+    const live = new Map(readKiro(kiroHome(), now, kiroIdleMs, kiroCache))
+    for (const [id, s] of sessions) if (s.isKiro && !live.has(id)) drop(id)
+    for (const [id, snapshot] of live) {
+      const had = sessions.get(id)
+      if (had && !had.isKiro) continue
+      // The page calls a session silent after 45 s without a snapshot, so an idle chat is still sent, but not every 2 s.
+      const mark = JSON.stringify({ ...snapshot, now: 0 })
+      const isDue = had?.mark !== mark || now - had.sentAt > KIRO_RESEND_MS
+      if (isDue) broadcast('snapshot', packed(id, JSON.stringify(snapshot)))
+      sessions.set(id, { json: JSON.stringify(snapshot), at: now, isKiro: true, mark, sentAt: isDue ? now : had.sentAt })
+    }
+  }, envMs('AGENTMON_KIRO_POLL_MS', 2000))
   // A named event, not an SSE comment: the page must see it to notice a connection that hangs without closing. Empty data would not dispatch.
   setInterval(() => broadcast('ping', '1'), envMs('AGENTMON_WEB_PING_MS', 15_000))
 

@@ -8,7 +8,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PORT = process.argv[2] ?? '47391'
 const STEP_MS = 500
 const CALL_EVERY = 5
-const server = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT], { stdio: 'inherit' })
+const server = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT], { stdio: 'inherit', env: { ...process.env, KIROCREW_HOME: '/nonexistent' } })
 process.on('SIGINT', () => {
   server.kill()
   process.exit(0)

@@ -32,6 +32,7 @@ export const ja: Strings = {
       context: 'コンテキスト',
       quota: '7 日間の上限',
       cost: 'セッション費用',
+      credits: 'クレジット',
       turns: 'ターン',
       events: 'イベント',
       cleared: '解消',

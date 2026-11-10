@@ -89,6 +89,22 @@ The same session in a browser, with the room a terminal lacks. The top bar shows
 
 Every running session on the machine shares one server. With more than one running, the working directory in the top bar becomes a switch between them. Its last entry opens [AgentMon Start](https://codenotary.com/agentmon-start), for a combined view, in a new tab. A dot and a word show each session's state: green and pulsing when it works, orange when it waits for you (an approval or a waiting subagent), grey when it is idle. The server is a small Node program inside the plugin. It starts with the first session and stops one minute after the last one leaves. A session whose plugin files are newer replaces a running server, and open tabs reload themselves. It needs `node` on your `PATH`: Claude Code does not include it. Without it the pane works as usual, there is no button, and the session shows a short notice when it starts. The debug log says why.
 
+**Kiro Crew chats.** The server also lists every open [Kiro Crew](https://kiro.dev) chat on the machine as a session, whatever harness the chat runs on (kiro-cli, Claude Code, Codex and the others). It reads the crew log Kiro Crew writes under `~/.kiro/crew/crew-log/`, so nothing has to be installed in Kiro Crew. The top bar names such a session `Kiro Crew` and its crew.
+
+- **What you see:** the turns with where their time went, each tool call with its duration and result, calls waiting for your approval, subagents, the task list, the context gauge, tokens, and your prompts and the answers.
+- **What stays empty:** the done gate, Focus, verification, files and learning, which come from the mod's own hooks in a Claude Code session. Cost in dollars is not shown. kiro-cli reports credits in place of tokens and cost: the Session cost tile then reads **Credits**, the chat's total, and the token numbers and Cache hit stay empty. Subagents have no token counts.
+- **When it leaves:** when the chat is closed or reset in Kiro Crew, or 30 minutes after its last entry while no turn runs.
+- **A chat on the Claude Code harness** loads the mod itself and shows in full, once, under the same entry.
+- **Start with Kiro Crew:** install this repo as a Kiro Crew app. The server then starts whenever Kiro Crew starts, stays up as long as it runs, and Kiro Crew gets an **AgentMon** tab in the chat side panel ("+" menu) and an **AgentMon Live** page, both showing the web view with every session.
+  - From a clone: `kirocrew app install /path/to/agentmon-live`, then enable **AgentMon Live** in Kiro Crew's apps.
+  - From GitHub: add `https://github.com/codenotary/agentmon-live` as a registry (Settings, Security, Trust), then install **AgentMon Live** from the store.
+  - Kiro Crew asks you to trust the app before its code runs. That code is `kiro/hooks.py`, under 90 lines of standard-library Python that run inside Kiro Crew's gateway with its rights: it writes `~/.claude/agentmon-live/kiro.json` (the gateway's process id and address) and starts `node server/web.mjs ensure 47311`. Read it before you say yes.
+  - It needs `node`, found on your `PATH` or under nvm, fnm, Volta or Homebrew.
+  - The tab shows every session, not only the chat it sits beside: Kiro Crew does not tell an app which chat a tab belongs to. It expects the server on port 47311.
+  - Only Kiro Crew's own page may frame the web view, and only while its gateway runs. After Kiro Crew quits, the server stops a minute after its last session.
+- **Without the app and with no Claude Code session open** nothing starts the server. Start it yourself: `node /path/to/agentmon-live/server/web.mjs ensure 47311`. A Kiro Crew script hook cannot: Kiro Crew runs hooks in its sandbox, which hides the crew log and has no `node` on its `PATH`.
+- **Web view only:** the pane is part of Claude Code.
+
 The page only reads, with one exception: the pane button tells the session to hide or show its pane. Nothing else flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. Secrets are masked first, as in the pane.
 
 Only your account uses the port (`webToken`, on by default):

@@ -70,7 +70,7 @@ export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: T
     quotaGauge('five_hour', 'five', p.quota5h),
     quotaGauge('seven_day', 'seven', p.quota),
     <Gauge key="cache" label={p.cacheHit} pct={cache} tone={reversedLevel(cache)} note={cache === undefined ? undefined : p.ofInputTokens} />,
-    <Stat key="cost" label={p.cost} tone={usdTone} foot={referenceFoot(usd, usdRef, usdText(usdRef.value), usdTone, [{ to: 50, tone: 'good' }, { to: 75, tone: 'warn' }, { to: 100, tone: 'bad' }], p)}>
+    s.usage.credits !== undefined ? <Stat key="cost" label={p.credits}><NumberFlow value={s.usage.credits} format={{ minimumFractionDigits: 2, maximumFractionDigits: 2 }} /></Stat> : <Stat key="cost" label={p.cost} tone={usdTone} foot={referenceFoot(usd, usdRef, usdText(usdRef.value), usdTone, [{ to: 50, tone: 'good' }, { to: 75, tone: 'warn' }, { to: 100, tone: 'bad' }], p)}>
       <NumberFlow value={usd} locales="en-US" format={{ style: 'currency', currency: 'USD' }} />
       <Sparkline points={trend?.usd ?? []} label={p.cost} className="h-4 min-w-0 flex-1" />
     </Stat>,
