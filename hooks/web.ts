@@ -167,7 +167,7 @@ async function ensureServer($: EngineInterface): Promise<void> {
   const { port, key, mark } = r.exitCode === 0 ? (JSON.parse(r.stdout) as { port?: unknown; key?: unknown; mark?: unknown }) : {}
   if (typeof port !== 'number') throw new Error(`ensure answered ${r.exitCode}`)
   cfg.webUrl = `http://127.0.0.1:${port}/`
-  // This server run's key and mark, from a server `ensure` saw prove it holds the account's secret; none with `webToken: off`.
+  // This server run's key and mark, from a server `ensure` saw prove it holds the account's secret; none from a server that asks for no proof.
   cfg.webSecret = typeof key === 'string' ? key : undefined
   cfg.webMark = typeof mark === 'string' ? mark : undefined
 }

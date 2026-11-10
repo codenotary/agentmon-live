@@ -122,8 +122,8 @@ function serve(port, fixture, isOpen) {
   const token = isLocked ? readToken() : ''
   // Made for this run: `boot` names it in the proofs, a session sends `key` and expects `mark` back, so a server that took the port later gets no snapshot.
   const [boot, key, mark] = [16, 32, 32].map(n => randomBytes(n).toString('hex'))
-  // What a tab keeps: good across runs, and no way back to the secret.
-  const pass = isLocked ? sign(token, 'browser') : ''
+  // What a tab keeps: good for this port and this run only, so a pass a tab sends to a program that took the port later opens no other run; no way back to the secret.
+  const pass = isLocked ? sign(token, `browser:${port}:${boot}`) : ''
   const tickets = new Map()
   const isSession = (req, res) => {
     if (!isLocked) return true
@@ -361,8 +361,8 @@ async function ensure(startPort, isOpen) {
       return ''
     }
   }
-  // Older files, or these files serving the other `webToken` setting: a session that loses its server gets the new one's key at its next post.
-  const isOlder = found => found.state === 'ours' && (found.stamp < mine || (found.stamp === mine && found.isLocked === isOpen))
+  // Older files, or these files serving with no checks to a session that wants them; a session with `webToken: off` uses a checking server, so two settings never take turns replacing it.
+  const isOlder = found => found.state === 'ours' && (found.stamp < mine || (found.stamp === mine && !found.isLocked && !isOpen))
   for (let port = startPort; port < startPort + PORT_TRIES; port += 1) {
     let found = await probe(port)
     // shortcut: an older session that finds the port free in this gap can win it; the next ensure from a newer session replaces that server.
