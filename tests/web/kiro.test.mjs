@@ -92,6 +92,8 @@ test('closed chats, long idle ones and a missing folder list nothing; a half-wri
   assert.deepEqual(readKiro(dir, Date.now(), 60_000, cache), [])
   assert.deepEqual(readKiro(dir, Date.now(), 60_000), [])
   utimesSync(file, new Date(Date.now() - 120_000), new Date(Date.now() - 120_000))
+  // An idle chat's lines are let go, and a log already old is not read.
+  assert.deepEqual([...cache.values()], [{ size: readFileSync(file).length, isDone: true }])
   // A chat whose folder is gone is forgotten.
   cache.set('gone/log.jsonl', {})
   readKiro(dir, Date.now(), 60_000, cache)
@@ -103,6 +105,14 @@ test('a turn that never reported its end is closed by the next one', () => {
   const { snapshot, isLive } = foldCrewLog([entries[0], at(1000), at(4000)], 9000)
   assert.deepEqual(snapshot.turns.map(t => [t.wallMs, Boolean(t.isLive)]), [[3000, false], [5000, true]])
   assert.equal(isLive, true)
+})
+
+test('a long chat sends its last turns only, and still counts them all', () => {
+  const turns = Array.from({ length: 60 }, (_, i) => [{ type: 'turn/started', time: NOW + i, data: {} }, { type: 'turn/completed', time: NOW + i, data: { duration_ms: 1 } }]).flat()
+  const { snapshot } = foldCrewLog([entries[0], ...turns], NOW + 100)
+  assert.equal(snapshot.turns.length, 50)
+  assert.equal(snapshot.turnCount, 60)
+  assert.equal(snapshot.turns.at(-1).startedAt, NOW + 59)
 })
 
 test('a chat carries the words the page prints, as a mod session does in English', () => {

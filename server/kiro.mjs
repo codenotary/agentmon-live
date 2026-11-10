@@ -20,6 +20,7 @@ export const LABELS = {
 
 const WHO = 'main session'
 const KEEP = 500
+const KEEP_TURNS = 50
 const CUT = 300
 const ANSWER_CUT = 4000
 const BUCKET = { execute: 'shell', read: 'read', search: 'read', edit: 'edit', fetch: 'web' }
@@ -158,6 +159,7 @@ export function foldCrewLog(entries, now, text = new Map()) {
   snap.files.read = [...reads]
   // kiro-cli reports credits in place of tokens and cost; the page then draws them where the cost stands.
   if (credits > 0) snap.usage.credits = credits
+  snap.turns = snap.turns.slice(-KEEP_TURNS)
   snap.trace = snap.trace.slice(-KEEP)
   snap.log = snap.log.slice(-KEEP)
   return { snapshot: snap, isClosed, isLive: Boolean(turn) }
@@ -209,19 +211,20 @@ export function readKiro(home, now, idleMs, cache = new Map()) {
       } catch {}
       // A long tool call writes nothing, so a turn under way gets more time; a chat that crashed in one still leaves.
       const isStale = isLive => now - stat.mtimeMs > idleMs * (isLive ? LIVE_PATIENCE : 1)
-      const isSame = hit && hit.size === stat.size && hit.side === side
-      // A chat that is closed or idle stays so until its log grows: nothing to fold.
-      if (isSame && (hit.isClosed || isStale(hit.isLive))) continue
+      // A chat that is closed or idle stays so until its log grows: nothing to fold, and an old log is not read at all.
+      if (!hit && isStale(true)) cache.set(file, (hit = { size: stat.size, isDone: true }))
+      if (hit?.isDone && hit.size === stat.size) continue
       // The transcript beside the log is rewritten every few seconds; the log is read again only when it grew.
       if (hit?.size !== stat.size) hit = { size: stat.size, entries: lines(readFileSync(file, 'utf8')) }
       if (hit.side !== side || !hit.text) Object.assign(hit, { side, slot: hit.entries[0]?.slot, text: toolText(home, hit.entries[0]?.slot) })
       cache.set(file, hit)
       const { snapshot, isClosed, isLive } = foldCrewLog(hit.entries, now, hit.text)
-      Object.assign(hit, { isClosed, isLive })
-      // A closed chat's entries are not needed again.
-      if (isClosed) Object.assign(hit, { entries: [], text: new Map() })
-      if (isClosed || !/^[\w-]{1,80}$/.test(snapshot.session.id)) continue
-      if (isStale(isLive)) continue
+      // Its entries are not needed again.
+      if (isClosed || isStale(isLive)) {
+        cache.set(file, { size: stat.size, isDone: true })
+        continue
+      }
+      if (!/^[\w-]{1,80}$/.test(snapshot.session.id)) continue
       out.push([snapshot.session.id, snapshot])
     } catch {}
   }
