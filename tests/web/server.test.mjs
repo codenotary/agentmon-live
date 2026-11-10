@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
+import { createHmac } from 'node:crypto'
 import { connect } from 'node:net'
-import { cpSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,6 +13,37 @@ import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), '../../server/web.mjs')
 const children = []
+// Every server and `ensure` these tests start reads this secret, not the account's own.
+const TOKEN = 'ab'.repeat(32)
+process.env.AGENTMON_WEB_TOKEN_FILE = join(mkdtempSync(join(tmpdir(), 'agentmon-token-')), 'web.token')
+writeFileSync(process.env.AGENTMON_WEB_TOKEN_FILE, TOKEN)
+const sign = text => createHmac('sha256', TOKEN).update(text).digest('hex')
+// What a tab of this account holds: made for one port and one server run.
+const passFor = (port, boot) => sign(`browser:${port}:${boot}`)
+const runs = new Map()
+
+function raw(port, path, { method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path, method, headers }, res => {
+      let text = ''
+      res.on('data', d => (text += d))
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text }))
+    })
+    req.on('error', reject)
+    req.end(body)
+  })
+}
+
+// A server run's key and mark, by the handshake `ensure` makes; none from a server that asks for no proof or is not ours.
+async function runOf(port) {
+  const { boot } = JSON.parse((await raw(port, '/health')).text)
+  if (runs.get(port)?.boot === boot) return runs.get(port)
+  const nonce = '12'.repeat(16)
+  const r = await raw(port, '/key', { headers: { 'x-agentmon-nonce': nonce, 'x-agentmon-proof': sign(`client:${port}:${boot}:${nonce}`) } })
+  const run = { boot, ...(r.status === 200 ? JSON.parse(r.text) : {}) }
+  runs.set(port, run)
+  return run
+}
 
 after(() => {
   for (const c of children) c.kill()
@@ -23,16 +55,10 @@ function startServer(port, env = {}) {
   return child
 }
 
-function call(port, path, { method = 'GET', headers = {}, body } = {}) {
-  return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path, method, headers }, res => {
-      let text = ''
-      res.on('data', d => (text += d))
-      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text }))
-    })
-    req.on('error', reject)
-    req.end(body)
-  })
+// As a session and a tab of this account would ask; a test that wants less passes empty headers over these.
+async function call(port, path, { method = 'GET', headers = {}, body } = {}) {
+  const run = path === '/health' ? {} : await runOf(port).catch(() => ({}))
+  return raw(port, path, { method, headers: { 'x-agentmon-key': run.key ?? '', 'x-agentmon-pass': run.boot ? passFor(port, run.boot) : '', ...headers }, body })
 }
 
 async function waitUp(port) {
@@ -48,9 +74,10 @@ const post = (port, id, value, headers = {}) =>
   call(port, `/state/${id}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(value) })
 
 // Reads an SSE stream until `isDone` holds for what came so far.
-function readEvents(port, isDone) {
+async function readEvents(port, isDone) {
+  const pass = passFor(port, (await runOf(port)).boot)
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path: '/events' }, res => {
+    const req = request({ host: '127.0.0.1', port, path: `/events?p=${pass}` }, res => {
       let text = ''
       res.on('data', d => {
         text += d
@@ -80,7 +107,8 @@ test('the page\'s files come from a fixed list, with a policy that lets them run
   startServer(47500)
   await waitUp(47500)
   const policy = (await call(47500, '/')).headers['content-security-policy']
-  assert.match(policy, /script-src 'self'/)
+  assert.match(policy, /script-src 'self' 'sha256-[A-Za-z0-9+\/=]+';/)
+  assert.match(policy, /frame-ancestors 'none'/)
   assert.match(policy, /style-src 'self'/)
   for (const [path, type] of [['/app.js', 'text/javascript'], ['/vendor.js', 'text/javascript'], ['/app.css', 'text/css']]) {
     const r = await call(47500, path)
@@ -94,12 +122,13 @@ test('the page\'s files come from a fixed list, with a policy that lets them run
 test('a client that stops reading is dropped, one that reads stays', async () => {
   startServer(47501)
   await waitUp(47501)
+  const pass = passFor(47501, (await runOf(47501)).boot)
   const stuck = connect(47501, '127.0.0.1')
-  stuck.write('GET /events HTTP/1.1\r\nHost: 127.0.0.1:47501\r\n\r\n')
+  stuck.write(`GET /events?p=${pass} HTTP/1.1\r\nHost: 127.0.0.1:47501\r\n\r\n`)
   stuck.pause()
   let isReaderClosed = false
   let last = ''
-  const reader = request({ host: '127.0.0.1', port: 47501, path: '/events' }, res => {
+  const reader = request({ host: '127.0.0.1', port: 47501, path: `/events?p=${pass}` }, res => {
     res.on('data', d => (last = String(d).slice(-40)))
     res.on('close', () => (isReaderClosed = true))
   })
@@ -173,10 +202,10 @@ test('a posted snapshot replays on /events, a later one follows, DELETE says rem
   assert.match(text, /event: removed\ndata: {"id":"s1"}/)
 })
 
-test('a snapshot over 1 MB is refused and not kept', async () => {
+test('a snapshot over 4 MB is refused and not kept', async () => {
   startServer(47414)
   await waitUp(47414)
-  assert.equal((await post(47414, 'big', { x: 'a'.repeat(1024 * 1024 + 1) })).status, 413)
+  assert.equal((await post(47414, 'big', { x: 'a'.repeat(4 * 1024 * 1024 + 1) })).status, 413)
   assert.equal((await post(47414, 'ok', { v: 1 })).status, 204)
   const text = await readEvents(47414, t => t.includes('"ok"'))
   assert.doesNotMatch(text, /"big"/)
@@ -241,9 +270,9 @@ test('ensure starts one detached server; a second ensure finds it', async () => 
   const env = { ...process.env, AGENTMON_WEB_TTL_MS: '500', AGENTMON_WEB_IDLE_MS: '500', AGENTMON_WEB_SWEEP_MS: '100' }
   const first = spawnSync(process.execPath, [WEB, 'ensure', '47430'], { env, encoding: 'utf8', timeout: 8000 })
   assert.equal(first.status, 0)
-  assert.deepEqual(JSON.parse(first.stdout), { port: 47430 })
+  assert.equal(JSON.parse(first.stdout).port, 47430)
   const second = spawnSync(process.execPath, [WEB, 'ensure', '47430'], { env, encoding: 'utf8', timeout: 8000 })
-  assert.deepEqual(JSON.parse(second.stdout), { port: 47430 })
+  assert.equal(JSON.parse(second.stdout).port, 47430)
   assert.equal((await waitUp(47430)).status, 200)
 })
 
@@ -271,7 +300,7 @@ test('ensure moves past a port someone else holds', async () => {
   const code = await new Promise(done => child.on('exit', done))
   foreign.close()
   assert.equal(code, 0)
-  assert.deepEqual(JSON.parse(out), { port: 47441 })
+  assert.equal(JSON.parse(out).port, 47441)
 })
 
 // The server folder with files from long ago, so the real one counts as newer.
@@ -291,7 +320,7 @@ test('ensure from newer files replaces an older server, on the same port', async
   const before = JSON.parse((await waitUp(47450)).text)
   const gone = new Promise(done => child.on('exit', done))
   const r = spawnSync(process.execPath, [WEB, 'ensure', '47450'], { env: { ...process.env, ...SHORT }, encoding: 'utf8', timeout: 8000 })
-  assert.deepEqual(JSON.parse(r.stdout), { port: 47450 })
+  assert.equal(JSON.parse(r.stdout).port, 47450)
   assert.equal(await gone, 0)
   const after = JSON.parse((await waitUp(47450)).text)
   assert.notEqual(after.pid, before.pid)
@@ -304,7 +333,7 @@ test('ensure from older files leaves a newer server alone', async () => {
   startServer(47451)
   const before = JSON.parse((await waitUp(47451)).text)
   const r = spawnSync(process.execPath, [olderCopy(), 'ensure', '47451'], { env: { ...process.env, ...SHORT }, encoding: 'utf8', timeout: 8000 })
-  assert.deepEqual(JSON.parse(r.stdout), { port: 47451 })
+  assert.equal(JSON.parse(r.stdout).port, 47451)
   assert.equal(JSON.parse((await waitUp(47451)).text).pid, before.pid)
 })
 
@@ -317,7 +346,7 @@ test('a server from before the stamp keeps its port; ensure moves on', async () 
   const code = await new Promise(done => child.on('exit', done))
   legacy.close()
   assert.equal(code, 0)
-  assert.deepEqual(JSON.parse(out), { port: 47453 })
+  assert.equal(JSON.parse(out).port, 47453)
 })
 
 test('a web page cannot make the server quit', async () => {
@@ -385,4 +414,121 @@ test('a new reader hears who is live before their snapshots', async () => {
   const text = await readEvents(47423, t => t.includes('event: snapshot'))
   assert.ok(text.indexOf('event: sessions\ndata: ["one"]') >= 0)
   assert.ok(text.indexOf('event: sessions') < text.indexOf('event: snapshot'))
+})
+
+const NONE = { 'x-agentmon-key': '', 'x-agentmon-pass': '' }
+const OWN = port => ({ origin: `http://127.0.0.1:${port}` })
+
+test('without this run\'s key nobody posts or stops the server, and without the pass nobody reads', async () => {
+  startServer(47424)
+  await waitUp(47424)
+  assert.equal((await post(47424, 's', { v: 1 }, NONE)).status, 403)
+  assert.equal((await post(47424, 's', { v: 1 }, { 'x-agentmon-key': TOKEN })).status, 403)
+  assert.equal((await call(47424, '/events', { headers: NONE })).status, 403)
+  assert.equal((await call(47424, '/events?p=' + 'cd'.repeat(32), { headers: NONE })).status, 403)
+  // A pass made for another port, and one from another run, as a program that took the port earlier would have caught it.
+  const { boot } = await runOf(47424)
+  assert.equal((await raw(47424, `/events?p=${passFor(47423, boot)}`)).status, 403)
+  assert.equal((await raw(47424, `/events?p=${passFor(47424, '0'.repeat(32))}`)).status, 403)
+  assert.equal((await call(47424, '/quit', { method: 'POST', headers: { 'content-type': 'application/json', ...NONE } })).status, 403)
+  assert.equal((await call(47424, '/state/s', { method: 'DELETE', headers: { 'content-type': 'application/json', ...NONE } })).status, 403)
+  assert.equal((await call(47424, '/pane/s/open', { method: 'POST', headers: { ...OWN(47424), 'x-agentmon-pass': '' } })).status, 403)
+  // The page itself holds nothing to guard.
+  assert.equal((await call(47424, '/', { headers: NONE })).status, 200)
+  const taken = await post(47424, 's', { v: 1 })
+  assert.equal(taken.status, 204)
+  assert.equal(taken.headers['x-agentmon-mark'], (await runOf(47424)).mark)
+  assert.equal((await post(47424, 's', { v: 1 }, NONE)).headers['x-agentmon-mark'], undefined)
+})
+
+test('the key goes only to who proves the secret, for this port and this run', async () => {
+  startServer(47427)
+  const { boot } = JSON.parse((await waitUp(47427)).text)
+  const nonce = '34'.repeat(16)
+  const ask = proof => raw(47427, '/key', { headers: { 'x-agentmon-nonce': nonce, 'x-agentmon-proof': proof } })
+  assert.equal((await ask('')).status, 403)
+  // A proof made for another port, as one relayed through a fake server would be, and one from another run.
+  assert.equal((await ask(sign(`client:47428:${boot}:${nonce}`))).status, 403)
+  assert.equal((await ask(sign(`client:47427:${'0'.repeat(32)}:${nonce}`))).status, 403)
+  const r = await ask(sign(`client:47427:${boot}:${nonce}`))
+  assert.equal(r.status, 200)
+  const { key, mark, proof } = JSON.parse(r.text)
+  assert.equal(proof, sign(`server:47427:${boot}:${nonce}:${key}:${mark}`))
+  assert.doesNotMatch(r.text, new RegExp(TOKEN))
+})
+
+test('a tab of another account gets its pass only for a one-time code; one of this account needs none', async () => {
+  startServer(47429, { AGENTMON_WEB_NO_UID: '1' })
+  await waitUp(47429)
+  const enter = (port, code) => call(port, '/enter', { method: 'POST', headers: { ...OWN(port), ...NONE, ...(code ? { 'x-agentmon-code': code } : {}) } })
+  assert.equal((await enter(47429)).status, 403)
+  assert.equal((await enter(47429, 'ab'.repeat(16))).status, 403)
+  assert.equal((await call(47429, '/ticket', { method: 'POST', headers: { 'content-type': 'application/json', ...NONE }, body: '{}' })).status, 403)
+  const { code } = JSON.parse((await call(47429, '/ticket', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).text)
+  assert.match(code, /^[0-9a-f]{32}$/)
+  assert.equal((await call(47429, '/enter', { method: 'POST', headers: { ...NONE, 'x-agentmon-code': code } })).status, 403)
+  const first = await enter(47429, code)
+  assert.equal(first.status, 200)
+  assert.equal(JSON.parse(first.text).pass, passFor(47429, (await runOf(47429)).boot))
+  assert.equal((await enter(47429, code)).status, 403)
+  if (process.platform !== 'linux') return
+  startServer(47431)
+  await waitUp(47431)
+  assert.equal(JSON.parse((await enter(47431)).text).pass, passFor(47431, (await runOf(47431)).boot))
+  assert.equal((await call(47431, '/ticket', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).text, '{}')
+})
+
+test('ensure answers the run\'s key, not the secret, which it keeps in a file only the account reads', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentmon-token-'))
+  const file = join(dir, 'made', 'web.token')
+  const r = spawnSync(process.execPath, [WEB, 'ensure', '47425'], { env: { ...process.env, AGENTMON_WEB_TOKEN_FILE: file, AGENTMON_WEB_IDLE_MS: '300', AGENTMON_WEB_SWEEP_MS: '50' }, encoding: 'utf8' })
+  const { port, key, mark } = JSON.parse(r.stdout)
+  const secret = readFileSync(file, 'utf8')
+  assert.equal(port, 47425)
+  assert.match(secret, /^[0-9a-f]{64}$/)
+  assert.match(key, /^[0-9a-f]{64}$/)
+  assert.match(mark, /^[0-9a-f]{64}$/)
+  assert.doesNotMatch(r.stdout, new RegExp(secret))
+  if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600)
+})
+
+test('ensure moves past a server that calls itself ours but cannot prove the secret', async () => {
+  const fake = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json')
+    res.end(req.url === '/health' ? JSON.stringify({ name: 'agentmon-live', stamp: 9e15, isLocked: true, boot: 'f'.repeat(32) }) : JSON.stringify({ key: 'a'.repeat(64), mark: 'b'.repeat(64), proof: 'c'.repeat(64) }))
+  })
+  await new Promise(done => fake.listen(47432, '127.0.0.1', done))
+  const r = spawnSync(process.execPath, [WEB, 'ensure', '47432'], { env: { ...process.env, AGENTMON_WEB_IDLE_MS: '300', AGENTMON_WEB_SWEEP_MS: '50' }, encoding: 'utf8' })
+  fake.close()
+  fake.closeAllConnections()
+  assert.equal(JSON.parse(r.stdout).port, 47433)
+})
+
+test('webToken off: the server asks for no proof and ensure needs no secret file; an ensure that wants proof replaces it, and one with off uses that server', async () => {
+  const env = { ...process.env, AGENTMON_WEB_IDLE_MS: '2000', AGENTMON_WEB_SWEEP_MS: '50' }
+  // A folder that cannot hold the file, as a home that cannot be written.
+  const open = spawnSync(process.execPath, [WEB, 'ensure', '47426', '--open'], { env: { ...env, AGENTMON_WEB_TOKEN_FILE: '/dev/null/web.token' }, encoding: 'utf8' })
+  assert.deepEqual(JSON.parse(open.stdout), { port: 47426 })
+  assert.equal(JSON.parse((await waitUp(47426)).text).isLocked, false)
+  assert.equal((await post(47426, 's', { v: 1 }, NONE)).status, 204)
+  assert.match(await readEvents(47426, t => t.includes('event: snapshot')), /"v":1/)
+  assert.equal(spawnSync(process.execPath, [WEB, 'ensure', '47426'], { env, encoding: 'utf8' }).status, 0)
+  const { isLocked, boot } = JSON.parse((await waitUp(47426)).text)
+  assert.equal(isLocked, true)
+  assert.equal((await post(47426, 's', { v: 1 }, NONE)).status, 403)
+  // Replacing it back would make two sessions with different settings take turns at it.
+  const off = JSON.parse(spawnSync(process.execPath, [WEB, 'ensure', '47426', '--open'], { env, encoding: 'utf8' }).stdout)
+  assert.equal(off.port, 47426)
+  assert.match(off.key, /^[0-9a-f]{64}$/)
+  assert.equal(JSON.parse((await waitUp(47426)).text).boot, boot)
+})
+
+test('only an object is a snapshot, and one posted over several lines still arrives whole', async () => {
+  startServer(47434)
+  await waitUp(47434)
+  const send = body => call(47434, '/state/s', { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+  for (const body of ['null', '[]', '1', '"x"']) assert.equal((await send(body)).status, 400, body)
+  assert.equal((await send('{\n  "v": 1,\n\n  "n": 7\n}')).status, 204)
+  const text = await readEvents(47434, t => t.includes('event: snapshot') && t.endsWith('\n\n'))
+  assert.match(text, /data: {"id":"s","snapshot":{"v":1,"n":7},"age":\d+}\n\n$/)
 })

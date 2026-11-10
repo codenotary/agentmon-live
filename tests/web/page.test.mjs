@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { AGENT_ROWS, elapsedOf, endOf, groupLines, linesOf, medianOf, pipsOf, shownItems, sortLines, totalsOf } from '../../web/src/agents.ts'
 import { alertOf, keepEvents, keptEvents, kindOf, nextEvents, splitEvents } from '../../web/src/events.ts'
-import { agentNames, pathIn, blockedOf, callTime, chipsWith, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, toolGroup, whoOf } from '../../web/src/format.ts'
+import { agentNames, pathIn, blockedOf, callTime, chipsWith, kilo, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, toolGroup, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
 import { chipCounts, foldAgents, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
 import { currentOf, silentIds, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
@@ -31,6 +31,12 @@ test('only the turn\'s calls show, in order, and the slowest is marked', () => {
   const trace = [call('before', MAIN, 5, { ms: 1 }), call('b', MAIN, 30, { ms: 50 }), call('a', MAIN, 20, { ms: 5 }), call('after', MAIN, 200, { ms: 1 })]
   const rows = rowsOf({ ...empty, trace: trace.toSorted((x, y) => y.at - x.at) }, { from: 10, to: 100 }, 100)
   assert.deepEqual(rows.map(r => [r.key, r.depth, r.isSlowest]), [['a', 0, false], ['b', 0, true]])
+})
+
+test('a call that began before the window shows while it runs or ended inside it', () => {
+  const trace = [call('gone', MAIN, 1, { ms: 2 }), call('long', MAIN, 5, { ms: 40 }), call('live', MAIN, 6)]
+  const rows = rowsOf({ ...empty, trace, active: [{ id: 'live', who: MAIN, tool: 'Bash', what: '', startedAt: 6 }] }, { from: 10, to: 100 }, 100)
+  assert.deepEqual(rows.map(r => [r.key, r.state, r.to]), [['long', 'ok', 45], ['live', 'running', 100]])
 })
 
 test('a subagent\'s calls nest under it, in any language, and its starting call is not drawn twice', () => {
@@ -89,6 +95,8 @@ test('kept section ids survive whatever the browser holds', () => {
 test('a call under a second keeps its milliseconds', () => {
   assert.equal(callTime(476), '476 ms')
   assert.equal(callTime(476.4), '476 ms')
+  assert.equal(callTime(999.6), '1s')
+  assert.deepEqual([99_949, 99_960, 999_499, 999_600].map(kilo), ['99.9K', '100K', '999K', '1.0M'])
   assert.equal(callTime(1500), '2s')
   assert.equal(callTime(61_000), '1m 1s')
   assert.equal(callTime(undefined), '')

@@ -218,6 +218,8 @@ const en = {
   advisorAbout: 'when Claude stops after real work: failed or stale checks, open todos, failing subagents, unanswered parts of your request and features you did not ask for go back to it once.',
   calls: 'calls',
   off: 'off',
+  on: 'on',
+  commandFailed: (why: string) => `AgentMon Live: the command failed (${why})`,
   context: 'context',
   toolsHeader: 'TOOLS · calls',
   total: 'total',

@@ -211,6 +211,8 @@ export const ja: Strings = {
   advisorAbout: 'Claude が実作業の後に止まるとき：失敗または古いチェック、未完了のタスク、失敗したサブエージェント、依頼の未回答部分、依頼していない機能を一度だけ差し戻します。',
   calls: '呼出',
   off: 'オフ',
+  on: 'オン',
+  commandFailed: why => `AgentMon Live: コマンドが失敗しました（${why}）`,
   context: 'コンテキスト',
   toolsHeader: 'ツール · 呼出',
   total: '合計',

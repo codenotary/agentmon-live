@@ -67,6 +67,8 @@ export async function noteShellEdit($: EngineInterface, turn: Turn) {
   const root = projectRoot(turn)
   for (const path of changedFiles(before, now)) turn.edited.add(root === '/' ? `/${path}` : `${root}/${path}`)
   if (turn.lastCodeEditAt !== undefined) return
+  // The shell's edit is only seen now: a check that failed this turn may have run against it, so it is no failure from before the prompt.
+  turn.before = turn.before.filter(b => b.at < turn.startedAt)
   turn.codeEditAt ??= turn.startedAt
   turn.lastCodeEditAt = turn.startedAt
 }

@@ -19,7 +19,8 @@ const CHIPS_MAX = 8
 
 export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
-  const { onlyFailures, whoFilter: who } = useStore()
+  const onlyFailures = useStore(st => st.onlyFailures)
+  const who = useStore(st => st.whoFilter)
   const [sort, setSort] = useState<CallSort>({ id: 'at', isDesc: true })
   const [text, setText] = useState('')
   const [isAll, setAll] = useState(false)

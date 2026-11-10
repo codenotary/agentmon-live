@@ -124,7 +124,7 @@ export function Agents({ s, l }: { s: WebSnapshot; l: Labels }) {
   const now = useClock(s)
   const [sort, setSort] = useState<Sort>(null)
   const [isAll, setAll] = useState(false)
-  const { openAgents: open } = useStore()
+  const open = useStore(st => st.openAgents)
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const lines = sortLines(linesOf(s.agents, s.trace ?? [], now), sort, now)
   const items = groupLines(lines, now)

@@ -210,6 +210,8 @@ export const zh: Strings = {
   advisorAbout: 'Claude 完成实际工作后停下时：失败或过期的检查、未完成的待办、失败的子代理、请求中未回应的部分以及你没有要求的功能，会退回给 Claude 一次。',
   calls: '调用',
   off: '关闭',
+  on: '开启',
+  commandFailed: why => `AgentMon Live：命令失败（${why}）`,
   context: '上下文',
   toolsHeader: '工具 · 调用',
   total: '总计',

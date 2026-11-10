@@ -7,7 +7,7 @@ import { cfg, INIT, listening } from './state'
 const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
 
 // A call that never returns would leave the advisor `checking`, and so silent, for the rest of the session.
-const TIMEOUT_MS = 30_000
+const TIMEOUT_MS = 10_000
 // After a failed answer the model is left alone this long: a hanging API must not stall every stop for TIMEOUT_MS.
 const BACKOFF_MS = 5 * 60_000
 
@@ -46,7 +46,8 @@ export async function consult($: EngineInterface, question: string, body: string
   // A clear, reload or toggle while Fable thought makes this answer stale; the clear already reset the state.
   if ((cur.epoch ?? 0) !== epoch) return undefined
   if (!r?.isAnswered) {
-    const why = !r ? 'error' : r.reason === 'api-error' ? `${r.error}${r.status ? ` ${r.status}` : ''}` : r.reason
+    // The engine's own words for a failure; a call that threw has none.
+    const why = !r ? undefined : r.reason === 'api-error' ? `${r.error}${r.status ? ` ${r.status}` : ''}` : r.reason
     const unavailableAt = await $.clock.now()
     await update($, advisor, a => ({ ...a, state: 'unavailable' as const, why, unavailableAt }))
     return undefined
