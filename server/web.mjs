@@ -300,9 +300,10 @@ function serve(port, fixture, isOpen) {
     if (sessions.size === 0 && now - idleSince > idleMs && (fixture || !kiroHost())) process.exit(0)
   }, envMs('AGENTMON_WEB_SWEEP_MS', 5000))
   // A chat on the Claude harness with the mod loaded posts under the same id, and its own snapshot says more: that one stays.
+  // Only behind the lock: a session chose `webToken: off` for itself, a Kiro Crew chat did not.
   const kiroCache = new Map()
   const kiroIdleMs = envMs('AGENTMON_KIRO_IDLE_MS', 30 * 60_000)
-  if (!fixture) setInterval(() => {
+  if (isLocked) setInterval(() => {
     const now = Date.now()
     const live = new Map(readKiro(kiroHome(), now, kiroIdleMs, kiroCache))
     for (const [id, s] of sessions) if (s.isKiro && !live.has(id)) drop(id)

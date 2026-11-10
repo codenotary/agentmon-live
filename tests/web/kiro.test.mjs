@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { createHmac } from 'node:crypto'
 import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -121,9 +122,9 @@ test('a chat carries the words the page prints, as a mod session does in English
   assert.equal(foldCrewLog(entries, NOW).snapshot.labels, LABELS)
 })
 
-function events(port, isDone) {
+function events(port, isDone, pass = '') {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path: '/events' }, res => {
+    const req = request({ host: '127.0.0.1', port, path: `/events?p=${pass}` }, res => {
       let text = ''
       res.on('data', d => {
         text += d
@@ -137,8 +138,8 @@ function events(port, isDone) {
     req.end()
   })
 }
-const post = (port, id, value) => new Promise((resolve, reject) => {
-  const req = request({ host: '127.0.0.1', port, path: `/state/${id}`, method: 'POST', headers: { 'content-type': 'application/json' } }, res => res.resume().on('end', () => resolve(res.statusCode)))
+const post = (port, id, value, key) => new Promise((resolve, reject) => {
+  const req = request({ host: '127.0.0.1', port, path: `/state/${id}`, method: 'POST', headers: { 'content-type': 'application/json', 'x-agentmon-key': key } }, res => res.resume().on('end', () => resolve(res.statusCode)))
   req.on('error', reject)
   req.end(JSON.stringify(value))
 })
@@ -146,26 +147,51 @@ const post = (port, id, value) => new Promise((resolve, reject) => {
 test('the server lists a live chat, leaves a posted session of the same id alone, and drops the chat once closed', async () => {
   const dir = home(open())
   const port = 47470
-  children.push(spawn(process.execPath, [join(HERE, '../../server/web.mjs'), 'serve', String(port), '--open'], { env: { ...process.env, KIROCREW_HOME: dir, AGENTMON_KIRO_FILE: join(dir, 'kiro.json'), AGENTMON_KIRO_POLL_MS: '50' }, stdio: 'ignore' }))
-  for (let i = 0; i < 60; i += 1) {
-    if (await events(port, t => t.includes('event: build')).catch(() => undefined)) break
-    await new Promise(done => setTimeout(done, 50))
+  const WEB = join(HERE, '../../server/web.mjs')
+  const token = 'c'.repeat(64)
+  writeFileSync(join(dir, 'web.token'), token)
+  const env = { ...process.env, KIROCREW_HOME: dir, AGENTMON_KIRO_FILE: join(dir, 'kiro.json'), AGENTMON_KIRO_POLL_MS: '50', AGENTMON_WEB_TOKEN_FILE: join(dir, 'web.token') }
+  children.push(spawn(process.execPath, [WEB, 'serve', String(port)], { env, stdio: 'ignore' }))
+  const health = p => new Promise(resolve => {
+    const req = request({ host: '127.0.0.1', port: p, path: '/health' }, res => {
+      let text = ''
+      res.on('data', d => (text += d)).on('end', () => resolve(JSON.parse(text)))
+    })
+    req.on('error', () => resolve(undefined))
+    req.end()
+  })
+  const up = async p => {
+    for (let i = 0; i < 60; i += 1) {
+      const found = await health(p)
+      if (found) return found
+      await new Promise(done => setTimeout(done, 50))
+    }
+    throw new Error('no server')
   }
-  const first = await events(port, t => t.includes('Kiro Crew'))
+  const { boot } = await up(port)
+  const pass = createHmac('sha256', token).update(`browser:${port}:${boot}`).digest('hex')
+  const { key } = JSON.parse(spawnSync(process.execPath, [WEB, 'ensure', String(port)], { env, encoding: 'utf8', timeout: 8000 }).stdout)
+  const first = await events(port, t => t.includes('Kiro Crew'), pass)
   assert.match(first, new RegExp(`"id":"${SID}"`))
 
-  assert.equal(await post(port, SID, { v: 1, session: { id: SID, cwd: '/x' }, build: 'from the mod' }), 204)
+  assert.equal(await post(port, SID, { v: 1, session: { id: SID, cwd: '/x' }, build: 'from the mod' }, key), 204)
   await new Promise(done => setTimeout(done, 200))
-  const replay = await events(port, t => t.includes('event: snapshot'))
+  const replay = await events(port, t => t.includes('event: snapshot'), pass)
   assert.match(replay, /from the mod/)
   assert.doesNotMatch(replay, /Kiro Crew/)
+
+  // A server with the lock off shows a session that chose so, never a Kiro Crew chat.
+  children.push(spawn(process.execPath, [WEB, 'serve', String(port + 1), '--open'], { env, stdio: 'ignore' }))
+  await up(port + 1)
+  await new Promise(done => setTimeout(done, 300))
+  assert.doesNotMatch(await events(port + 1, t => t.includes('event: sessions')), /Kiro Crew/)
 
   const other = SID.replace('98c5', 'aaaa')
   mkdirSync(join(dir, 'crew-log/sessions', `${other}-1`))
   writeFileSync(join(dir, 'crew-log/sessions', `${other}-1`, 'log.jsonl'), open().replaceAll(SID, other))
-  await events(port, t => t.includes(`"id":"${other}"`))
+  await events(port, t => t.includes(`"id":"${other}"`), pass)
   appendFileSync(join(dir, 'crew-log/sessions', `${other}-1`, 'log.jsonl'), `${JSON.stringify({ type: 'session/closed', time: Date.now(), data: {} })}\n`)
-  await events(port, t => t.includes('event: removed') && t.includes(other))
+  await events(port, t => t.includes('event: removed') && t.includes(other), pass)
 })
 
 test('edits and reads fill the files, and credits show in the label', () => {

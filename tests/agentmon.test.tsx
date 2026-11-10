@@ -1421,7 +1421,7 @@ test('calm: with nothing in Focus, i still reaches the slowest call', async ($, 
   await ui.unmount()
 })
 
-const BAND = { plugin: 'agentmon-live', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} } } as const
+const BAND = { plugin: 'agentmon-live', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 }, view: {} } } as const
 
 function hiddenEngine(on: On) {
   const pane = { isOpen: false, isPlaced: true }
