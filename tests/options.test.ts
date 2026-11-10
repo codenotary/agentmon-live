@@ -36,9 +36,15 @@ test('a set language beats the terminal; an unknown one falls back to it, then t
 
 test('the web options default on, on the usual port, with no tab opened', () => {
   applyOptions({}, undefined)
-  expect([cfg.web, cfg.webPort, cfg.webOpenOnStart]).toEqual([true, 47311, false])
-  applyOptions({ web: 'off', webPort: 50000, webOpenOnStart: true }, undefined)
-  expect([cfg.web, cfg.webPort, cfg.webOpenOnStart]).toEqual([false, 50000, true])
+  expect([cfg.web, cfg.webPort, cfg.webOpenOnStart, cfg.isWebLocked]).toEqual([true, 47311, false, true])
+  applyOptions({ web: 'off', webPort: 50000, webOpenOnStart: true, webToken: 'off' }, undefined)
+  expect([cfg.web, cfg.webPort, cfg.webOpenOnStart, cfg.isWebLocked]).toEqual([false, 50000, true, false])
+})
+
+test('a language that names something every object has is no language', () => {
+  applyOptions({ language: 'constructor' }, 'toString')
+  expect(cfg.lang).toBe('en')
+  expect(cfg.t.off).toBe('off')
 })
 
 test('a webPort outside the unprivileged range falls back to the default', () => {

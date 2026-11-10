@@ -211,6 +211,8 @@ export const fr: Strings = {
   advisorAbout: 'quand Claude s’arrête après un vrai travail : contrôles en échec ou périmés, tâches ouvertes, sous-agents en échec, parties de ta demande sans réponse et fonctionnalités non demandées lui sont renvoyés une fois.',
   calls: 'appels',
   off: 'off',
+  on: 'on',
+  commandFailed: why => `AgentMon Live : la commande a échoué (${why})`,
   context: 'contexte',
   toolsHeader: 'OUTILS · appels',
   total: 'total',

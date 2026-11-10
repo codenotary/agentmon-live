@@ -70,16 +70,16 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
   const q = query.toLowerCase()
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const all = useMemo(() => logRows(s, p.you, names, p.claude), [s.log, s.trace, s.turns, s.active, names, p.you, p.claude])
-  const counts = chipCounts(all)
-  const flat = all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text} ${x.answer ?? ''}`.toLowerCase().includes(q)))
+  const counts = useMemo(() => chipCounts(all), [all])
+  const flat = useMemo(() => all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text} ${x.answer ?? ''}`.toLowerCase().includes(q))), [all, chip, q, l])
   // A search or the failures chip lists the calls themselves; otherwise a subagent run is one row.
-  const rows = q || chip === 'failures' ? flat : foldAgents(flat, openRuns)
+  const rows = useMemo(() => (q || chip === 'failures' ? flat : foldAgents(flat, openRuns)), [flat, q, chip, openRuns])
   const toggleRun = (id: string) => setOpenRuns(open => {
     const next = new Set(open)
     if (!next.delete(id)) next.add(id)
     return next
   })
-  const strip = stripOf(rows)
+  const strip = useMemo(() => stripOf(rows), [rows])
   const tallest = Math.max(1, ...strip.map(b => b?.count ?? 0))
 
   useEffect(() => {

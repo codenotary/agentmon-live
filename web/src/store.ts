@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 
 import type { Call, WebSnapshot } from '../../types/index'
 import { keepEvents, keptEvents } from './events.ts'
@@ -13,6 +13,7 @@ const THEME_KEY = 'agentmon-live-theme'
 const COLLAPSED_KEY = 'agentmon-live-collapsed'
 // Each session's events, so a reload keeps their history.
 const EVENTS_KEY = 'agentmon-live-events'
+const PASS_KEY = 'agentmon-live-pass'
 const KEEP_EVENT_SESSIONS = 10
 const THEME_FADE_MS = 200
 const NOTICE_MS = 2500
@@ -93,11 +94,18 @@ function emitSoon(): void {
   quietTimer ??= setTimeout(emit, QUIET_MS)
 }
 
+// For a listener that outlives the render it was made in.
+export const getState = (): State => state
 export function set(patch: Partial<State>): void {
   state = { ...state, ...patch }
   emit()
 }
-export const useStore = () => useSyncExternalStore(subscribe, () => state)
+// With a selector, a panel redraws only when its own part changes: pick one field per call, so the value compares by identity.
+export function useStore(): State
+export function useStore<T>(pick: (st: State) => T): T
+export function useStore<T>(pick?: (st: State) => T): T | State {
+  return useSyncExternalStore(subscribe, () => (pick ? pick(state) : state))
+}
 // What a session last said can no longer be trusted.
 export const hasNoSignal = (st: Pick<State, 'isDown' | 'silent'>, id: string) => st.isDown || st.silent.has(id)
 
@@ -145,12 +153,29 @@ export function dismiss(id: string): void {
   emit()
 }
 
-export function useClock(s: WebSnapshot, everyMs = 1000): number {
-  const [, tick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => tick(n => n + 1), everyMs)
-    return () => clearInterval(id)
-  }, [everyMs])
+// One timer for every panel's clock, and none of it in a hidden tab.
+const CLOCK_MS = 1000
+const clocks = new Set<() => void>()
+let ticks = 0
+let clockTimer: ReturnType<typeof setInterval> | undefined
+function tick(): void {
+  if (document.hidden) return
+  ticks += 1
+  for (const fn of clocks) fn()
+}
+function onTick(fn: () => void): () => void {
+  clocks.add(fn)
+  clockTimer ??= setInterval(tick, CLOCK_MS)
+  return () => {
+    clocks.delete(fn)
+    if (clocks.size > 0) return
+    clearInterval(clockTimer)
+    clockTimer = undefined
+  }
+}
+
+export function useClock(s: WebSnapshot): number {
+  useSyncExternalStore(onTick, () => ticks)
   return clockOf(s)
 }
 
@@ -182,14 +207,27 @@ function received(id: string, snapshot: WebSnapshot, age = 0): void {
 
 // The session applies it within a second and says so in its next snapshot, which moves the button.
 export function requestPane(id: string, isOpen: boolean): void {
-  void fetch(`/pane/${encodeURIComponent(id)}/${isOpen ? 'open' : 'close'}`, { method: 'POST' }).catch(() => undefined)
+  void fetch(`/pane/${encodeURIComponent(id)}/${isOpen ? 'open' : 'close'}`, { method: 'POST', headers: { 'x-agentmon-pass': pass } }).catch(() => undefined)
+}
+
+// What lets this tab read: the server gives it to a browser of its own account, or for the one-time code in the address a session opened.
+// Kept for a later visit where only the code can get it; in this page's own storage, which no other port's page reads.
+let pass = ''
+async function enter(): Promise<void> {
+  const code = new URLSearchParams(location.search).get('c')
+  if (code) history.replaceState(null, '', location.pathname + location.hash)
+  const r = await fetch('/enter', { method: 'POST', headers: code ? { 'x-agentmon-code': code } : {} }).catch(() => undefined)
+  if (r?.ok) {
+    pass = ((await r.json()) as { pass: string }).pass
+    save(PASS_KEY, pass)
+  } else pass = load(PASS_KEY) ?? ''
 }
 
 export function connect(): void {
   let build: string | undefined
   let lastEventAt = Date.now()
   const open = () => {
-    const events = new EventSource('/events')
+    const events = new EventSource(`/events?p=${encodeURIComponent(pass)}`)
     const seen = () => {
       lastEventAt = Date.now()
     }
@@ -221,19 +259,26 @@ export function connect(): void {
     })
     return events
   }
-  let events = open()
+  let events: EventSource | undefined
+  const reopen = () => void enter().then(() => (events = open()))
+  reopen()
   setInterval(() => {
     const now = Date.now()
-    // A connection that hangs without closing fires no `error`, and one the browser gave up on never retries.
+    // A connection that hangs without closing fires no `error`, and one the browser gave up on never retries. A refused one (a new secret) needs a new pass too.
     if (now - lastEventAt > STALL_MS) {
-      events.close()
+      events?.close()
       lastEventAt = now
       if (!state.isDown) set({ isDown: true, downAt: now })
-      events = open()
+      reopen()
     }
     const silent = silentIds(state.receivedAt, now)
     if ([...silent].join('\n') !== [...state.silent].join('\n')) set({ silent })
   }, WATCH_MS)
 }
 
-if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => { if (!document.hidden && quietTimer !== undefined) emit() })
+if (typeof document !== 'undefined') document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return
+  if (quietTimer !== undefined) emit()
+  // The clocks stood still while hidden.
+  tick()
+})

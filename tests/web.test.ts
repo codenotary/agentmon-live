@@ -567,7 +567,8 @@ test('with no tab open a session posts only its heartbeat, keeps its turns, and 
   await clock.settle()
   expect(states).toBe(1)
   clients = '1'
-  await clock.advance(600)
+  // With no tab the loop looks every 5 s.
+  await clock.advance(5100)
   await clock.settle()
   expect(states).toBe(2)
   expect((JSON.parse(last) as WebSnapshot).turns).toHaveLength(1)
@@ -733,4 +734,35 @@ test('the session leaves the server when it ends', async ($, on) => {
   const gone = sent.find(s => s.method === 'DELETE')
   expect(gone?.url).toBe('http://127.0.0.1:47311/state/sess-1')
   expect(gone?.type).toBe('application/json')
+})
+
+test('the run\'s key goes with every post, a server without the mark gets no snapshot, and the browser opens an address with a one-time code', async ($, on) => {
+  const [key, mark, code] = ['ab'.repeat(32), 'cd'.repeat(32), 'ef'.repeat(16)]
+  withOptions(on, { webToken: 'off' })
+  const clock = mock.clock(on)
+  const argvs = engine(on, () => ({ exitCode: 0, stdout: `{"port":47311,"key":"${key}","mark":"${mark}"}\n`, stderr: '' }))
+  let isOurs = true
+  const asked: { url: string; headers: Record<string, string> }[] = []
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('http.fetch', (_, e) => {
+    asked.push({ url: e.url, headers: (e.init?.headers ?? {}) as Record<string, string> })
+    const headers = { 'x-clients': '1', ...(isOurs ? { 'x-agentmon-mark': mark } : {}) }
+    return { value: e.url.endsWith('/ticket') ? { status: 200, ok: true, headers, text: JSON.stringify({ code }) } : { status: 204, ok: true, headers, text: '' } }
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(600)
+  await clock.settle()
+  expect(argvs.find(a => a.includes('ensure'))?.at(-1)).toBe('--open')
+  expect(asked.some(a => a.url.includes('/state/'))).toBe(true)
+  expect(asked.every(a => a.headers['x-agentmon-key'] === key)).toBe(true)
+  const r = await $.command.run({ command: 'agentmon', args: 'open', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })
+  expect(argvs.find(a => a.includes('open'))?.at(-1)).toBe(`http://127.0.0.1:47311/?c=${code}`)
+  expect(String(r.text)).not.toContain(code)
+  // Another program on the port: it answers, but not with the mark.
+  isOurs = false
+  const before = asked.filter(a => a.url.includes('/state/')).length
+  await $.turn.start({ text: 'work', turnId: 'm1' } as never)
+  await clock.advance(2000)
+  await clock.settle()
+  expect(asked.filter(a => a.url.includes('/state/')).length).toBe(before)
 })

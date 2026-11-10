@@ -148,7 +148,7 @@ export async function startLearning($: EngineInterface, dir: string) {
 
 // Every tool call, main loop and subagents; a known-flaky tool gets one toast the first time this session.
 export async function noteCall($: EngineInterface, tool: string, isError: boolean, error: string, resultTokens: number) {
-  if (!rec) return
+  if (!rec || !cfg.learning) return
   tally(rec, tool, isError, error, resultTokens)
   if (warned.has(tool)) return
   warned.add(tool)
@@ -176,13 +176,14 @@ export function noteCompact(tokens: number | undefined) {
 }
 
 // The end of each main turn: the session's record so far replaces its earlier one in the store.
-export async function saveTurn($: EngineInterface, u: { tokens?: number; window?: number; mcpTools?: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number; totalUsd?: number }) {
-  if (!rec) return
+export async function saveTurn($: EngineInterface, u: { tokens?: number; window?: number; mcpTools?: readonly ContextMcpTool[]; model: string; effort: string; outTokens: number; fable: number; usd?: number; totalUsd?: number; isContinued?: boolean }) {
+  if (!rec || !cfg.learning) return
   const r = rec
   // Session totals; the larger one survives a reload or `/agentmon clear`, which start them again from 0.
   const b = r.bench ?? emptyBench(true, true)
   r.bench = { ...b, mod: true, live: true, outTokens: Math.max(b.outTokens, u.outTokens), fable: Math.max(b.fable, u.fable), usd: Math.max(b.usd ?? 0, u.usd ?? 0) || undefined, totalUsd: Math.max(b.totalUsd ?? 0, u.totalUsd ?? 0) || undefined }
-  r.turns += 1
+  // A turn the done gate sent back is still the same prompt's turn.
+  if (!u.isContinued) r.turns += 1
   r.peak = Math.max(r.peak, u.tokens ?? 0)
   r.window = u.window ?? r.window
   r.model = u.model || r.model

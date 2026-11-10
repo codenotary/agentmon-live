@@ -1,14 +1,21 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { readFileSync, statSync } from 'node:fs'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, get, request } from 'node:http'
+import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
-const MAX_BODY = 1024 * 1024
-const MAX_BACKLOG = 8 * 1024 * 1024
+// A snapshot at the publisher's caps is about 700 KB of characters; in Chinese or Japanese each takes three bytes.
+const MAX_BODY = 4 * 1024 * 1024
+const MAX_BACKLOG = 16 * 1024 * 1024
 const PORT_TRIES = 20
+const TOKEN = /^[0-9a-f]{64}$/
+// How long the address a session hands out for the browser stays good.
+const TICKET_MS = 5 * 60_000
+const KEEP_TICKETS = 20
 const FONTS = [
   'dm-sans-latin-400-normal.woff2',
   'dm-sans-latin-500-normal.woff2',
@@ -24,7 +31,7 @@ const ASSETS = {
   '/app.css': 'text/css; charset=utf-8',
 }
 const HEADERS = {
-  'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+  'content-security-policy': '',
   'x-content-type-options': 'nosniff',
   'cache-control': 'no-store',
 }
@@ -32,6 +39,55 @@ const HEADERS = {
 // Which server is newer: file times, because a rebuild keeps the version and a total order stops two sessions replacing each other in turn.
 function stampOfFiles() {
   return Math.max(statSync(join(HERE, 'app.html')).mtimeMs, statSync(fileURLToPath(import.meta.url)).mtimeMs)
+}
+
+// One secret per account, in a file only that account reads: another account's process on this machine can reach the port, not the sessions.
+// It never leaves this file and the processes that read it: `ensure` and the server prove to each other that they hold it, and what a session or a tab sends is made for one server run or cannot be turned back into it.
+// The same file whatever CLAUDE_CONFIG_DIR says, so sessions with different ones still share a server.
+function readToken() {
+  const path = process.env.AGENTMON_WEB_TOKEN_FILE || join(homedir(), '.claude', 'agentmon-live', 'web.token')
+  const read = () => {
+    try {
+      return readFileSync(path, 'utf8').trim()
+    } catch {
+      return ''
+    }
+  }
+  if (!TOKEN.test(read())) {
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+    // `wx` first: of two servers starting together, the second reads the first one's.
+    try {
+      writeFileSync(path, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 })
+    } catch {
+      if (!TOKEN.test(read())) writeFileSync(path, randomBytes(32).toString('hex'), { mode: 0o600 })
+    }
+  }
+  return read()
+}
+
+function isSame(given, token) {
+  const [a, b] = [Buffer.from(String(given ?? '')), Buffer.from(token)]
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+const sign = (token, text) => createHmac('sha256', token).update(text).digest('hex')
+
+// The account that holds the other end of a local connection, as the kernel lists it; undefined where it cannot be told (not Linux, or /proc closed).
+// It is what lets a browser of the same account in with nothing to type or carry, also through an SSH port forward, whose end here is that account's sshd.
+function peerUid(socket) {
+  if (process.platform !== 'linux' || process.env.AGENTMON_WEB_NO_UID) return undefined
+  const hex = n => n.toString(16).toUpperCase().padStart(4, '0')
+  const ends = [hex(socket.remotePort), hex(socket.localPort)]
+  try {
+    for (const line of readFileSync('/proc/net/tcp', 'utf8').split('\n')) {
+      const f = line.trim().split(/\s+/)
+      // 127.0.0.1, as a little- or a big-endian machine prints it.
+      if (/^(0100007F|7F000001):/.test(f[1] ?? '') && f[1].slice(9) === ends[0] && (f[2] ?? '').slice(9) === ends[1]) return Number(f[7])
+    }
+  } catch {
+    return undefined
+  }
+  return undefined
 }
 
 function envMs(name, fallback) {
@@ -59,10 +115,32 @@ function isOwnPage(req, port) {
   return req.headers.origin === `http://127.0.0.1:${port}` || req.headers.origin === `http://localhost:${port}`
 }
 
-function serve(port, fixture) {
+function serve(port, fixture, isOpen) {
   const stamp = stampOfFiles()
+  // The fixture is no one's session, and `webToken: off` asks for no proof.
+  const isLocked = !fixture && !isOpen
+  const token = isLocked ? readToken() : ''
+  // Made for this run: `boot` names it in the proofs, a session sends `key` and expects `mark` back, so a server that took the port later gets no snapshot.
+  const [boot, key, mark] = [16, 32, 32].map(n => randomBytes(n).toString('hex'))
+  // What a tab keeps: good across runs, and no way back to the secret.
+  const pass = isLocked ? sign(token, 'browser') : ''
+  const tickets = new Map()
+  const isSession = (req, res) => {
+    if (!isLocked) return true
+    if (!isSame(req.headers['x-agentmon-key'], key)) return false
+    res.setHeader('x-agentmon-mark', mark)
+    return true
+  }
+  const isReader = (req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
+  const isSameUser = req => {
+    const uid = peerUid(req.socket)
+    return uid !== undefined && uid === process.getuid()
+  }
   // In memory, so a plugin update that removes this folder leaves a running server whole.
   const page = readFileSync(join(HERE, 'app.html'))
+  // The page's own inline script (the theme, set before the first paint) runs by its hash; any other inline script does not.
+  const inline = [...page.toString('utf8').matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => `'sha256-${createHash('sha256').update(m[1]).digest('base64')}'`)
+  HEADERS['content-security-policy'] = `default-src 'self'; script-src ${["'self'", ...inline].join(' ')}; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`
   const assets = new Map(Object.entries(ASSETS).map(([path, type]) => [path, { type, body: readFileSync(join(HERE, path)) }]))
   const fonts = new Map(FONTS.map(f => [f, readFileSync(join(HERE, 'fonts', f))]))
   const sessions = new Map()
@@ -92,11 +170,17 @@ function serve(port, fixture) {
 
   const server = createServer((req, res) => {
     if (!isOurHost(req.headers.host, port)) return reply(res, 403, 'text/plain', 'forbidden')
-    const path = (req.url ?? '/').split('?')[0]
+    const [path, query = ''] = (req.url ?? '/').split('?')
 
     if (req.method === 'GET') {
       if (path === '/') return reply(res, 200, 'text/html; charset=utf-8', page)
-      if (path === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, pid: process.pid, sessions: sessions.size, stamp }))
+      if (path === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, pid: process.pid, sessions: sessions.size, stamp, isLocked, boot }))
+      // `ensure` proves it holds the secret and gets this run's key, with a proof that the server holds it too. The port and the run are in both proofs: one caught on another port, or from another run, is no use here.
+      if (path === '/key') {
+        const nonce = String(req.headers['x-agentmon-nonce'] ?? '')
+        if (!isLocked || !/^[0-9a-f]{32}$/.test(nonce) || !isSame(req.headers['x-agentmon-proof'], sign(token, `client:${port}:${boot}:${nonce}`))) return reply(res, 403, 'text/plain', 'forbidden')
+        return reply(res, 200, 'application/json', JSON.stringify({ key, mark, proof: sign(token, `server:${port}:${boot}:${nonce}:${key}:${mark}`) }))
+      }
       const asset = assets.get(path)
       if (asset) return reply(res, 200, asset.type, asset.body)
       if (path.startsWith('/fonts/')) {
@@ -104,6 +188,7 @@ function serve(port, fixture) {
         return font ? reply(res, 200, 'font/woff2', font) : reply(res, 404, 'text/plain', 'not found')
       }
       if (path === '/events') {
+        if (!isReader(req, query)) return reply(res, 403, 'text/plain', 'forbidden')
         res.writeHead(200, { ...HEADERS, 'content-type': 'text/event-stream' })
         send(res, 'build', String(stamp))
         send(res, 'sessions', JSON.stringify([...sessions.keys()]))
@@ -117,21 +202,42 @@ function serve(port, fixture) {
     }
 
     if (path === '/quit' && req.method === 'POST') {
-      if (!isWriteAllowed(req)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isWriteAllowed(req) || (isLocked && !isSame(req.headers['x-agentmon-proof'], sign(token, `quit:${port}:${boot}`)))) return reply(res, 403, 'text/plain', 'forbidden')
       res.on('finish', () => process.exit(0))
       return reply(res, 204)
     }
 
+    // A tab asks for its pass: given to a browser of this account, or for the one-time code in the address a session handed out.
+    if (path === '/enter' && req.method === 'POST') {
+      if (!isOwnPage(req, port)) return reply(res, 403, 'text/plain', 'forbidden')
+      const code = String(req.headers['x-agentmon-code'] ?? '')
+      const isInvited = tickets.get(code) > Date.now()
+      tickets.delete(code)
+      if (isLocked && !isInvited && !isSameUser(req)) return reply(res, 403, 'text/plain', 'forbidden')
+      return reply(res, 200, 'application/json', JSON.stringify({ pass }))
+    }
+    // A session asks what the browser must open. Where the kernel names the account behind a connection, the plain address does; elsewhere it carries a code.
+    // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if macOS or Windows machines are shared.
+    if (path === '/ticket' && req.method === 'POST') {
+      if (!isWriteAllowed(req) || !isSession(req, res)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isLocked || isSameUser(req)) return reply(res, 200, 'application/json', '{}')
+      const now = Date.now()
+      for (const [c, until] of tickets) if (until <= now || tickets.size >= KEEP_TICKETS) tickets.delete(c)
+      const code = randomBytes(16).toString('hex')
+      tickets.set(code, now + TICKET_MS)
+      return reply(res, 200, 'application/json', JSON.stringify({ code }))
+    }
+
     const asked = path.match(/^\/pane\/([\w-]{1,80})\/(open|close)$/)
     if (asked && req.method === 'POST') {
-      if (!isOwnPage(req, port)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isOwnPage(req, port) || !isReader(req, query)) return reply(res, 403, 'text/plain', 'forbidden')
       if (!sessions.has(asked[1])) return reply(res, 404, 'text/plain', 'not found')
       paneRequests.set(asked[1], asked[2] === 'open')
       return reply(res, 204)
     }
     const taken = path.match(/^\/pane\/([\w-]{1,80})$/)
     if (taken && req.method === 'POST') {
-      if (!isWriteAllowed(req)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isWriteAllowed(req) || !isSession(req, res)) return reply(res, 403, 'text/plain', 'forbidden')
       if (!sessions.has(taken[1])) return reply(res, 404)
       const isOpen = paneRequests.get(taken[1])
       paneRequests.delete(taken[1])
@@ -142,7 +248,7 @@ function serve(port, fixture) {
 
     const match = /^\/state\/([\w-]{1,80})$/.exec(path)
     if (req.method !== 'POST' && req.method !== 'DELETE') return reply(res, 405, 'text/plain', 'method not allowed')
-    if (!isWriteAllowed(req)) return reply(res, 403, 'text/plain', 'forbidden')
+    if (!isWriteAllowed(req) || !isSession(req, res)) return reply(res, 403, 'text/plain', 'forbidden')
     if (!match) return reply(res, 400, 'text/plain', 'bad session id')
     const id = match[1]
 
@@ -159,9 +265,12 @@ function serve(port, fixture) {
     })
     req.on('end', () => {
       if (size > MAX_BODY) return reply(res, 413, 'text/plain', 'too large')
-      const json = Buffer.concat(parts).toString('utf8')
+      let json
       try {
-        JSON.parse(json)
+        const value = JSON.parse(Buffer.concat(parts).toString('utf8'))
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error('no snapshot')
+        // Written again: a line break in what was posted would end the event it is sent in.
+        json = JSON.stringify(value)
       } catch {
         return reply(res, 400, 'text/plain', 'bad json')
       }
@@ -193,9 +302,9 @@ function probe(port) {
       res.on('data', d => (text += d))
       res.on('end', () => {
         try {
-          const { name, stamp } = JSON.parse(text)
+          const { name, stamp, isLocked, boot } = JSON.parse(text)
           // A server from before the stamp cannot be told to quit: leave it to idle out, on its port.
-          resolve(name === NAME && typeof stamp === 'number' ? { state: 'ours', stamp } : { state: 'other' })
+          resolve(name === NAME && typeof stamp === 'number' ? { state: 'ours', stamp, isLocked, boot: String(boot ?? '') } : { state: 'other' })
         } catch {
           resolve({ state: 'other' })
         }
@@ -206,9 +315,30 @@ function probe(port) {
   })
 }
 
-function askToQuit(port) {
+// This run's key and mark, from a server that proved it holds the account's secret; undefined from any other.
+function handshake(port, boot, token) {
+  const nonce = randomBytes(16).toString('hex')
   return new Promise(resolve => {
-    const req = request({ host: '127.0.0.1', port, path: '/quit', method: 'POST', headers: { 'content-type': 'application/json' }, timeout: 1000, agent: false }, res => {
+    const req = get({ host: '127.0.0.1', port, path: '/key', timeout: 1000, agent: false, headers: { 'x-agentmon-nonce': nonce, 'x-agentmon-proof': sign(token, `client:${port}:${boot}:${nonce}`) } }, res => {
+      let text = ''
+      res.on('data', d => (text += d))
+      res.on('end', () => {
+        try {
+          const { key, mark, proof } = JSON.parse(text)
+          resolve(TOKEN.test(key) && TOKEN.test(mark) && isSame(proof, sign(token, `server:${port}:${boot}:${nonce}:${key}:${mark}`)) ? { key, mark } : undefined)
+        } catch {
+          resolve(undefined)
+        }
+      })
+    })
+    req.on('timeout', () => req.destroy())
+    req.on('error', () => resolve(undefined))
+  })
+}
+
+function askToQuit(port, boot, token) {
+  return new Promise(resolve => {
+    const req = request({ host: '127.0.0.1', port, path: '/quit', method: 'POST', headers: { 'content-type': 'application/json', 'x-agentmon-proof': sign(token, `quit:${port}:${boot}`) }, timeout: 1000, agent: false }, res => {
       res.resume()
       res.on('end', resolve)
     })
@@ -219,21 +349,32 @@ function askToQuit(port) {
 }
 
 // Detached with no pipes: the mod's `$.process.run` waits for this process's output to close, and the server outlives the session.
-async function ensure(startPort) {
+async function ensure(startPort, isOpen) {
   const mine = stampOfFiles()
-  const isOlder = found => found.state === 'ours' && found.stamp < mine
+  // Read only when a server asks for proof: `webToken: off` works in a home that cannot be written.
+  let token
+  const secret = () => {
+    try {
+      return (token ??= readToken())
+    } catch (error) {
+      process.stderr.write(`agentmon-live: no secret for the web view (${error.message}); set webToken to off, or make ~/.claude/agentmon-live writable\n`)
+      return ''
+    }
+  }
+  // Older files, or these files serving the other `webToken` setting: a session that loses its server gets the new one's key at its next post.
+  const isOlder = found => found.state === 'ours' && (found.stamp < mine || (found.stamp === mine && found.isLocked === isOpen))
   for (let port = startPort; port < startPort + PORT_TRIES; port += 1) {
     let found = await probe(port)
     // shortcut: an older session that finds the port free in this gap can win it; the next ensure from a newer session replaces that server.
     if (isOlder(found)) {
-      await askToQuit(port)
+      await askToQuit(port, found.boot, secret())
       for (let i = 0; i < 60 && isOlder(found); i += 1) {
         await new Promise(done => setTimeout(done, 50))
         found = await probe(port)
       }
     }
     if (found.state === 'free') {
-      const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'serve', String(port)], { detached: true, stdio: 'ignore', windowsHide: true })
+      const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'serve', String(port), ...(isOpen ? ['--open'] : [])], { detached: true, stdio: 'ignore', windowsHide: true })
       child.unref()
       // Two sessions starting together: the loser's server exits on the taken port, and this probe finds the winner's.
       for (let i = 0; i < 60 && found.state === 'free'; i += 1) {
@@ -244,7 +385,11 @@ async function ensure(startPort) {
       if (found.state === 'free') return 1
     }
     if (found.state === 'ours') {
-      process.stdout.write(`${JSON.stringify({ port })}\n`)
+      // A server that asks for no proof when one is wanted, or cannot give its own, is someone else's, whatever it calls itself: the next port.
+      if (!isOpen && !found.isLocked) continue
+      const run = found.isLocked ? secret() && (await handshake(port, found.boot, secret())) : {}
+      if (!run) continue
+      process.stdout.write(`${JSON.stringify({ port, ...run })}\n`)
       return 0
     }
   }
@@ -261,7 +406,7 @@ function desktopEnv() {
 
 // The regex is what makes `cmd /c` safe here: it leaves no character the Windows shell would act on.
 function open(url) {
-  if (!/^http:\/\/127\.0\.0\.1:\d{1,5}\/?$/.test(url ?? '')) return Promise.resolve(2)
+  if (!/^http:\/\/127\.0\.0\.1:\d{1,5}\/?(\?c=[0-9a-f]{32})?$/.test(url ?? '')) return Promise.resolve(2)
   const argv = process.platform === 'win32' ? ['cmd', '/c', 'start', '', url] : [process.platform === 'darwin' ? 'open' : 'xdg-open', url]
   return new Promise(resolve => {
     const child = spawn(argv[0], argv.slice(1), { detached: true, stdio: 'ignore', windowsHide: true, env: desktopEnv() })
@@ -273,8 +418,9 @@ function open(url) {
   })
 }
 
-const [mode, arg, flag, fixture] = process.argv.slice(2)
-if (mode === 'serve') serve(Number(arg), flag === '--fixture' ? fixture : undefined)
-else if (mode === 'ensure') process.exit(await ensure(Number(arg)))
+const [mode, arg, ...flags] = process.argv.slice(2)
+const isOpen = flags.includes('--open')
+if (mode === 'serve') serve(Number(arg), flags[0] === '--fixture' ? flags[1] : undefined, isOpen)
+else if (mode === 'ensure') process.exit(await ensure(Number(arg), isOpen))
 else if (mode === 'open') process.exit(await open(arg))
 else process.exit(2)

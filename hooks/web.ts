@@ -27,6 +27,8 @@ const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.
 const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.advisor)
 
 const PUBLISH_MS = 500
+// With no tab open there is nothing to draw for: the loop only keeps the turn ring and looks for a tab.
+const IDLE_MS = 5000
 // Well inside the server's 90 s, so a quiet session is not taken for a crashed one.
 const HEARTBEAT_MS = 30_000
 const ENSURE_EVERY_MS = 60_000
@@ -161,10 +163,29 @@ function serverScript($: EngineInterface): string {
 }
 
 async function ensureServer($: EngineInterface): Promise<void> {
-  const r = await $.process.run(['node', serverScript($), 'ensure', String(cfg.webPort)], { timeoutMs: 10_000 })
-  const port = r.exitCode === 0 ? (JSON.parse(r.stdout) as { port?: unknown }).port : undefined
+  const r = await $.process.run(['node', serverScript($), 'ensure', String(cfg.webPort), ...(cfg.isWebLocked ? [] : ['--open'])], { timeoutMs: 10_000 })
+  const { port, key, mark } = r.exitCode === 0 ? (JSON.parse(r.stdout) as { port?: unknown; key?: unknown; mark?: unknown }) : {}
   if (typeof port !== 'number') throw new Error(`ensure answered ${r.exitCode}`)
   cfg.webUrl = `http://127.0.0.1:${port}/`
+  // This server run's key and mark, from a server `ensure` saw prove it holds the account's secret; none with `webToken: off`.
+  cfg.webSecret = typeof key === 'string' ? key : undefined
+  cfg.webMark = typeof mark === 'string' ? mark : undefined
+}
+
+// The server takes a session's posts only with its run's key.
+const jsonHeaders = () => ({ 'content-type': 'application/json', ...(cfg.webSecret ? { 'x-agentmon-key': cfg.webSecret } : {}) })
+
+// Only our server knows the mark: anything else on the port (ours quit, another program took it) gets no snapshot.
+function isOurs(r: { headers: Record<string, string> }): boolean {
+  return cfg.webMark === undefined || r.headers['x-agentmon-mark'] === cfg.webMark
+}
+
+// What a browser must open: the plain address where the server can tell the browser's account, else one with a one-time code.
+export async function openLink($: EngineInterface): Promise<string> {
+  if (!cfg.webUrl || !cfg.webSecret) return cfg.webUrl ?? ''
+  const r = await $.http.fetch(`${cfg.webUrl}ticket`, { method: 'POST', headers: jsonHeaders(), body: '{}' }).catch(() => undefined)
+  const code = r?.ok && isOurs(r) ? (JSON.parse(r.text) as { code?: unknown }).code : undefined
+  return typeof code === 'string' ? `${cfg.webUrl}?c=${code}` : cfg.webUrl
 }
 
 // `/agentmon clear`: the page's turns go with the session's history.
@@ -181,7 +202,8 @@ export async function setPane($: EngineInterface, isOpen: boolean): Promise<void
 
 // What the page's button asked for; the server hands it over once. Answers whether a tab may be watching: only a server that says none counts as none.
 async function takePaneRequest($: EngineInterface, id: string): Promise<boolean> {
-  const r = await $.http.fetch(`${cfg.webUrl}pane/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+  const r = await $.http.fetch(`${cfg.webUrl}pane/${encodeURIComponent(id)}`, { method: 'POST', headers: jsonHeaders(), body: '{}' })
+  if (!isOurs(r)) throw new Error('not our server')
   // A server that does not know this session started after it (a newer session replaced it): post now, not at the next heartbeat.
   if (r.status === 404) lastJson = ''
   if (r.status === 200) await setPane($, (JSON.parse(r.text) as { isOpen: boolean }).isOpen)
@@ -193,15 +215,18 @@ export function changeKey(snapshot: WebSnapshot): string {
   return JSON.stringify({ ...snapshot, now: 0, turns: snapshot.turns.map(x => (x.isLive ? { startedAt: x.startedAt, prompt: x.prompt } : x)) })
 }
 
-async function publish($: EngineInterface): Promise<void> {
+// Answers how long the loop waits for its next round.
+async function publish($: EngineInterface): Promise<number> {
   const [id, now] = await Promise.all([$.session.id(), $.clock.now()])
-  if (id === endedId) return
+  if (id === endedId) return PUBLISH_MS
   const hasTab = await takePaneRequest($, id)
   // Every tick, tab or none: the ring takes a finished turn only as it goes by.
   const insStored = await read($, insights)
   const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
   turnRing = pushTurn(turnRing, ins.last && ins.last.startedAt >= ringFrom ? ins.last : undefined)
-  if (!hasTab && now - lastPostAt < HEARTBEAT_MS) return
+  // A live turn keeps the short round: its end must go by before the next one's does.
+  const wait = hasTab || ins.turn ? PUBLISH_MS : IDLE_MS
+  if (!hasTab && now - lastPostAt < HEARTBEAT_MS) return wait
   const [usage, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, learnt, panes, traced, reviewed, adv] = await Promise.all([
     $.session.usage(),
     read($, main),
@@ -254,21 +279,23 @@ async function publish($: EngineInterface): Promise<void> {
   })
   const json = changeKey(snapshot)
   const dueEvery = snapshot.turns.at(-1)?.isLive ? CLOCK_MS : HEARTBEAT_MS
-  if (json === lastJson && now - lastPostAt < dueEvery) return
-  const r = await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(snapshot) })
+  if (json === lastJson && now - lastPostAt < dueEvery) return wait
+  const r = await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(id)}`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(snapshot) })
   // Something else may hold the port now: throw, so the loop's retry looks for our server.
   if (!r.ok) throw new Error(`post answered ${r.status}`)
   lastPostAt = now
   lastJson = json
+  return wait
 }
 
-function publishLoop($: EngineInterface): void {
-  $.clock.after(PUBLISH_MS, async () => {
+function publishLoop($: EngineInterface, wait = PUBLISH_MS): void {
+  $.clock.after(wait, async () => {
+    let next = PUBLISH_MS
     if (cfg.webOn) {
       try {
         // No address means the first start failed: this retry is the way back.
         if (!cfg.webUrl) throw new Error('no server')
-        await publish($)
+        next = await publish($)
       } catch (error) {
         const now = await $.clock.now()
         if (now - lastEnsureAt >= ENSURE_EVERY_MS) {
@@ -282,7 +309,7 @@ function publishLoop($: EngineInterface): void {
         }
       }
     }
-    publishLoop($)
+    publishLoop($, next)
   })
 }
 
@@ -328,11 +355,11 @@ export async function stopWeb($: EngineInterface, sessionId: string): Promise<vo
   lastJson = ''
   ringFrom = await $.clock.now()
   if (!cfg.webUrl) return
-  await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: { 'content-type': 'application/json' } })
+  await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: jsonHeaders() })
 }
 
 export async function openBrowser($: EngineInterface): Promise<boolean> {
   if (!cfg.webUrl) return false
-  const r = await $.process.run(['node', serverScript($), 'open', cfg.webUrl], { timeoutMs: 10_000 }).catch(() => undefined)
+  const r = await $.process.run(['node', serverScript($), 'open', await openLink($)], { timeoutMs: 10_000 }).catch(() => undefined)
   return r?.exitCode === 0
 }

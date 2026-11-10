@@ -1,5 +1,5 @@
 import { CheckCircle2, FileText } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
 import { fileGroups, type FileRow } from '../files.ts'
@@ -48,7 +48,7 @@ export function Files({ s, p }: { s: WebSnapshot; p: Page }) {
   const now = useClock(s)
   const [isReadOpen, setReadOpen] = useState(false)
   const isEmpty = s.files.edited.length === 0 && s.files.read.length === 0
-  const g = fileGroups(s)
+  const g = useMemo(() => fileGroups(s), [s])
   const heading = g.state === 'green' ? p.notTestedSinceGreen : g.state === 'failed' ? p.lastTestFailed : p.noPassingTest
   const readRows = isReadOpen ? g.readOnly : g.readOnly.slice(0, READ_ROWS_FOLDED)
   const aside = <span className="text-xs text-ink-3 tabular-nums">{fill(p.filesSummary, { e: s.files.edited.length, r: g.readOnly.length })}</span>

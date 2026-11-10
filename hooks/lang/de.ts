@@ -211,6 +211,8 @@ export const de: Strings = {
   advisorAbout: 'wenn Claude nach echter Arbeit aufhört: fehlgeschlagene oder veraltete Prüfungen, offene Aufgaben, fehlschlagende Subagenten, unbeantwortete Teile deiner Anfrage und Funktionen, die du nicht verlangt hast, gehen einmal an Claude zurück.',
   calls: 'Aufrufe',
   off: 'aus',
+  on: 'an',
+  commandFailed: why => `AgentMon Live: Der Befehl ist fehlgeschlagen (${why})`,
   context: 'Kontext',
   toolsHeader: 'WERKZEUGE · Aufrufe',
   total: 'gesamt',

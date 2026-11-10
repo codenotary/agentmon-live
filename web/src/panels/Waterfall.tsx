@@ -60,7 +60,7 @@ export function WaterfallRows({ rows, span, l }: { rows: readonly Row[]; span: {
 export function Waterfall({ s, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
   const now = useClock(s)
-  const { flowView } = useStore()
+  const flowView = useStore(st => st.flowView)
   const box = useRef<HTMLDivElement>(null)
   const isFollowing = flowView.at === null
   const span = windowOf(flowView, s, now, stateOf(s) !== 'idle')

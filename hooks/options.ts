@@ -21,11 +21,11 @@ export function pickOptions(settings: string): Options {
 // `de_CH.UTF-8` is `de`. Undefined for `C`, `POSIX` or a language the mod lacks.
 export function languageFromEnv(locale: string | undefined): string | undefined {
   const code = locale?.slice(0, 2).toLowerCase()
-  return code && code in LANGUAGES ? code : undefined
+  return code && Object.hasOwn(LANGUAGES, code) ? code : undefined
 }
 
 export function applyOptions(options: Options, envLanguage: string | undefined): void {
-  cfg.lang = [String(options.language), envLanguage].find(l => l !== undefined && l in LANGUAGES) ?? 'en'
+  cfg.lang = [String(options.language), envLanguage].find(l => l !== undefined && Object.hasOwn(LANGUAGES, l)) ?? 'en'
   cfg.t = LANGUAGES[cfg.lang]!
   cfg.advisorModel = String(options.advisorModel || 'claude-fable-5-1')
   // `plan` was the plan-only mode, gone with the plan check; its nearest is the gate without a model.
@@ -49,6 +49,7 @@ export function applyOptions(options: Options, envLanguage: string | undefined):
   const webPort = Number(options.webPort ?? 47311)
   cfg.webPort = Number.isInteger(webPort) && webPort >= 1024 && webPort <= 65535 ? webPort : 47311
   cfg.webOpenOnStart = String(options.webOpenOnStart ?? false) === 'true'
+  cfg.isWebLocked = String(options.webToken ?? 'on') !== 'off'
 }
 
 // The manifest declares no `userConfig`, because Claude Code then opens its options dialog on install whatever the defaults.

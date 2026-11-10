@@ -35,7 +35,8 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 | `web` | `on` or `off` (the local web view) | `on` |
 | `webPort` | first port to try, 1024 to 65535 | `47311` |
 | `webOpenOnStart` | `true` opens the browser once per session | `false` |
+| `webToken` | `on` or `off`: whether the web view's port lets only the user's own account in | `on` |
 
 The Focus box, Running now and the history always show. They cannot be hidden.
 
-The mod reads its options at each prompt and after this edit, so no reload is needed. Only `debugLog`, `gitPollMinutes`, `gitFetch`, `web`, `webPort` and `webOpenOnStart` wait for a new session.
+The mod reads its options at each prompt and after this edit, so no reload is needed. Only `debugLog`, `gitPollMinutes`, `gitFetch`, `web`, `webPort`, `webOpenOnStart` and `webToken` wait for a new session.

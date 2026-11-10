@@ -211,6 +211,8 @@ export const es: Strings = {
   advisorAbout: 'cuando Claude para tras trabajo real: comprobaciones fallidas o desfasadas, tareas abiertas, subagentes con fallos, partes de tu petición sin respuesta y funciones que no pediste vuelven a Claude una vez.',
   calls: 'llamadas',
   off: 'off',
+  on: 'on',
+  commandFailed: why => `AgentMon Live: el comando falló (${why})`,
   context: 'contexto',
   toolsHeader: 'HERRAMIENTAS · llamadas',
   total: 'total',

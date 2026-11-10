@@ -323,6 +323,29 @@ test('an advisor answer that arrives after a clear is dropped', async ($, on) =>
   await ui.unmount()
 })
 
+test('an approval asked the moment the call starts still shows: the call does not wait for its rows, the check does', async ($, on) => {
+  withOptions(on, { layout: 'classic' })
+  const clock = mock.clock(on)
+  engine(on)
+  // Only the check this test raises asks; a test has no person to answer a dialog.
+  let asking = false
+  on('tool.check', () => ({ decision: asking ? 'ask' : 'allow' }))
+  // As the engine does: the check runs inside the call, before anything else has had time to settle.
+  on('tool.call', async () => {
+    asking = true
+    await $.tool.check({ tool: 'Bash', input: { command: 'git push' }, tool_use_id: 'u1' })
+    await clock.sleep(1000)
+    return { result: {} }
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const call = $.tool.call({ tool: 'Bash', command: 'git push', tool_use_id: 'u1' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^ APPROVAL  Bash git push/ })).toBeTruthy()
+  await clock.advance(1000)
+  await call
+})
+
 test('a call waiting for approval needs attention until it runs', async ($, on) => {
 
   withOptions(on, { layout: 'classic' })
@@ -651,7 +674,7 @@ test('a failing advisor model leaves the dashboard working', async ($, on) => {
   await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
-  expect(await ui.find({ type: 'Text', text: /\(unavailable: error\)/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /\(unavailable\)/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /total 1/ })).toBeTruthy()
   await ui.unmount()
 })
@@ -738,7 +761,7 @@ test('a hung advisor call times out and leaves Fable usable', async ($, on) => {
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
   await clock.settle()
-  expect(timeoutMs).toBe(30_000)
+  expect(timeoutMs).toBe(10_000)
 })
 
 test('a reload settles calls, checks and subagents nobody will report back', async ($, on) => {

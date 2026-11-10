@@ -7,10 +7,11 @@ export function dur(ms: number | undefined): string {
   return `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`
 }
 // A call under a second keeps its milliseconds: `dur` would say 0s.
-export const callTime = (ms: number | undefined) => (ms === undefined ? '' : ms < 1000 ? `${Math.round(ms)} ms` : dur(ms))
+export const callTime = (ms: number | undefined) => (ms === undefined ? '' : Math.round(ms) < 1000 ? `${Math.round(ms)} ms` : dur(ms))
 export const time = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 export const hhmm = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-export const kilo = (n: number | undefined) => (n === undefined ? '0' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 100_000 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
+// Each unit starts where the one below would round up into it: 999,600 is 1.0M, not 1000K.
+export const kilo = (n: number | undefined) => (n === undefined ? '0' : n >= 999_500 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 99_950 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
 export const short = (path: string) => path.split('/').slice(-3).join('/')
 // A path as the person knows it: inside an agent's worktree as inside the project, then relative to the project; elsewhere its last parts.
 export function pathIn(path: string, cwd: string | undefined): string {

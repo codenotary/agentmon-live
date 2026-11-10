@@ -10,7 +10,7 @@ import { set, useStore } from './store.ts'
 import { Pill } from './ui/Pill.tsx'
 
 export function CallDetail({ l, s }: { l: Labels | undefined; s: WebSnapshot | undefined }) {
-  const { call } = useStore()
+  const call = useStore(st => st.call)
   if (!call || !l) return null
   // Opened while running, it follows the call to its end.
   const live = s?.trace?.find(c => c.id === call.id)
@@ -27,7 +27,7 @@ export function CallDetail({ l, s }: { l: Labels | undefined; s: WebSnapshot | u
         <Dialog.Content className="drawer" aria-describedby={undefined} data-testid="drawer">
           <div className="mb-4 flex items-center justify-between gap-3">
             <Dialog.Title className="font-display text-base font-bold">{p.details}</Dialog.Title>
-            <Dialog.Close className="icon-btn" aria-label="×"><X size={14} aria-hidden /></Dialog.Close>
+            <Dialog.Close className="icon-btn" aria-label={p.dismiss}><X size={14} aria-hidden /></Dialog.Close>
           </div>
           <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]">
             <Pill text={r.text} tone={r.tone} />

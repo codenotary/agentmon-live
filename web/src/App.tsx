@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { Component, memo, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 
 import type { WebSnapshot } from '../../types/index'
@@ -20,7 +20,7 @@ import { Files } from './panels/Files.tsx'
 import { Checks, Insights, Running, Tasks } from './panels/Side.tsx'
 import { TurnClock } from './panels/TurnClock.tsx'
 import { Waterfall } from './panels/Waterfall.tsx'
-import { currentOf, dismiss, hasNoSignal, set, setCollapsed, useStore, type Trend } from './store.ts'
+import { currentOf, dismiss, getState, hasNoSignal, set, setCollapsed, useStore, type Trend } from './store.ts'
 import { LastUpdate, TopBar } from './TopBar.tsx'
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
@@ -35,7 +35,24 @@ function Standby({ text }: { text: string }) {
   )
 }
 
-function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; l: Labels; p: Page; events: FeedEvent[]; trend: Trend | undefined }) {
+// One panel that throws (a snapshot of another version, say) must not blank the page. The next snapshot gets a new try.
+class PartGuard extends Component<{ s: WebSnapshot; text: string; children: ReactNode }, { isFailed: boolean }> {
+  state = { isFailed: false }
+  static getDerivedStateFromError() {
+    return { isFailed: true }
+  }
+  componentDidUpdate(before: { s: WebSnapshot }) {
+    if (this.state.isFailed && before.s !== this.props.s) this.setState({ isFailed: false })
+  }
+  render() {
+    return this.state.isFailed ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status" data-testid="panel-failed">{this.props.text}</div> : this.props.children
+  }
+}
+
+const NO_EVENTS: FeedEvent[] = []
+
+// Skips the redraw when the store changed in a part no panel here reads through its props (a drag on the flow chart sets the store at pointer rate).
+const Part = memo(function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; l: Labels; p: Page; events: FeedEvent[]; trend: Trend | undefined }) {
   switch (view) {
     case 'calls':
       return (
@@ -72,7 +89,7 @@ function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; 
         </>
       )
   }
-}
+})
 
 // A heading that folds what a rail item leads to. Folded stays mounted: a typed filter or a chosen sort is still there on opening. The count stays in sight, so a folded section can still say it needs you.
 function PageSection({ x, isCollapsed, children }: { x: Section; isCollapsed: boolean; children: ReactNode }) {
@@ -97,10 +114,13 @@ export function App() {
   const s = currentOf(st)
   const isStopped = s !== undefined && hasNoSignal(st, s.session.id)
   const isCurrent = s?.v === 1
-  const known = s && isCurrent ? labelsOf(s) : undefined
-  const l = known && isStopped ? lastKnown(known) : known
-  const p = l?.page ?? pageOf(s)
-  const events = s ? (st.events.get(s.session.id) ?? []) : []
+  // Stable between snapshots, so `Part` can skip.
+  const l = useMemo(() => {
+    const known = s && isCurrent ? labelsOf(s) : undefined
+    return known && isStopped ? lastKnown(known) : known
+  }, [s, isCurrent, isStopped])
+  const p = useMemo(() => l?.page ?? pageOf(s), [l, s])
+  const events = (s && st.events.get(s.session.id)) || NO_EVENTS
   const sections = s && l ? sectionsOf(s, p, events) : []
   const isFirstDraw = useRef(true)
   const wasG = useRef(false)
@@ -132,7 +152,8 @@ export function App() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         set({ isPaletteOpen: true })
-      } else if (!isTyping(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // An open drawer or palette has the keys: nothing moves behind it.
+      } else if (!isTyping(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey && !getState().call && !getState().isPaletteOpen) {
         if (wasG.current) {
           wasG.current = false
           const section = SECTION_KEYS[e.key]
@@ -165,7 +186,7 @@ export function App() {
         {s && !st.isDown && isStopped ? <div className="panel flex flex-wrap items-center gap-x-3 gap-y-1 !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status" data-testid="silent-banner">{p.sessionSilent} <LastUpdate s={s} p={p} className="lg:hidden" /><button type="button" className="ml-auto underline" data-testid="dismiss" onClick={() => dismiss(s.session.id)}>{p.dismiss}</button></div> : null}
         {s && !isCurrent ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status">{p.update}</div> : null}
         {!s && !st.isDown ? <Standby text={p.noSessions} /> : null}
-        {s && l ? <div key={s.session.id} className="fade-in flex min-w-0 flex-col gap-4">{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><Part view={x.id} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PageSection>)}</div> : null}
+        {s && l ? <div key={s.session.id} className="fade-in flex min-w-0 flex-col gap-4">{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><PartGuard s={s} text={p.update}><Part view={x.id} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PartGuard></PageSection>)}</div> : null}
       </main>
       </div>
       <Palette s={s} p={p} sections={sections} />

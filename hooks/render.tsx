@@ -9,7 +9,7 @@ import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeIn
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, needsYou, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
-import { openBrowser, setPane } from './web'
+import { openBrowser, openLink, setPane } from './web'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -664,7 +664,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         {`◐ ${isClassic ? t.layoutClassic : t.layoutCalm}`}
       </Button>
       {cfg.webOn && cfg.webUrl && (
-        <Button key="web:open" plain hotkey="o" onPress={() => openBrowser($).then(isOpen => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(cfg.webUrl ?? ''))))}>
+        <Button key="web:open" plain hotkey="o" onPress={() => openBrowser($).then(async isOpen => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(await openLink($)))))}>
           {t.web.open}
         </Button>
       )}

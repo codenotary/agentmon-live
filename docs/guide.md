@@ -62,6 +62,7 @@ Installing asks nothing. Ask Claude in chat ("hide the usage box", "switch Agent
 | `web` | `on` runs the local web view (below); `off` starts no process and shows no button | `on` |
 | `webPort` | first port to try, 1024 to 65535; a port something else holds moves it up by one, 20 tries at most | `47311` |
 | `webOpenOnStart` | `true` opens the browser once per session at its start | `false` |
+| `webToken` | `on` lets only your account read and post sessions on the web view's port (below); `off` lets any local process | `on` |
 
 ### Web view
 
@@ -88,9 +89,18 @@ The same session in a browser, with the room a terminal lacks. The top bar shows
 
 Every running session on the machine shares one server. With more than one running, the working directory in the top bar becomes a switch between them. Its last entry opens [AgentMon Start](https://codenotary.com/agentmon-start), for a combined view, in a new tab. A dot and a word show each session's state: green and pulsing when it works, orange when it waits for you (an approval or a waiting subagent), grey when it is idle. The server is a small Node program inside the plugin. It starts with the first session and stops one minute after the last one leaves. A session whose plugin files are newer replaces a running server, and open tabs reload themselves. It needs `node` on your `PATH`: Claude Code does not include it. Without it the pane works as usual, there is no button, and the session shows a short notice when it starts. The debug log says why.
 
-The page only reads, with one exception: the pane button tells the session to hide or show its pane. Nothing else flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. It has no login, so on a machine shared with other people, they can read your session's prompts, commands, paths and costs from the local port, and hide or show your pane. Secrets are masked first, as in the pane. Set `web` to `off` on a shared machine.
+The page only reads, with one exception: the pane button tells the session to hide or show its pane. Nothing else flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. Secrets are masked first, as in the pane.
 
-`web` and `webPort` take effect at the next session start, turning `web` off as well as on. If the server does not start, the session tries again once a minute. Over SSH on Linux, a browser opens on your desktop session on that machine if you have one, such as a local or RDP login. Where no browser can open, `o` and `/agentmon open` give the address to open yourself.
+Only your account uses the port (`webToken`, on by default):
+
+- **Sessions and server.** A secret sits in `~/.claude/agentmon-live/web.token`, a file only your account can read. It is never sent. When a session starts, it and the server prove to each other that they hold it, and the session gets a key for that server run. A program of another account that takes the port, before or after, cannot give that proof: the session moves to the next port, or stops posting, and it gets no snapshot.
+- **Browser on Linux.** The server asks the system which account holds the browser's end of the connection. Yours gets in: open the address, typed, bookmarked or from the pane, and type nothing. This also holds through an SSH port forward.
+- **Browser on macOS and Windows.** The system does not say, so `o` and `/agentmon open` open an address with a one-time code, good for five minutes. The page trades it for a pass it keeps in the browser, and takes the code out of the address. An address you type by hand in a browser that never had a code shows no sessions. The code is visible to other accounts for the moment the browser starts, in the list of running programs, and whoever uses it first gets in: on a shared Mac or Windows machine, set `web` to `off`.
+- **`webToken: off`** turns the checks off: any local process can then read your session's prompts, commands, paths and costs, and post to the page.
+
+A session still running a plugin version from before these checks cannot post to the new server: restart it.
+
+`web`, `webPort` and `webToken` take effect at the next session start, turning `web` off as well as on. If the server does not start, the session tries again once a minute. Over SSH on Linux, a browser opens on your desktop session on that machine if you have one, such as a local or RDP login. Where no browser can open, `o` and `/agentmon open` give the address to open yourself (on macOS and Windows with its one-time code).
 
 With no desktop session there, the server still listens on the remote machine, so forward its port from your own machine, keeping the same number, and open the address there. The server refuses a different port number in the address.
 
@@ -104,7 +114,7 @@ With `debugLog` on, each session writes one file: `<Claude config folder>/agentm
 
 ### Base branch
 
-Every `gitPollMinutes` minutes, and after each turn, the mod compares the branch with its base: the remote's default branch (`origin/HEAD`), else `origin/main`. When the base has commits this branch lacks, Focus says how many. When those commits changed files the session edited, the item turns red and names them: rebase before more edits. `i` drafts a request to show what the base changed in those files, rebase and rerun the checks. By default the mod does not fetch, so the check sees the base as of your last `git fetch`. With `gitFetch` on, it fetches the base branch first (never with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set, never asking for credentials). Outside a git repository, or without an `origin` remote, nothing shows.
+Every `gitPollMinutes` minutes, and after each turn that ran a git command, the mod compares the branch with its base: the remote's default branch (`origin/HEAD`), else `origin/main`. When the base has commits this branch lacks, Focus says how many. When those commits changed files the session edited, the item turns red and names them: rebase before more edits. `i` drafts a request to show what the base changed in those files, rebase and rerun the checks. By default the mod does not fetch, so the check sees the base as of your last `git fetch`. With `gitFetch` on, it fetches the base branch first (never with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set, never asking for credentials). Outside a git repository, or without an `origin` remote, nothing shows.
 
 ### Cost
 

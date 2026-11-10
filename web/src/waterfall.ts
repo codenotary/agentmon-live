@@ -60,10 +60,11 @@ export const xOf = (at: number, from: number, to: number) => Math.min(100, Math.
 export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, now: number): Row[] {
   const { from, to } = span
   const running = new Map(d.active.map(a => [a.id, a]))
+  const endOfCall = (c: TraceCall) => (c.ms !== undefined ? c.at + c.ms : running.has(c.id) ? now : c.at)
   const callRow = (c: TraceCall, depth: number): Row => {
     const live = running.get(c.id)
     const state: BarState = c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : !live ? 'unknown' : live.isAsking ? 'asking' : 'running'
-    const end = c.ms !== undefined ? c.at + c.ms : live ? now : c.at
+    const end = endOfCall(c)
     return { key: c.id, name: c.tool, what: c.what, depth, from: c.at, to: end, ...(c.ms === undefined ? {} : { ms: c.ms }), state, isAgent: false, isSlowest: false, call: c }
   }
   const names = agentNames(d.agents)
@@ -72,7 +73,8 @@ export function rowsOf(d: WaterfallInput, span: { from: number; to: number }, no
   const nested = new Map<string, TraceCall[]>(agents.map(a => [a.id, []]))
   const blocks: { at: number; rows: Row[] }[] = []
   for (const c of d.trace ?? []) {
-    if (c.at < from || c.at > to) continue
+    // By overlap, as for agents: a long call that began before the window is still in it.
+    if (endOfCall(c) < from || c.at > to) continue
     if (c.agentId === undefined && !agentTypes.has(c.who)) {
       if (!STARTS_AGENT.test(c.tool)) blocks.push({ at: c.at, rows: [callRow(c, 0)] })
       continue

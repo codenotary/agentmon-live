@@ -1,6 +1,6 @@
 // Serves the fixture, screenshots the page in light, dark, at phone width, with the palette and with a call's details open, and checks the navigation: `npm i --no-save playwright && npx playwright install chromium && node scripts/web-shot.mjs <out dir>`.
 import { spawn } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -373,6 +373,20 @@ await fresh.goto(url)
 await fresh.waitForSelector('[data-testid=silent-banner]', { timeout: 3000 }).catch(() => problems.push('replay: an old snapshot read as fresh'))
 await fresh.close()
 again.kill()
+
+// A snapshot one panel cannot draw (here: no learned rows at all, which the dials read) costs that panel only.
+const brokenFile = join(out, 'broken-snapshot.json')
+const { learned: _, ...broken } = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/snapshot.json'), 'utf8'))
+writeFileSync(brokenFile, JSON.stringify(broken))
+const brokenServer = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', '47391', '--fixture', brokenFile], { stdio: 'inherit' })
+process.on('exit', () => brokenServer.kill())
+await new Promise(done => setTimeout(done, 500))
+const guarded = await browser.newPage()
+await guarded.goto('http://127.0.0.1:47391/')
+await guarded.waitForSelector('[data-testid=panel-failed]', { timeout: 3000 }).catch(() => problems.push('guard: a panel that cannot draw shows no notice'))
+if (await guarded.locator('#calls tbody tr').count() === 0) problems.push('guard: one failed panel took the others with it')
+await guarded.screenshot({ path: join(out, 'web-guard.png') })
+brokenServer.kill()
 
 await browser.close()
 console.log(problems.length ? problems.join('\n') : 'no script errors, no sideways scroll')

@@ -93,7 +93,8 @@ function MarkDot({ m, x, y, colour, isNarrow, onPick, onTip, leave }: { m: Mark;
 
 export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   const p = l.page
-  const { flowView: view, openAgents } = useStore()
+  const view = useStore(st => st.flowView)
+  const openAgents = useStore(st => st.openAgents)
   const anyRunning = live.agents.some(isRunning)
   // Open while a subagent runs. A click holds until the next agent starts or the last one ends.
   const [pickedOpen, setPickedOpen] = useState<boolean | null>(null)
@@ -300,7 +301,7 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
   return (
     <Panel id="flow" title={p.flow} help={p.helpFlow} icon={Workflow} aside={aside} className={isOpen ? '' : '[&>header]:mb-0'}>
       {isOpen && !s.trace?.length ? <Empty text={p.none} /> : null}
-      <div ref={box} className="relative outline-offset-2" tabIndex={0} onKeyDown={onKey} onPointerEnter={() => setIsOver(true)} onPointerLeave={() => setIsOver(false)} data-testid="flow" style={isOpen && s.trace?.length ? undefined : { display: 'none' }}>
+      <div ref={box} className="relative outline-offset-2" tabIndex={0} role="group" aria-label={p.flow} aria-description={p.helpFlow} onKeyDown={onKey} onPointerEnter={() => setIsOver(true)} onPointerLeave={() => setIsOver(false)} data-testid="flow" style={isOpen && s.trace?.length ? undefined : { display: 'none' }}>
         {width > 0 ? (
           <>
             <Brush whole={whole} span={span} width={width} colourOf={colourOf} s={s} view={view} setView={setView} p={p} />

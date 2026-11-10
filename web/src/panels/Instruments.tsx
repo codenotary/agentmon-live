@@ -37,7 +37,7 @@ function referenceFoot(value: number, ref: { value: number; isGuide: boolean }, 
 }
 
 export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: Trend | undefined }) {
-  const { isDown } = useStore()
+  const isDown = useStore(st => st.isDown)
   const [isHelpOpen, setHelpOpen] = useState(false)
   const [isContextOpen, setContextOpen] = useState(false)
   const { tokens } = s.insights

@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderInput } from 'claude-code'
 
 import type { Card, Check, CheckKind, Files, LogLine, Task, TurnTime } from '../types'
 import { addNote } from './advisor'
@@ -21,7 +21,7 @@ import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize
 import { drawBand, drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadOptions } from './options'
-import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
+import { forgetTurns, openBrowser, openLink, setPane, startWeb, stopWeb } from './web'
 import type { View } from '../types'
 
 
@@ -41,6 +41,9 @@ const AGENT_PROMPT = 500
 const ANSWER_TEXT = 1500
 const NAME_TEXT = 60
 const TURN_PROMPT = 120
+// A failed call's output can be megabytes; what is kept of it is far shorter, so only its head is masked.
+const ERROR_HEAD = 8000
+const EDIT_TOOLS = /^(Edit|MultiEdit|Write|NotebookEdit)$/
 const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
@@ -88,7 +91,7 @@ function category(tool: string, call: object): Category {
   if (/^(Grep|Glob|LSP|ToolSearch)$/.test(tool)) return 'search'
   if (/^Web(Fetch|Search)$|fetch_and_index/.test(tool)) return 'web'
   if (/^(Bash|Monitor|TaskStop)$/.test(tool)) return 'shell'
-  if (/^(Edit|Write|NotebookEdit)$/.test(tool)) return 'edit'
+  if (EDIT_TOOLS.test(tool)) return 'edit'
   if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
   if (/^Skill$/.test(tool)) return 'skills'
   if (/playwright|browser|chrome/i.test(tool)) return 'browser'
@@ -117,11 +120,11 @@ async function refreshStatus($: EngineInterface) {
   $.ui.status(cfg.t.statusLine(m.effort || '?', running, list.length, listening(adv.isOn), total, counts.git ?? 0))
 }
 
-// The spinner and elapsed seconds under Running now move on their own: redraw twice a second while a call or a subagent runs.
+// The spinner and elapsed seconds under Running now move on their own: redraw while a call or a subagent runs, twice a second in classic, where the seconds show.
 function tick($: EngineInterface) {
   if (isTicking) return
   isTicking = true
-  $.clock.after(500, async () => {
+  $.clock.after(cfg.isClassic ? 500 : 1000, async () => {
     isTicking = false
     const [doing, list, now] = await Promise.all([read($, active), read($, agents), $.clock.now()])
     // A waiting or idle teammate changes nothing on screen; only running work keeps the redraw going.
@@ -202,13 +205,18 @@ function failOpen<T>($: EngineInterface, event: string, error: { kind: string; m
   return proceed()
 }
 
+function paneName($: EngineInterface, e: RenderInput<'Pane'>) {
+  const { Text } = $.ui.resolve(e)
+  return <Text>AgentMon Live</Text>
+}
+
 // Redraw when the prompt cache of a session last active at `at` expires: an idle pane draws nothing on its own.
 async function watchCache($: EngineInterface, at: number) {
   $.clock.after(Math.max(0, at + CACHE_TTL_MS - (await $.clock.now())), async () => $.ui.invalidate('ui.render'))
 }
 
 // The main turn ended: its time joins the session's, and the window is broken down once, locally.
-async function finishTurn($: EngineInterface, durationMs: number, docs?: string[], answer?: string) {
+async function finishTurn($: EngineInterface, durationMs: number, isContinued: boolean, docs?: string[], answer?: string) {
   if (!clk.inTurn) return
   const endedAt = await $.clock.now()
   book(clk, endedAt)
@@ -225,7 +233,7 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
     const past = v.pastAreas ?? []
     const last = isNewTask(here, past, done.ctxStart) ? { ...done, isNewTask: true } : done
     const pastAreas = [...new Set([...past, ...here])].slice(-KEEP_AREAS)
-    return { ...v, turn: undefined, last, session, sessionWall: v.sessionWall + done.wallMs, turns: v.turns + 1, lastActive: endedAt, pastAreas }
+    return { ...v, turn: undefined, last, session, sessionWall: v.sessionWall + done.wallMs, turns: v.turns + (isContinued ? 0 : 1), lastActive: endedAt, pastAreas }
   })
   // Kept in the store too: a resumed session starts a new process, and the transcript's time is rewritten on resume.
   // shortcut: one key per session, never pruned; prune by age if the store grows.
@@ -248,7 +256,7 @@ async function finishTurn($: EngineInterface, durationMs: number, docs?: string[
     // The turn is learned from even when the engine gives no usage: the tallies and gaps are the session's own.
     const m = await read($, main)
     const fable = (await read($, advisor)).calls
-    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined, totalUsd: u?.cost?.usd })
+    await saveTurn($, { tokens: u?.context.tokens, window: u?.context.window, mcpTools: b?.mcpTools, model: m.model, effort: m.effort, outTokens: ended.tokens.mainOut, fable, usd: ended.usd > 0 ? ended.usd : undefined, totalUsd: u?.cost?.usd, isContinued })
   })
 }
 
@@ -271,6 +279,12 @@ export const register: Register = on => {
   let lastAnswer = ''
   // The done gate sends a turn back once; set until the person's next prompt.
   let isGateUsed = false
+  // The turn under way is one a Stop hook sent back: the same prompt's, so it is no new turn in the counts.
+  let isContinued = false
+  // A git command ran since the base was last read.
+  let isGitRun = false
+  // The session this state belongs to: `/clear` and a resume change it with no session.start.
+  let sessionId: string | undefined
   // For the self benchmark: the prompt's tool count when the gate sent it back, and whether a stop found nothing open.
   let blockAt: number | undefined
   let isPassed = false
@@ -294,6 +308,7 @@ export const register: Register = on => {
     })
     cwd = e.cwd
     turn.root = cwd
+    sessionId = await $.session.id().catch(() => undefined)
     pulse($)
     // After a reload mid-turn, older todos and agent results must not count as this turn's.
     turn.startedAt = await $.clock.now()
@@ -402,7 +417,7 @@ export const register: Register = on => {
     if (arg === 'open') {
       if (!cfg.webOn) return { text: cfg.web ? t.web.nextSession : t.web.off }
       if (!cfg.webUrl) return { text: t.web.failed }
-      return { text: (await openBrowser($)) ? t.web.opened(cfg.webUrl) : t.web.noBrowser(cfg.webUrl) }
+      return { text: (await openBrowser($)) ? t.web.opened(cfg.webUrl) : t.web.noBrowser(await openLink($)) }
     }
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
@@ -412,7 +427,7 @@ export const register: Register = on => {
     // Details from the prompt, so a script reaches it without focusing the pane.
     if (arg === 'details') {
       const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
-      return { text: `AgentMon Live: ${t.details} ${l.isDetailed ? 'on' : 'off'}` }
+      return { text: `AgentMon Live: ${t.details} ${l.isDetailed ? t.on : t.off}` }
     }
     const v = VIEWS.find(x => x === arg.toLowerCase())
     if (v) {
@@ -448,7 +463,7 @@ export const register: Register = on => {
     }
     await setPane($, true)
     return { text: t.opened }
-  }).catch(($, e, next) => ({ text: `agentmon-live: the command failed (${next.error.message ?? next.error.kind})` }))
+  }).catch(($, e, next) => ({ text: t.commandFailed(next.error.message ?? next.error.kind) }))
 
   on('turn.start', async ($, e, next) => {
     // `/reload-plugins` skips an unchanged module, so an edit to the settings arrives here.
@@ -458,14 +473,20 @@ export const register: Register = on => {
     }
     pulse($)
     // A turn a Stop hook sent back (the done gate or another one) goes on as the same turn: its checks and edits still count.
+    // shortcut: any main turn with no typed text is taken for one, so another start without text keeps the old request; flag the send-back if such starts show.
     if (e.agentId === undefined && e.text === '') {
       isTurnLive = true
+      isContinued = true
       await update($, main, v => ({ ...v, turnLive: true }))
       // The first turn.complete stopped the clock; the work after the send-back is still this turn's.
-      if (!clk.inTurn) clk = newClock(await $.clock.now(), true)
+      if (!clk.inTurn) {
+        clk = newClock(await $.clock.now(), true)
+        clk.prompt = turn.prompt.slice(0, TURN_PROMPT)
+      }
     } else if (e.agentId === undefined) {
       isTurnLive = true
       isGateUsed = false
+      isContinued = false
       // A prompt that says the last edit turn's change did not work; read before the turn's files reset.
       const isFix = turn.edited.size > 0 && isCorrection(e.text)
       turn.prompt = mask(e.text)
@@ -575,7 +596,8 @@ export const register: Register = on => {
     const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)
     const who = e.agentId === undefined ? t.mainSession : (caller?.type ?? e.agentId)
     const model = e.agentId === undefined ? m.model : caller?.model
-    const path = (e as { file_path?: string }).file_path
+    const edit = e as { file_path?: string; notebook_path?: string }
+    const path = edit.file_path ?? edit.notebook_path
     const id = e.agentId
     let agentFiles = 0
     if (id !== undefined) {
@@ -606,11 +628,15 @@ export const register: Register = on => {
     })
     // The row's folder is its own part's.
     const scopeDir = scopes.at(-1) && relPath(scopes.at(-1)!.dir, cwd)
-    // Recorded before it runs, so Running now, the detail tabs and the checks show it while it is under way.
-    await Promise.all([
+    if (cat === 'git') isGitRun = true
+    // Listed as running before it starts: an approval asked at once must find its row.
+    await update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt, ...(id === undefined ? {} : { agentId: id }) }])
+    tick($)
+    pulse($)
+    // The other rows are written as it starts, so the detail tabs and the checks show it while it is under way; the call does not wait for them.
+    const recorded = Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
-      update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt, ...(id === undefined ? {} : { agentId: id }) }]).then(() => (tick($), pulse($))),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
       update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
       found.length > 0 &&
@@ -618,11 +644,11 @@ export const register: Register = on => {
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
           ...found.map(f => ({ ...greenOf(all, f.kind), kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const, ...(f.kind === 'test' && scopeDir ? { dir: scopeDir } : {}) })),
         ]),
-    ])
+    ]).catch(error => void debug($, 'hook.fail', { event: 'tool.call', message: mask(String(error)) }))
     queueStatus($)
 
     // The file-size guide needs the size before the first edit of a file.
-    const sized = /^(Edit|Write|NotebookEdit)$/.test(e.tool) && watched(pathOf(e), cwd) !== undefined ? pathOf(e) : undefined
+    const sized = EDIT_TOOLS.test(e.tool) && watched(pathOf(e), cwd) !== undefined ? pathOf(e) : undefined
     if (sized) await noteSizeBefore($, sized)
     const testFile = /^(Edit|MultiEdit|Write)$/.test(e.tool) && pathOf(e) && isTestPath(pathOf(e)!) ? pathOf(e)! : undefined
     const weakened = testFile ? await weakeningOf($, e, testFile).catch(() => NOTHING) : undefined
@@ -640,6 +666,8 @@ export const register: Register = on => {
         book(clk, await $.clock.now())
         clk.calls.delete(callId)
       }
+      // The rows this call's end writes to are in place first.
+      await recorded
       // A call that threw never reports back.
       await Promise.all([
         update($, active, all => all.filter(a => a.id !== callId)),
@@ -652,7 +680,8 @@ export const register: Register = on => {
     // The rest is bookkeeping; the result goes back to the model at once.
     $.clock.after(0, async () => {
       const failed = r.deny !== undefined || r.isError
-      const error = failed ? mask(String(r.deny ?? r.text ?? '')).slice(0, 2000) : undefined
+      const text = String(r.text ?? '')
+      const error = failed ? mask(String(r.deny ?? text).slice(0, ERROR_HEAD)).slice(0, 2000) : undefined
       const at = await $.clock.now()
       const output = String(r.text ?? (r.result as { stdout?: string } | undefined)?.stdout ?? '')
       // A denied or aborted run says nothing about the code; a failed one with one kind of check failed at it; past a pipe the output decides.
@@ -696,15 +725,15 @@ export const register: Register = on => {
       if (sameTurn && r.deny === undefined && scopes.length > 0) await noteTestRun($, turn)
       // Project docs only: not memory files, files outside the project, or .txt (requirements.txt, CMakeLists.txt).
       if (touched && cat === 'read' && isDoc(touched) && !/\.txt$/i.test(touched) && !isMemoryPath(touched) && relPath(touched, cwd) !== undefined && e.agentId === undefined && sameTurn) turn.docs.add(touched)
-      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(String(r.text ?? '')).slice(0, 300)}` : 'ok'}`].slice(-40)
+      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(text.slice(0, ERROR_HEAD)).slice(0, 300)}` : 'ok'}`].slice(-40)
       // Insights: how long it took, what it cost the context, where the main loop works.
       const ms = Math.max(0, at - startedAt)
       void debug($, 'tool.call', { tool: e.tool, cat, ms, agent: e.agentId !== undefined, denied: r.deny !== undefined, isError: r.isError })
       const wasAsked = askedCalls.delete(callId)
       const callKey = `${e.tool} ${brief(e)}`.trim().slice(0, 80)
-      const sig = r.isError && r.deny === undefined ? errSig(String(r.text ?? '')) : undefined
-      const resultTokens = e.agentId === undefined && !failed ? estTokens(String(r.text ?? '')) : 0
-      if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), String(r.text ?? ''), r.isError ? 0 : estTokens(String(r.text ?? '')))
+      const sig = r.isError && r.deny === undefined ? errSig(text.slice(0, ERROR_HEAD)) : undefined
+      const resultTokens = e.agentId === undefined && !failed ? estTokens(text) : 0
+      if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), text.slice(0, ERROR_HEAD), r.isError ? 0 : estTokens(text))
       if (touched && cat === 'edit' && isMemoryPath(touched)) queueMemoryCheck($)
       if (touched && cat === 'edit' && touched.endsWith('/settings.json')) {
         await loadOptions($).catch(() => undefined)
@@ -863,7 +892,6 @@ export const register: Register = on => {
       const tests = testsOf(e.answer)
       const why = tests === 'FAIL' ? mask(failLine(e.answer) ?? '') || undefined : undefined
       const endedAt = await $.clock.now()
-      turn.delegated += 1
       const status: Card['status'] = e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'cancelled' : 'error'
       seenStep.delete(id)
       const list = await update($, agents, all =>
@@ -880,6 +908,8 @@ export const register: Register = on => {
         )),
       )
       const card = list.find(a => a.id === id)
+      // An agent an earlier turn started is not this turn's work: it must not bring the gate to a turn that did nothing.
+      if (!card || card.startedAt >= turn.startedAt) turn.delegated += 1
       if (card) {
         if (tests) {
           await addLog($, { who: card.type, what: tests.startsWith('PASS') ? t.testsPassed : t.testsFailed, result: `${tests} (${t.reported})`, agentId: id })
@@ -891,12 +921,16 @@ export const register: Register = on => {
       // Docs read and code changed: the docs-vs-code hint in Focus; a refactor changes the code on purpose.
       const isRefactor = /refactor|refaktor|重构|重構|リファクタ/i.test(turn.prompt)
       await benchPrompt($, turn, blockAt, isPassed)
-      await finishTurn($, e.durationMs, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined, mask(e.answer).trim().slice(0, ANSWER_TEXT))
+      await finishTurn($, e.durationMs, isContinued, turn.codeEditAt !== undefined && !isRefactor ? [...turn.docs].slice(0, 3) : undefined, mask(e.answer).trim().slice(0, ANSWER_TEXT))
       isTurnLive = false
       await update($, main, v => ({ ...v, turnLive: false }))
       void debug($, 'turn.complete', { ms: e.durationMs, tools: turn.tools, edited: turn.edited.size })
       lastAnswer = e.answer
-      if (cfg.baseMinutes > 0) $.clock.after(0, () => refreshBase($, cwd, false))
+      // Only a git command moves the branch against its base; the poll covers one a script ran.
+      if (cfg.baseMinutes > 0 && isGitRun) {
+        isGitRun = false
+        $.clock.after(0, () => refreshBase($, cwd, false))
+      }
       // Memory files change outside Edit and Write too: Bash, an editor, a git checkout.
       queueMemoryCheck($)
     }
@@ -939,6 +973,20 @@ export const register: Register = on => {
   on('classic.SessionStart', async ($, e, next) => {
     const what = e.source === 'resume' || e.source === 'clear' || e.source === 'fork' ? t.began[e.source] : undefined
     if (what) await addLog($, { who: t.mainSession, what, result: '' })
+    // `/clear` and a resume inside the process bring another session with no session.start: the last one's turn, answer and record must not go on as this one's.
+    const id = await $.session.id().catch(() => undefined)
+    if (sessionId !== undefined && id !== undefined && id !== sessionId) {
+      sessionId = id
+      turn.prompt = ''
+      turn.startedAt = await $.clock.now()
+      resetTurn(turn, [])
+      lastAnswer = ''
+      isGateUsed = false
+      isContinued = false
+      isCheckQueued = false
+      if (cfg.debugLog) await saveDebugLog($).then(() => openDebugLog($, turn.startedAt)).catch(() => undefined)
+      await startLearning($, cwd).catch(() => undefined)
+    }
     return next(e)
   }).catch(($, e, next) => failOpen($, 'classic.SessionStart', next.error, () => next(e)))
 
@@ -958,9 +1006,10 @@ export const register: Register = on => {
       $.ui.toast(t.checkAfterTurn)
     } else $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
     return { element: e.element }
-  })
+  }).catch(($, e, next) => failOpen($, 'ui.press', next.error, () => ({ element: e.element })))
 
-  on('ui.render', { component: 'Pane', requestId: PANE }, drawPane)
+  // A pane that cannot draw says so in the debug log and shows its name, not an error.
+  on('ui.render', { component: 'Pane', requestId: PANE }, drawPane).catch(($, e, next) => failOpen($, 'ui.render', next.error, () => paneName($, e)))
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => drawBand($, e, await next(e))).catch(($, e, next) => failOpen($, 'ui.render', next.error, () => next(e)))
 
   // The close mark or `ctrl+x x` hides the pane like the pane's own button, so it stays closed after a module reload.
