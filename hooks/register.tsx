@@ -5,7 +5,7 @@ import type { Card, Check, CheckKind, Files, LogLine, Task, TurnTime } from '../
 import { addNote } from './advisor'
 import { isDoc, parseTestRules, testCfg } from './gate'
 import { book, newClock, snapshot } from './clock'
-import { priceUsd } from './bench'
+import { EDIT_TOOLS, priceUsd } from './bench'
 import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, noteShellEdit, noteTestEdit, noteTestRun, noteWorkAtStart, openGaps, resetTurn } from './done'
 import { isTestPath, NOTHING, weakeningOf } from './testreview'
 import type { Turn } from './done'
@@ -43,7 +43,6 @@ const NAME_TEXT = 60
 const TURN_PROMPT = 120
 // A failed call's output can be megabytes; what is kept of it is far shorter, so only its head is masked.
 const ERROR_HEAD = 8000
-const EDIT_TOOLS = /^(Edit|MultiEdit|Write|NotebookEdit)$/
 const view = atom({ plugin: 'agentmon-live', key: 'view' } as const, INIT.view)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
@@ -91,7 +90,7 @@ function category(tool: string, call: object): Category {
   if (/^(Grep|Glob|LSP|ToolSearch)$/.test(tool)) return 'search'
   if (/^Web(Fetch|Search)$|fetch_and_index/.test(tool)) return 'web'
   if (/^(Bash|Monitor|TaskStop)$/.test(tool)) return 'shell'
-  if (EDIT_TOOLS.test(tool)) return 'edit'
+  if (EDIT_TOOLS.has(tool)) return 'edit'
   if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
   if (/^Skill$/.test(tool)) return 'skills'
   if (/playwright|browser|chrome/i.test(tool)) return 'browser'
@@ -648,7 +647,7 @@ export const register: Register = on => {
     queueStatus($)
 
     // The file-size guide needs the size before the first edit of a file.
-    const sized = EDIT_TOOLS.test(e.tool) && watched(pathOf(e), cwd) !== undefined ? pathOf(e) : undefined
+    const sized = EDIT_TOOLS.has(e.tool) && watched(pathOf(e), cwd) !== undefined ? pathOf(e) : undefined
     if (sized) await noteSizeBefore($, sized)
     const testFile = /^(Edit|MultiEdit|Write)$/.test(e.tool) && pathOf(e) && isTestPath(pathOf(e)!) ? pathOf(e)! : undefined
     const weakened = testFile ? await weakeningOf($, e, testFile).catch(() => NOTHING) : undefined
@@ -681,6 +680,7 @@ export const register: Register = on => {
     $.clock.after(0, async () => {
       const failed = r.deny !== undefined || r.isError
       const text = String(r.text ?? '')
+      const head = text.slice(0, ERROR_HEAD)
       const error = failed ? mask(String(r.deny ?? text).slice(0, ERROR_HEAD)).slice(0, 2000) : undefined
       const at = await $.clock.now()
       const output = String(r.text ?? (r.result as { stdout?: string } | undefined)?.stdout ?? '')
@@ -725,15 +725,15 @@ export const register: Register = on => {
       if (sameTurn && r.deny === undefined && scopes.length > 0) await noteTestRun($, turn)
       // Project docs only: not memory files, files outside the project, or .txt (requirements.txt, CMakeLists.txt).
       if (touched && cat === 'read' && isDoc(touched) && !/\.txt$/i.test(touched) && !isMemoryPath(touched) && relPath(touched, cwd) !== undefined && e.agentId === undefined && sameTurn) turn.docs.add(touched)
-      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(text.slice(0, ERROR_HEAD)).slice(0, 300)}` : 'ok'}`].slice(-40)
+      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(head).slice(0, 300)}` : 'ok'}`].slice(-40)
       // Insights: how long it took, what it cost the context, where the main loop works.
       const ms = Math.max(0, at - startedAt)
       void debug($, 'tool.call', { tool: e.tool, cat, ms, agent: e.agentId !== undefined, denied: r.deny !== undefined, isError: r.isError })
       const wasAsked = askedCalls.delete(callId)
       const callKey = `${e.tool} ${brief(e)}`.trim().slice(0, 80)
-      const sig = r.isError && r.deny === undefined ? errSig(text.slice(0, ERROR_HEAD)) : undefined
+      const sig = r.isError && r.deny === undefined ? errSig(head) : undefined
       const resultTokens = e.agentId === undefined && !failed ? estTokens(text) : 0
-      if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), text.slice(0, ERROR_HEAD), r.isError ? 0 : estTokens(text))
+      if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), head, r.isError ? 0 : estTokens(text))
       if (touched && cat === 'edit' && isMemoryPath(touched)) queueMemoryCheck($)
       if (touched && cat === 'edit' && touched.endsWith('/settings.json')) {
         await loadOptions($).catch(() => undefined)
