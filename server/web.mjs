@@ -2,11 +2,10 @@ import { spawn, spawnSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, get, request } from 'node:http'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { kiroHome, kiroHost, readKiro } from './kiro.mjs'
+import { kiroHome, kiroHost, readKiro, stateDir } from './kiro.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
@@ -48,7 +47,7 @@ function stampOfFiles() {
 // It never leaves this file and the processes that read it: `ensure` and the server prove to each other that they hold it, and what a session or a tab sends is made for one server run or cannot be turned back into it.
 // The same file whatever CLAUDE_CONFIG_DIR says, so sessions with different ones still share a server.
 function readToken() {
-  const path = process.env.AGENTMON_WEB_TOKEN_FILE || join(homedir(), '.claude', 'agentmon-live', 'web.token')
+  const path = process.env.AGENTMON_WEB_TOKEN_FILE || join(stateDir(), 'web.token')
   const read = () => {
     try {
       return readFileSync(path, 'utf8').trim()
@@ -313,8 +312,10 @@ function serve(port, fixture, isOpen) {
       // The page calls a session silent after 45 s without a snapshot, so an idle chat is still sent, but not every 2 s.
       const mark = JSON.stringify({ ...snapshot, now: 0 })
       const isDue = had?.mark !== mark || now - had.sentAt > KIRO_RESEND_MS
-      if (isDue) broadcast('snapshot', packed(id, JSON.stringify(snapshot)))
-      sessions.set(id, { json: JSON.stringify(snapshot), at: now, isKiro: true, mark, sentAt: isDue ? now : had.sentAt })
+      // A tab that connects in between gets the last one sent: as old as what the other tabs hold.
+      const json = isDue ? JSON.stringify(snapshot) : had.json
+      if (isDue) broadcast('snapshot', packed(id, json))
+      sessions.set(id, { json, at: now, isKiro: true, mark, sentAt: isDue ? now : had.sentAt })
     }
   }, envMs('AGENTMON_KIRO_POLL_MS', 2000))
   // A named event, not an SSE comment: the page must see it to notice a connection that hangs without closing. Empty data would not dispatch.

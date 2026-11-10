@@ -7,6 +7,7 @@ write one small file and start one `node` process. Standard library only.
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -25,7 +26,7 @@ def find_node():
     home = str(Path.home())
     managed = sorted(
         glob.glob(home + "/.nvm/versions/node/*/bin/node") + glob.glob(home + "/.local/share/fnm/node-versions/*/installation/bin/node"),
-        key=os.path.getmtime,
+        key=lambda path: [int(n) for n in re.findall(r"\d+", path[len(home):])],
         reverse=True,
     )
     for path in managed + [home + "/.volta/bin/node", "/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]:
@@ -43,10 +44,22 @@ def gateway_port(argv=None):
     return 5476
 
 
+def start_of(pid):
+    # When the system started the process, on Linux: the server tells this gateway from a later process with its pid.
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        return int(stat[stat.rindex(")") + 2 :].split(" ")[19])
+    except Exception:
+        return None
+
+
 def write_state(pid, port):
     STATE.parent.mkdir(parents=True, exist_ok=True)
     tmp = STATE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"pid": pid, "origins": [f"http://127.0.0.1:{port}", f"http://localhost:{port}"]}))
+    state = {"pid": pid, "origins": [f"http://127.0.0.1:{port}", f"http://localhost:{port}"]}
+    if start_of(pid) is not None:
+        state["start"] = start_of(pid)
+    tmp.write_text(json.dumps(state))
     os.replace(tmp, STATE)
 
 

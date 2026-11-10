@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { foldCrewLog, readKiro, toolText } from '../../server/kiro.mjs'
+import { foldCrewLog, LABELS, readKiro, toolText } from '../../server/kiro.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -87,6 +87,16 @@ test('closed chats, long idle ones and a missing folder list nothing; a half-wri
   appendFileSync(file, `\n${JSON.stringify({ type: 'turn/started', time: Date.now() - 120_000, data: { turn: 4 } })}\n`)
   utimesSync(file, new Date(Date.now() - 120_000), new Date(Date.now() - 120_000))
   assert.equal(readKiro(dir, Date.now(), 60_000, cache)[0][1].main.turnLive, true)
+  // A chat whose folder is gone is forgotten.
+  cache.set('gone/log.jsonl', {})
+  readKiro(dir, Date.now(), 60_000, cache)
+  assert.deepEqual([...cache.keys()], [file])
+})
+
+test('a chat carries the words the page prints, as a mod session does in English', () => {
+  const { page, ...labels } = JSON.parse(readFileSync(join(HERE, '../fixtures/snapshot.json'), 'utf8')).labels
+  assert.deepEqual(LABELS, labels)
+  assert.equal(foldCrewLog(entries, NOW).snapshot.labels, LABELS)
 })
 
 function events(port, isDone) {

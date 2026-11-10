@@ -35,6 +35,9 @@ test('the host file counts only for a live gateway, and only loopback pages may 
   const gone = spawnSync(process.execPath, ['-e', '']).pid
   writeFileSync(file, JSON.stringify({ pid: gone, origins: ['http://127.0.0.1:5476'] }))
   assert.equal(kiroHost(file), undefined)
+  // Another process that got the gateway's pid started at another time.
+  writeFileSync(file, JSON.stringify({ pid: process.pid, start: 1, origins: ['http://127.0.0.1:5476'] }))
+  assert.equal(kiroHost(file), process.platform === 'linux' ? undefined : { pid: process.pid, origins: ['http://127.0.0.1:5476'] })
   writeFileSync(file, 'not json')
   assert.equal(kiroHost(file), undefined)
   assert.equal(kiroHost(join(dir, 'none.json')), undefined)
@@ -77,7 +80,9 @@ test('the start hook writes the host file and the stop hook removes only its own
   const run = code => spawnSync('python3', ['-c', `import importlib.util, sys\nspec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(ROOT, 'kiro/hooks.py'))})\nh = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(h)\n${code}`], { env: { ...process.env, AGENTMON_KIRO_FILE: file }, encoding: 'utf8' })
   const wrote = run('import os\nh.write_state(os.getpid(), h.gateway_port(["gw", "--port", "6000"]))\nprint(os.getpid())')
   assert.equal(wrote.status, 0, wrote.stderr)
-  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { pid: Number(wrote.stdout), origins: ['http://127.0.0.1:6000', 'http://localhost:6000'] })
+  const { start, ...state } = JSON.parse(readFileSync(file, 'utf8'))
+  assert.deepEqual(state, { pid: Number(wrote.stdout), origins: ['http://127.0.0.1:6000', 'http://localhost:6000'] })
+  assert.equal(typeof start, process.platform === 'linux' ? 'number' : 'undefined')
   assert.equal(run('h.on_shutdown()').status, 0)
   assert.ok(existsSync(file), 'another process wrote it')
   writeFileSync(file, 'not json')

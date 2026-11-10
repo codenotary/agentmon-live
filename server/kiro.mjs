@@ -4,6 +4,18 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 export const kiroHome = () => process.env.KIROCREW_HOME ?? join(homedir(), '.kiro', 'crew')
+// Where the server keeps its own files: the account's secret, and the Kiro Crew app's note.
+export const stateDir = () => join(homedir(), '.claude', 'agentmon-live')
+const sidePath = (home, slot) => join(home, 'sessions', `dashboard_${slot}.jsonl`)
+// The page prints these as they come; a mod's session sends them in its own language.
+export const LABELS = {
+  main: 'main session',
+  status: { running: 'running', waiting: 'waiting', done: 'done', error: 'error', cancelled: 'cancelled' },
+  check: { test: 'tests', lint: 'lint', typecheck: 'types', build: 'build' },
+  cat: { git: 'git', shell: 'shell', edit: 'edit' },
+  buckets: { model: 'model', shell: 'shell', edit: 'edit', read: 'read files', you: 'waiting on you', idle: 'between steps', agents: 'agents' },
+  result: { ok: 'ok', failed: 'failed', unknown: 'unknown', running: 'running' },
+}
 
 const WHO = 'main session'
 const KEEP = 500
@@ -30,7 +42,7 @@ export function foldCrewLog(entries, now, text = new Map()) {
     session: { id: String(head.id ?? ''), cwd: String(head.cwd ?? '') },
     now,
     lang: 'en',
-    labels: {},
+    labels: LABELS,
     main: { model: '', effort: '' },
     build: `Kiro Crew${head.agent ? ` · ${head.agent}` : ''}`,
     focus: [],
@@ -149,7 +161,7 @@ export function toolText(home, slot) {
   const text = new Map()
   if (!/^[\w-]+$/.test(String(slot))) return text
   try {
-    for (const row of lines(readFileSync(join(home, 'sessions', `dashboard_${slot}.jsonl`), 'utf8'))) {
+    for (const row of lines(readFileSync(sidePath(home, slot), 'utf8'))) {
       if (row.role !== 'tool' || !row.meta?.tool_call_id) continue
       let input = row.meta.input
       // An edit's input is a diff whose first line names the file; other tools send JSON.
@@ -177,40 +189,60 @@ export function readKiro(home, now, idleMs, cache = new Map()) {
     return []
   }
   const out = []
+  const seen = new Set()
   for (const dir of dirs) {
     try {
       const file = join(root, dir, 'log.jsonl')
       const stat = statSync(file)
+      seen.add(file)
       let hit = cache.get(file)
       let side = ''
       try {
-        if (hit?.slot) side = String(statSync(join(home, 'sessions', `dashboard_${hit.slot}.jsonl`)).mtimeMs)
+        if (hit?.slot) side = String(statSync(sidePath(home, hit.slot)).mtimeMs)
       } catch {}
-      if (!hit || hit.size !== stat.size || hit.side !== side) {
+      const isSame = hit && hit.size === stat.size && hit.side === side
+      // A chat that is closed or idle stays so until its log grows: nothing to fold.
+      if (isSame && (hit.isClosed || (!hit.isLive && now - stat.mtimeMs > idleMs))) continue
+      if (!isSame) {
         const entries = lines(readFileSync(file, 'utf8'))
         const slot = entries[0]?.slot
         hit = { size: stat.size, side, slot, entries, text: toolText(home, slot) }
         cache.set(file, hit)
       }
       const { snapshot, isClosed, isLive } = foldCrewLog(hit.entries, now, hit.text)
+      Object.assign(hit, { isClosed, isLive })
+      // A closed chat's entries are not needed again.
+      if (isClosed) Object.assign(hit, { entries: [], text: new Map() })
       if (isClosed || !/^[\w-]{1,80}$/.test(snapshot.session.id)) continue
       if (!isLive && now - stat.mtimeMs > idleMs) continue
       out.push([snapshot.session.id, snapshot])
     } catch {}
   }
+  for (const file of cache.keys()) if (!seen.has(file)) cache.delete(file)
   return out
 }
 
 // Written by the Kiro Crew app's start hook (`kiro/hooks.py`): the gateway's pid and the pages that may frame this one.
-export const kiroHostFile = () => process.env.AGENTMON_KIRO_FILE || join(homedir(), '.claude', 'agentmon-live', 'kiro.json')
+export const kiroHostFile = () => process.env.AGENTMON_KIRO_FILE || join(stateDir(), 'kiro.json')
+
+// When the system started a process, in its own ticks: tells a gateway from a later process that got its pid. Linux only.
+export function startOf(pid) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    return Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]) || undefined
+  } catch {
+    return undefined
+  }
+}
 
 // The gateway that asked for this server, while it runs. A gateway that was killed leaves the file behind, so the pid decides.
-// shortcut: a pid the system gave to another process reads as a live gateway until that one exits; add the start time if it shows.
+// shortcut: off Linux there is no start time, so a pid the system gave to another process reads as a live gateway until that one exits.
 export function kiroHost(file = kiroHostFile()) {
   try {
-    const { pid, origins } = JSON.parse(readFileSync(file, 'utf8'))
+    const { pid, start, origins } = JSON.parse(readFileSync(file, 'utf8'))
     if (!Number.isInteger(pid) || pid <= 1) return undefined
     process.kill(pid, 0)
+    if (start !== undefined && start !== startOf(pid)) return undefined
     return { pid, origins: (Array.isArray(origins) ? origins : []).filter(o => /^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}$/.test(o)).slice(0, 4) }
   } catch {
     return undefined

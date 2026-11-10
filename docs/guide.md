@@ -98,7 +98,7 @@ Every running session on the machine shares one server. With more than one runni
 - **Start with Kiro Crew:** install this repo as a Kiro Crew app. The server then starts whenever Kiro Crew starts, stays up as long as it runs, and Kiro Crew gets an **AgentMon** tab in the chat side panel ("+" menu) and an **AgentMon Live** page, both showing the web view with every session.
   - From a clone: `kirocrew app install /path/to/agentmon-live`, then enable **AgentMon Live** in Kiro Crew's apps.
   - From GitHub: add `https://github.com/codenotary/agentmon-live` as a registry (Settings, Security, Trust), then install **AgentMon Live** from the store.
-  - Kiro Crew asks you to trust the app before its code runs. That code is `kiro/hooks.py`, under 90 lines of standard-library Python that run inside Kiro Crew's gateway with its rights: it writes `~/.claude/agentmon-live/kiro.json` (the gateway's process id and address) and starts `node server/web.mjs ensure 47311`. Read it before you say yes.
+  - Kiro Crew asks you to trust the app before its code runs. That code is `kiro/hooks.py`, about 100 lines of standard-library Python that run inside Kiro Crew's gateway with its rights: it writes `~/.claude/agentmon-live/kiro.json` (the gateway's process id and address) and starts `node server/web.mjs ensure 47311`. Read it before you say yes.
   - It needs `node`, found on your `PATH` or under nvm, fnm, Volta or Homebrew.
   - The tab shows every session, not only the chat it sits beside: Kiro Crew does not tell an app which chat a tab belongs to. It expects the server on port 47311.
   - Only Kiro Crew's own page may frame the web view, and only while its gateway runs. After Kiro Crew quits, the server stops a minute after its last session.
