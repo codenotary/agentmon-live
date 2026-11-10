@@ -775,7 +775,8 @@ test('a reload settles calls, checks and subagents nobody will report back', asy
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await $.agent.spawn({ ...SPAWN, tool_use_id: 't1' })
-  void $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 'u1' })
+  // Abandoned on purpose: the kit rejects it once the test is over.
+  $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 'u1' }).catch(() => {})
   listed = []
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 

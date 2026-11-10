@@ -358,8 +358,10 @@ export async function stopWeb($: EngineInterface, sessionId: string): Promise<vo
   await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: jsonHeaders() })
 }
 
-export async function openBrowser($: EngineInterface): Promise<boolean> {
-  if (!cfg.webUrl) return false
-  const r = await $.process.run(['node', serverScript($), 'open', await openLink($)], { timeoutMs: 10_000 }).catch(() => undefined)
-  return r?.exitCode === 0
+// With the link it tried, for the person to open by hand when no browser came up.
+export async function openBrowser($: EngineInterface): Promise<{ isOpen: boolean; link: string }> {
+  if (!cfg.webUrl) return { isOpen: false, link: '' }
+  const link = await openLink($)
+  const r = await $.process.run(['node', serverScript($), 'open', link], { timeoutMs: 10_000 }).catch(() => undefined)
+  return { isOpen: r?.exitCode === 0, link }
 }

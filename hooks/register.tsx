@@ -21,7 +21,7 @@ import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize
 import { drawBand, drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadOptions } from './options'
-import { forgetTurns, openBrowser, openLink, setPane, startWeb, stopWeb } from './web'
+import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
 import type { View } from '../types'
 
 
@@ -416,7 +416,8 @@ export const register: Register = on => {
     if (arg === 'open') {
       if (!cfg.webOn) return { text: cfg.web ? t.web.nextSession : t.web.off }
       if (!cfg.webUrl) return { text: t.web.failed }
-      return { text: (await openBrowser($)) ? t.web.opened(cfg.webUrl) : t.web.noBrowser(await openLink($)) }
+      const { isOpen, link } = await openBrowser($)
+      return { text: isOpen ? t.web.opened(cfg.webUrl) : t.web.noBrowser(link) }
     }
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
@@ -595,8 +596,7 @@ export const register: Register = on => {
     const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)
     const who = e.agentId === undefined ? t.mainSession : (caller?.type ?? e.agentId)
     const model = e.agentId === undefined ? m.model : caller?.model
-    const edit = e as { file_path?: string; notebook_path?: string }
-    const path = edit.file_path ?? edit.notebook_path
+    const path = pathOf(e)
     const id = e.agentId
     let agentFiles = 0
     if (id !== undefined) {
@@ -680,8 +680,8 @@ export const register: Register = on => {
     $.clock.after(0, async () => {
       const failed = r.deny !== undefined || r.isError
       const text = String(r.text ?? '')
-      const head = text.slice(0, ERROR_HEAD)
-      const error = failed ? mask(String(r.deny ?? text).slice(0, ERROR_HEAD)).slice(0, 2000) : undefined
+      const head = mask(text.slice(0, ERROR_HEAD))
+      const error = failed ? (r.deny === undefined ? head : mask(String(r.deny).slice(0, ERROR_HEAD))).slice(0, 2000) : undefined
       const at = await $.clock.now()
       const output = String(r.text ?? (r.result as { stdout?: string } | undefined)?.stdout ?? '')
       // A denied or aborted run says nothing about the code; a failed one with one kind of check failed at it; past a pipe the output decides.
@@ -725,7 +725,7 @@ export const register: Register = on => {
       if (sameTurn && r.deny === undefined && scopes.length > 0) await noteTestRun($, turn)
       // Project docs only: not memory files, files outside the project, or .txt (requirements.txt, CMakeLists.txt).
       if (touched && cat === 'read' && isDoc(touched) && !/\.txt$/i.test(touched) && !isMemoryPath(touched) && relPath(touched, cwd) !== undefined && e.agentId === undefined && sameTurn) turn.docs.add(touched)
-      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(head).slice(0, 300)}` : 'ok'}`].slice(-40)
+      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${head.slice(0, 300)}` : 'ok'}`].slice(-40)
       // Insights: how long it took, what it cost the context, where the main loop works.
       const ms = Math.max(0, at - startedAt)
       void debug($, 'tool.call', { tool: e.tool, cat, ms, agent: e.agentId !== undefined, denied: r.deny !== undefined, isError: r.isError })

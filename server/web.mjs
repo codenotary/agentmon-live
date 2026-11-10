@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, get, request } from 'node:http'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -55,12 +55,15 @@ function readToken() {
   }
   if (!TOKEN.test(read())) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
-    // `wx` first: of two servers starting together, the second reads the first one's.
+    // Put in place whole: of two servers starting together, the second reads the first one's, never a half-written one.
+    const draft = `${path}.${process.pid}`
+    writeFileSync(draft, randomBytes(32).toString('hex'), { mode: 0o600 })
     try {
-      writeFileSync(path, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 })
+      linkSync(draft, path)
     } catch {
-      if (!TOKEN.test(read())) writeFileSync(path, randomBytes(32).toString('hex'), { mode: 0o600 })
+      if (!TOKEN.test(read())) renameSync(draft, path)
     }
+    rmSync(draft, { force: true })
   }
   return read()
 }
@@ -134,7 +137,7 @@ function serve(port, fixture, isOpen) {
     return true
   }
   const isSessionWrite = (req, res) => isWriteAllowed(req) && isSession(req, res)
-  const isReader =(req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
+  const isReader = (req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
   const isSameUser = req => {
     const uid = peerUid(req.socket)
     return uid !== undefined && uid === process.getuid()
@@ -297,46 +300,44 @@ function serve(port, fixture, isOpen) {
   server.listen(port, '127.0.0.1')
 }
 
+// A local JSON GET with a size cap: the port may be held by anything. `code` is why nothing answered.
 // No shared agent: a kept-alive socket to a server that just quit would read as a port someone else holds.
-function probe(port) {
+function getJson(port, path, headers = {}) {
   return new Promise(resolve => {
-    const req = get({ host: '127.0.0.1', port, path: '/health', timeout: 1000, agent: false }, res => {
+    const req = get({ host: '127.0.0.1', port, path, headers, timeout: 1000, agent: false }, res => {
       let text = ''
-      res.on('data', d => (text += d))
+      res.on('data', d => {
+        text += d
+        if (text.length > 65_536) req.destroy()
+      })
       res.on('end', () => {
         try {
-          const { name, stamp, isLocked, boot } = JSON.parse(text)
-          // A server from before the stamp cannot be told to quit: leave it to idle out, on its port.
-          resolve(name === NAME && typeof stamp === 'number' ? { state: 'ours', stamp, isLocked, boot: String(boot ?? '') } : { state: 'other' })
+          resolve({ json: JSON.parse(text) })
         } catch {
-          resolve({ state: 'other' })
+          resolve({})
         }
       })
+      res.on('close', () => resolve({}))
     })
     req.on('timeout', () => req.destroy())
-    req.on('error', e => resolve({ state: e.code === 'ECONNREFUSED' ? 'free' : 'other' }))
+    req.on('error', e => resolve({ code: e.code }))
   })
 }
 
+async function probe(port) {
+  const { json, code } = await getJson(port, '/health')
+  const { name, stamp, isLocked, boot } = json ?? {}
+  // A server from before the stamp cannot be told to quit: leave it to idle out, on its port.
+  if (name === NAME && typeof stamp === 'number') return { state: 'ours', stamp, isLocked, boot: String(boot ?? '') }
+  return { state: code === 'ECONNREFUSED' ? 'free' : 'other' }
+}
+
 // This run's key and mark, from a server that proved it holds the account's secret; undefined from any other.
-function handshake(port, boot, token) {
+async function handshake(port, boot, token) {
   const nonce = randomBytes(16).toString('hex')
-  return new Promise(resolve => {
-    const req = get({ host: '127.0.0.1', port, path: '/key', timeout: 1000, agent: false, headers: { 'x-agentmon-nonce': nonce, 'x-agentmon-proof': sign(token, `client:${port}:${boot}:${nonce}`) } }, res => {
-      let text = ''
-      res.on('data', d => (text += d))
-      res.on('end', () => {
-        try {
-          const { key, mark, proof } = JSON.parse(text)
-          resolve(TOKEN.test(key) && TOKEN.test(mark) && isSame(proof, sign(token, `server:${port}:${boot}:${nonce}:${key}:${mark}`)) ? { key, mark } : undefined)
-        } catch {
-          resolve(undefined)
-        }
-      })
-    })
-    req.on('timeout', () => req.destroy())
-    req.on('error', () => resolve(undefined))
-  })
+  const { json } = await getJson(port, '/key', { 'x-agentmon-nonce': nonce, 'x-agentmon-proof': sign(token, `client:${port}:${boot}:${nonce}`) })
+  const { key, mark, proof } = json ?? {}
+  return TOKEN.test(key) && TOKEN.test(mark) && isSame(proof, sign(token, `server:${port}:${boot}:${nonce}:${key}:${mark}`)) ? { key, mark } : undefined
 }
 
 function askToQuit(port, boot, token) {
