@@ -87,10 +87,22 @@ test('closed chats, long idle ones and a missing folder list nothing; a half-wri
   appendFileSync(file, `\n${JSON.stringify({ type: 'turn/started', time: Date.now() - 120_000, data: { turn: 4 } })}\n`)
   utimesSync(file, new Date(Date.now() - 120_000), new Date(Date.now() - 120_000))
   assert.equal(readKiro(dir, Date.now(), 60_000, cache)[0][1].main.turnLive, true)
+  // Not for ever: a chat that crashed in its turn never ends it.
+  utimesSync(file, new Date(Date.now() - 300_000), new Date(Date.now() - 300_000))
+  assert.deepEqual(readKiro(dir, Date.now(), 60_000, cache), [])
+  assert.deepEqual(readKiro(dir, Date.now(), 60_000), [])
+  utimesSync(file, new Date(Date.now() - 120_000), new Date(Date.now() - 120_000))
   // A chat whose folder is gone is forgotten.
   cache.set('gone/log.jsonl', {})
   readKiro(dir, Date.now(), 60_000, cache)
   assert.deepEqual([...cache.keys()], [file])
+})
+
+test('a turn that never reported its end is closed by the next one', () => {
+  const at = t => ({ type: 'turn/started', time: t, data: {} })
+  const { snapshot, isLive } = foldCrewLog([entries[0], at(1000), at(4000)], 9000)
+  assert.deepEqual(snapshot.turns.map(t => [t.wallMs, Boolean(t.isLive)]), [[3000, false], [5000, true]])
+  assert.equal(isLive, true)
 })
 
 test('a chat carries the words the page prints, as a mod session does in English', () => {

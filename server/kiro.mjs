@@ -6,6 +6,7 @@ import { join } from 'node:path'
 export const kiroHome = () => process.env.KIROCREW_HOME ?? join(homedir(), '.kiro', 'crew')
 // Where the server keeps its own files: the account's secret, and the Kiro Crew app's note.
 export const stateDir = () => join(homedir(), '.claude', 'agentmon-live')
+const LIVE_PATIENCE = 4
 const sidePath = (home, slot) => join(home, 'sessions', `dashboard_${slot}.jsonl`)
 // The page prints these as they come; a mod's session sends them in its own language.
 export const LABELS = {
@@ -83,6 +84,12 @@ export function foldCrewLog(entries, now, text = new Map()) {
     } else if (e.type === 'message/sent') {
       if (turn && d.text) turn.answer = String(d.text).slice(0, ANSWER_CUT)
     } else if (e.type === 'turn/started') {
+      // A turn that never reported its end is over once the next one starts.
+      if (turn) {
+        turn.wallMs = Math.max(0, at - turn.startedAt)
+        turn.buckets.model = modelMs(turn)
+        delete turn.isLive
+      }
       // A turn a subagent's report started has that report as its message, not something the person typed.
       turn = { startedAt: at, wallMs: 0, buckets: {}, isLive: true, prompt: d.actor && d.actor !== 'user' ? undefined : prompt }
       prompt = undefined
@@ -200,21 +207,21 @@ export function readKiro(home, now, idleMs, cache = new Map()) {
       try {
         if (hit?.slot) side = String(statSync(sidePath(home, hit.slot)).mtimeMs)
       } catch {}
+      // A long tool call writes nothing, so a turn under way gets more time; a chat that crashed in one still leaves.
+      const isStale = isLive => now - stat.mtimeMs > idleMs * (isLive ? LIVE_PATIENCE : 1)
       const isSame = hit && hit.size === stat.size && hit.side === side
       // A chat that is closed or idle stays so until its log grows: nothing to fold.
-      if (isSame && (hit.isClosed || (!hit.isLive && now - stat.mtimeMs > idleMs))) continue
-      if (!isSame) {
-        const entries = lines(readFileSync(file, 'utf8'))
-        const slot = entries[0]?.slot
-        hit = { size: stat.size, side, slot, entries, text: toolText(home, slot) }
-        cache.set(file, hit)
-      }
+      if (isSame && (hit.isClosed || isStale(hit.isLive))) continue
+      // The transcript beside the log is rewritten every few seconds; the log is read again only when it grew.
+      if (hit?.size !== stat.size) hit = { size: stat.size, entries: lines(readFileSync(file, 'utf8')) }
+      if (hit.side !== side || !hit.text) Object.assign(hit, { side, slot: hit.entries[0]?.slot, text: toolText(home, hit.entries[0]?.slot) })
+      cache.set(file, hit)
       const { snapshot, isClosed, isLive } = foldCrewLog(hit.entries, now, hit.text)
       Object.assign(hit, { isClosed, isLive })
       // A closed chat's entries are not needed again.
       if (isClosed) Object.assign(hit, { entries: [], text: new Map() })
       if (isClosed || !/^[\w-]{1,80}$/.test(snapshot.session.id)) continue
-      if (!isLive && now - stat.mtimeMs > idleMs) continue
+      if (isStale(isLive)) continue
       out.push([snapshot.session.id, snapshot])
     } catch {}
   }

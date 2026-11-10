@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { kiroHost } from '../../server/kiro.mjs'
+import { kiroHost, startOf } from '../../server/kiro.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const dir = mkdtempSync(join(tmpdir(), 'agentmon-kiro-app-'))
@@ -83,6 +83,8 @@ test('the start hook writes the host file and the stop hook removes only its own
   const { start, ...state } = JSON.parse(readFileSync(file, 'utf8'))
   assert.deepEqual(state, { pid: Number(wrote.stdout), origins: ['http://127.0.0.1:6000', 'http://localhost:6000'] })
   assert.equal(typeof start, process.platform === 'linux' ? 'number' : 'undefined')
+  // The hook writes a start time and the server reads one: both must mean the same for one process.
+  assert.equal(Number(run(`print(h.start_of(${process.pid}))`).stdout) || undefined, startOf(process.pid))
   assert.equal(run('h.on_shutdown()').status, 0)
   assert.ok(existsSync(file), 'another process wrote it')
   writeFileSync(file, 'not json')

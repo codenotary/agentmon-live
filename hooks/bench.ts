@@ -3,7 +3,7 @@ import { decimal, findCheck, kilo } from './format'
 import { isDoc } from './gate'
 import { LANGUAGES } from './i18n'
 import type { Strings } from './i18n'
-import { median, pathOf } from './insights'
+import { fileOf, median } from './insights'
 import { LEARN } from './learn-strings'
 import { cfg } from './state'
 
@@ -182,7 +182,7 @@ export function benchOf(text: string | Entry[]): Bench {
         if (c?.type !== 'tool_use') continue
         p.tools += 1
         seq += 1
-        const file = pathOf(c.input ?? {})
+        const file = fileOf(c.input ?? {})
         if (EDIT_TOOLS.has(c.name) && file && !isDoc(file)) {
           p.edits.set(file, (p.edits.get(file) ?? 0) + 1)
           p.lastEdit = seq

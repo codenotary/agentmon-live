@@ -16,7 +16,7 @@ import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, not
 import { brief, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
-import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
+import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, fileOf, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawBand, drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
@@ -596,7 +596,7 @@ export const register: Register = on => {
     const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)
     const who = e.agentId === undefined ? t.mainSession : (caller?.type ?? e.agentId)
     const model = e.agentId === undefined ? m.model : caller?.model
-    const path = pathOf(e)
+    const path = fileOf(e)
     const id = e.agentId
     let agentFiles = 0
     if (id !== undefined) {

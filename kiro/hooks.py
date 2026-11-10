@@ -54,11 +54,11 @@ def start_of(pid):
 
 
 def write_state(pid, port):
-    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     tmp = STATE.with_suffix(".tmp")
     state = {"pid": pid, "origins": [f"http://127.0.0.1:{port}", f"http://localhost:{port}"]}
-    if start_of(pid) is not None:
-        state["start"] = start_of(pid)
+    if (start := start_of(pid)) is not None:
+        state["start"] = start
     tmp.write_text(json.dumps(state))
     os.replace(tmp, STATE)
 

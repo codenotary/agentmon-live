@@ -111,11 +111,17 @@ export function areaOf(path: string, cwd: string): string {
   return dirs.slice(0, CONTAINERS.has(dirs[0] ?? '') ? 2 : 1).join('/')
 }
 
-// The path a call works on, if it names one.
-export function pathOf(call: object): string | undefined {
+// The file a call reads or edits, if it names one.
+export function fileOf(call: object): string | undefined {
   const a = call as Record<string, unknown>
-  const v = a.file_path ?? a.notebook_path ?? a.path
+  const v = a.file_path ?? a.notebook_path
   return typeof v === 'string' && v ? v : undefined
+}
+
+// The path a call works on, if it names one: its file, or the folder a search looks in.
+export function pathOf(call: object): string | undefined {
+  const v = (call as Record<string, unknown>).path
+  return fileOf(call) ?? (typeof v === 'string' && v ? v : undefined)
 }
 
 // Keep the `n` keys with the highest counts, so a long session's maps stay small.

@@ -93,7 +93,7 @@ Every running session on the machine shares one server. With more than one runni
 
 - **What you see:** the turns with where their time went, each tool call with its duration and result, calls waiting for your approval, subagents, the task list, the context gauge, tokens, and your prompts and the answers.
 - **What stays empty:** the done gate, Focus, verification, files and learning, which come from the mod's own hooks in a Claude Code session. Cost in dollars is not shown. kiro-cli reports credits in place of tokens and cost: the Session cost tile then reads **Credits**, the chat's total, and the token numbers and Cache hit stay empty. Subagents have no token counts.
-- **When it leaves:** when the chat is closed or reset in Kiro Crew, or 30 minutes after its last entry while no turn runs.
+- **When it leaves:** when the chat is closed or reset in Kiro Crew, or 30 minutes after its last entry. A turn under way gets two hours, since a long tool call writes nothing.
 - **A chat on the Claude Code harness** loads the mod itself and shows in full, once, under the same entry.
 - **Start with Kiro Crew:** install this repo as a Kiro Crew app. The server then starts whenever Kiro Crew starts, stays up as long as it runs, and Kiro Crew gets an **AgentMon** tab in the chat side panel ("+" menu) and an **AgentMon Live** page, both showing the web view with every session.
   - From a clone: `kirocrew app install /path/to/agentmon-live`, then enable **AgentMon Live** in Kiro Crew's apps.
@@ -101,6 +101,7 @@ Every running session on the machine shares one server. With more than one runni
   - Kiro Crew asks you to trust the app before its code runs. That code is `kiro/hooks.py`, about 100 lines of standard-library Python that run inside Kiro Crew's gateway with its rights: it writes `~/.claude/agentmon-live/kiro.json` (the gateway's process id and address) and starts `node server/web.mjs ensure 47311`. Read it before you say yes.
   - It needs `node`, found on your `PATH` or under nvm, fnm, Volta or Homebrew.
   - The tab shows every session, not only the chat it sits beside: Kiro Crew does not tell an app which chat a tab belongs to. It expects the server on port 47311.
+  - The tab works on Linux, where the server can tell that the page belongs to your account. On macOS and Windows it stays empty unless `webToken` is `off`; open the web view in a browser there.
   - Only Kiro Crew's own page may frame the web view, and only while its gateway runs. After Kiro Crew quits, the server stops a minute after its last session.
 - **Without the app and with no Claude Code session open** nothing starts the server. Start it yourself: `node /path/to/agentmon-live/server/web.mjs ensure 47311`. A Kiro Crew script hook cannot: Kiro Crew runs hooks in its sandbox, which hides the crew log and has no `node` on its `PATH`.
 - **Web view only:** the pane is part of Claude Code.
