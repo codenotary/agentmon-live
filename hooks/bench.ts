@@ -16,7 +16,7 @@ export const PROMPT_CHURN_EDITS = 4
 // A column needs this many sessions before its numbers say anything.
 export const MIN_BENCH = 5
 const WEEK_MS = 7 * 24 * 3600_000
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+export const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 // The first line of the done gate's Stop reason, in every language, to find it in a transcript.
 const GATE = Object.values(LANGUAGES).map(l => l.gateReason('').split('\n')[0] ?? '')
 

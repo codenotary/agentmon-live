@@ -100,6 +100,8 @@ function reply(res, status, type, body, extra = {}) {
   res.end(body)
 }
 
+const forbid = res => reply(res, 403, 'text/plain', 'forbidden')
+
 // A session and a browser tab each reach the server by these names only: a rebound domain carries its own.
 function isOurHost(host, port) {
   return host === `127.0.0.1:${port}` || host === `localhost:${port}`
@@ -131,7 +133,8 @@ function serve(port, fixture, isOpen) {
     res.setHeader('x-agentmon-mark', mark)
     return true
   }
-  const isReader = (req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
+  const isSessionWrite = (req, res) => isWriteAllowed(req) && isSession(req, res)
+  const isReader =(req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
   const isSameUser = req => {
     const uid = peerUid(req.socket)
     return uid !== undefined && uid === process.getuid()
@@ -169,7 +172,7 @@ function serve(port, fixture, isOpen) {
   if (fixture) sessions.set('fixture', { json: JSON.stringify(JSON.parse(readFileSync(fixture, 'utf8'))), at: Infinity })
 
   const server = createServer((req, res) => {
-    if (!isOurHost(req.headers.host, port)) return reply(res, 403, 'text/plain', 'forbidden')
+    if (!isOurHost(req.headers.host, port)) return forbid(res)
     const [path, query = ''] = (req.url ?? '/').split('?')
 
     if (req.method === 'GET') {
@@ -178,7 +181,7 @@ function serve(port, fixture, isOpen) {
       // `ensure` proves it holds the secret and gets this run's key, with a proof that the server holds it too. The port and the run are in both proofs: one caught on another port, or from another run, is no use here.
       if (path === '/key') {
         const nonce = String(req.headers['x-agentmon-nonce'] ?? '')
-        if (!isLocked || !/^[0-9a-f]{32}$/.test(nonce) || !isSame(req.headers['x-agentmon-proof'], sign(token, `client:${port}:${boot}:${nonce}`))) return reply(res, 403, 'text/plain', 'forbidden')
+        if (!isLocked || !/^[0-9a-f]{32}$/.test(nonce) || !isSame(req.headers['x-agentmon-proof'], sign(token, `client:${port}:${boot}:${nonce}`))) return forbid(res)
         return reply(res, 200, 'application/json', JSON.stringify({ key, mark, proof: sign(token, `server:${port}:${boot}:${nonce}:${key}:${mark}`) }))
       }
       const asset = assets.get(path)
@@ -188,7 +191,7 @@ function serve(port, fixture, isOpen) {
         return font ? reply(res, 200, 'font/woff2', font) : reply(res, 404, 'text/plain', 'not found')
       }
       if (path === '/events') {
-        if (!isReader(req, query)) return reply(res, 403, 'text/plain', 'forbidden')
+        if (!isReader(req, query)) return forbid(res)
         res.writeHead(200, { ...HEADERS, 'content-type': 'text/event-stream' })
         send(res, 'build', String(stamp))
         send(res, 'sessions', JSON.stringify([...sessions.keys()]))
@@ -202,24 +205,24 @@ function serve(port, fixture, isOpen) {
     }
 
     if (path === '/quit' && req.method === 'POST') {
-      if (!isWriteAllowed(req) || (isLocked && !isSame(req.headers['x-agentmon-proof'], sign(token, `quit:${port}:${boot}`)))) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isWriteAllowed(req) || (isLocked && !isSame(req.headers['x-agentmon-proof'], sign(token, `quit:${port}:${boot}`)))) return forbid(res)
       res.on('finish', () => process.exit(0))
       return reply(res, 204)
     }
 
     // A tab asks for its pass: given to a browser of this account, or for the one-time code in the address a session handed out.
     if (path === '/enter' && req.method === 'POST') {
-      if (!isOwnPage(req, port)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isOwnPage(req, port)) return forbid(res)
       const code = String(req.headers['x-agentmon-code'] ?? '')
       const isInvited = tickets.get(code) > Date.now()
       tickets.delete(code)
-      if (isLocked && !isInvited && !isSameUser(req)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (isLocked && !isInvited && !isSameUser(req)) return forbid(res)
       return reply(res, 200, 'application/json', JSON.stringify({ pass }))
     }
     // A session asks what the browser must open. Where the kernel names the account behind a connection, the plain address does; elsewhere it carries a code.
     // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if macOS or Windows machines are shared.
     if (path === '/ticket' && req.method === 'POST') {
-      if (!isWriteAllowed(req) || !isSession(req, res)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isSessionWrite(req, res)) return forbid(res)
       if (!isLocked || isSameUser(req)) return reply(res, 200, 'application/json', '{}')
       const now = Date.now()
       for (const [c, until] of tickets) if (until <= now || tickets.size >= KEEP_TICKETS) tickets.delete(c)
@@ -230,25 +233,25 @@ function serve(port, fixture, isOpen) {
 
     const asked = path.match(/^\/pane\/([\w-]{1,80})\/(open|close)$/)
     if (asked && req.method === 'POST') {
-      if (!isOwnPage(req, port) || !isReader(req, query)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isOwnPage(req, port) || !isReader(req, query)) return forbid(res)
       if (!sessions.has(asked[1])) return reply(res, 404, 'text/plain', 'not found')
       paneRequests.set(asked[1], asked[2] === 'open')
       return reply(res, 204)
     }
     const taken = path.match(/^\/pane\/([\w-]{1,80})$/)
     if (taken && req.method === 'POST') {
-      if (!isWriteAllowed(req) || !isSession(req, res)) return reply(res, 403, 'text/plain', 'forbidden')
+      if (!isSessionWrite(req, res)) return forbid(res)
       if (!sessions.has(taken[1])) return reply(res, 404)
-      const isOpen = paneRequests.get(taken[1])
+      const isPaneOpen = paneRequests.get(taken[1])
       paneRequests.delete(taken[1])
       // The count lets a session with no tab to draw for spare its work. A header, because an older session takes any 200 for a pane request.
       const seen = { 'x-clients': String(clients.size) }
-      return isOpen === undefined ? reply(res, 204, undefined, undefined, seen) : reply(res, 200, 'application/json', JSON.stringify({ isOpen }), seen)
+      return isPaneOpen === undefined ? reply(res, 204, undefined, undefined, seen) : reply(res, 200, 'application/json', JSON.stringify({ isOpen: isPaneOpen }), seen)
     }
 
     const match = /^\/state\/([\w-]{1,80})$/.exec(path)
     if (req.method !== 'POST' && req.method !== 'DELETE') return reply(res, 405, 'text/plain', 'method not allowed')
-    if (!isWriteAllowed(req) || !isSession(req, res)) return reply(res, 403, 'text/plain', 'forbidden')
+    if (!isSessionWrite(req, res)) return forbid(res)
     if (!match) return reply(res, 400, 'text/plain', 'bad session id')
     const id = match[1]
 
