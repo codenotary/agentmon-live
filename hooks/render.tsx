@@ -652,7 +652,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
 
   return (
     <Box flexDirection="column">
-      <Box gap={1}>
+      {/* Title on its own row: beside the keys it gets a narrow column and wraps word by word. */}
       <Text bold>
         AGENTMON LIVE · <Text color="#d97757">{modelName(m.model).toUpperCase()} {t.plans}</Text>
         {m.effort && <Text color="#d97757" bold={false}> ({m.effort})</Text>}
@@ -660,6 +660,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         {listening(adv.isOn) && <Text color="magenta"> · {t.watches}</Text>}
         {cfg.build && <Text dimColor bold={false}> {cfg.build}</Text>}
       </Text>
+      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
       <Button key="layout:switch" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, isClassic: !(l.isClassic ?? cfg.isClassic) }))}>
         {`◐ ${isClassic ? t.layoutClassic : t.layoutCalm}`}
       </Button>
