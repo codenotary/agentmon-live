@@ -73,8 +73,8 @@ test('the Kiro Crew app names files that exist and carries the plugin version', 
   assert.equal(app.version, JSON.parse(readFileSync(join(ROOT, '.claude-plugin/plugin.json'), 'utf8')).version)
   for (const hook of Object.values(app.backend.hooks)) assert.ok(existsSync(join(ROOT, `${hook.split(':')[0].replaceAll('.', '/')}.py`)), hook)
   for (const entry of [app.ui.entry, ...app.contributes.panelTabs.map(t => t.entry)]) assert.ok(existsSync(join(ROOT, 'ui', entry)), entry)
-  // Kiro Crew's library shows an installed app's logo from `iconPath` only.
-  assert.ok(existsSync(join(ROOT, app.iconPath)), app.iconPath)
+  // Kiro Crew's store and library show these from the repo; a path that moved leaves a blank card.
+  for (const art of [app.iconPath, app.heroImage, ...app.screenshots]) assert.ok(existsSync(join(ROOT, art)), art)
 })
 
 test('the start hook writes the host file and the stop hook removes only its own', { skip: spawnSync('python3', ['--version']).status !== 0 }, () => {
