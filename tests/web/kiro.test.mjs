@@ -51,14 +51,18 @@ test('a call, an approval and a subagent still open show as running', () => {
     { type: 'approval/requested', time: NOW - 5, data: { approval_id: 'ap1', tool: 'shell', reason: 'rm -rf build' } },
     { type: 'subagent/spawned', time: NOW - 4, data: { agent_id: 'sub1', agent: 'mate', task: 'look around' } },
     { type: 'subagent/spawned', time: NOW - 3, data: { agent_id: 'sub2' } },
-    { type: 'subagent/failed', time: NOW - 2, data: { agent_id: 'sub2', outcome: 'failed' } },
+    { type: 'subagent/failed', time: NOW - 2, data: { agent_id: 'sub2', outcome: 'failed', reason: 'Bedrock is throttling requests.' } },
     { type: 'plan/updated', time: NOW - 1, data: { items: [{ id: 1, text: 'count', state: 'done' }, { id: 2, text: 'report', state: 'open' }] } },
     { type: 'something/new', time: NOW, data: {} },
   ]
   const { snapshot: s, isLive } = foldCrewLog([...entries.slice(0, cutAt), ...more], NOW)
   assert.equal(isLive, true)
   assert.deepEqual([s.main.turnLive, s.turns[0].isLive, s.turnCount], [true, true, 0])
-  assert.deepEqual(s.active.map(a => [a.tool, Boolean(a.isAsking)]), [['execute', false], ['shell', true]])
+  // The approval holds the open call, so the call shows once, as asking; a running subagent shows beside it.
+  assert.deepEqual(s.active.map(a => [a.id, a.tool, Boolean(a.isAsking)]), [['toolu_014mx5RXWRkSGwzJQgXdAoef', 'shell', true], ['sub1', 'subagent', false]])
+  assert.deepEqual(s.focus.filter(f => f.isUrgent).map(f => [f.key, f.text]), [['ask:toolu_014mx5RXWRkSGwzJQgXdAoef', 'shell rm -rf build'], ['agent:sub2', 'subagent Bedrock is throttling requests.']])
+  assert.equal(s.agents[1].testsWhy, 'Bedrock is throttling requests.')
+  assert.equal(s.turns[0].buckets.you, 5)
   assert.deepEqual(s.agents.map(a => [a.id, a.type, a.status]), [['sub1', 'mate', 'running'], ['sub2', 'subagent', 'error']])
   assert.deepEqual(s.tasks.map(t => t.status), ['completed', 'pending'])
 })
@@ -94,7 +98,7 @@ test('closed chats, long idle ones and a missing folder list nothing; a half-wri
   assert.deepEqual(readKiro(dir, Date.now(), 60_000), [])
   utimesSync(file, new Date(Date.now() - 120_000), new Date(Date.now() - 120_000))
   // An idle chat's lines are let go, and a log already old is not read.
-  assert.deepEqual([...cache.values()], [{ size: readFileSync(file).length, isDone: true }])
+  assert.deepEqual([...cache.values()], [{ size: readFileSync(file).length, isDone: true, agents: new Map() }])
   // A chat whose folder is gone is forgotten.
   cache.set('gone/log.jsonl', {})
   readKiro(dir, Date.now(), 60_000, cache)
@@ -234,4 +238,50 @@ test('a subagent is tied to the call that started it, its credits count, and its
   assert.deepEqual(s.log.map(l => [l.result, l.agentId]), [['started', 'sub1'], ['done', 'sub1']])
   assert.equal(s.usage.credits, 0.3 + 0.65)
   assert.deepEqual(s.turns.map(t => t.prompt), ['add ETH', undefined])
+})
+
+test('approval time goes to you, slow and big calls and repeated approvals show, and the turn that waited is an event', () => {
+  const log = [
+    entries[0],
+    { type: 'turn/started', time: NOW - 200_000, data: {} },
+    { type: 'tool/called', time: NOW - 199_000, data: { call_id: 'c1', kind: 'execute' } },
+    { type: 'approval/requested', time: NOW - 199_000, data: { approval_id: 'a1', reason: 'Running: make' } },
+    { type: 'approval/decided', time: NOW - 159_000, data: { approval_id: 'a1' } },
+    { type: 'tool/completed', time: NOW - 89_000, data: { call_id: 'c1', elapsed_ms: 110_000, result_bytes: 80_000 } },
+    { type: 'tool/called', time: NOW - 88_000, data: { call_id: 'c2', kind: 'execute' } },
+    { type: 'approval/requested', time: NOW - 88_000, data: { approval_id: 'a2', reason: 'Running: make' } },
+    { type: 'approval/decided', time: NOW - 87_000, data: { approval_id: 'a2' } },
+    { type: 'tool/completed', time: NOW - 87_000, data: { call_id: 'c2', elapsed_ms: 1000 } },
+    { type: 'turn/completed', time: NOW - 80_000, data: { duration_ms: 120_000 } },
+  ]
+  const { snapshot: s } = foldCrewLog(log, NOW)
+  assert.deepEqual([s.turns[0].buckets.you, s.turns[0].buckets.shell, s.turns[0].buckets.model], [41_000, 70_000, 9000])
+  assert.deepEqual([s.insights.session.you, s.insights.sessionWall], [41_000, 120_000])
+  assert.deepEqual(s.insights.slow.map(c => [c.tool, c.ms]), [['execute', 70_000]])
+  assert.deepEqual(s.insights.big.map(c => c.tokens), [20_000])
+  assert.deepEqual(s.insights.askedAll, { 'Running: make': 2 })
+  assert.deepEqual(s.focus.map(f => [f.key, f.isUrgent]), [[`wait:${NOW - 200_000}`, false]])
+})
+
+test("a subagent's files come from kiro-cli's transcript of its chat, and stay once its folder is gone", () => {
+  const dir = home(open())
+  const crew = join(dir, 'crew')
+  cpSync(join(dir, 'crew-log'), join(crew, 'crew-log'), { recursive: true })
+  mkdirSync(join(crew, 'subagents/sub1'), { recursive: true })
+  writeFileSync(join(crew, 'subagents/sub1/state.json'), JSON.stringify({ session_id: 'cli1' }))
+  mkdirSync(join(dir, 'sessions/cli'), { recursive: true })
+  const row = (id, status, path) => JSON.stringify({ kind: 'ToolResults', data: { content: [{ kind: 'toolResult', data: { toolUseId: id, status } }], results: { [id]: { tool: { kind: { BuiltIn: { FileWrite: { path } } } } } } } })
+  writeFileSync(join(dir, 'sessions/cli/cli1.jsonl'), [JSON.stringify({ kind: 'Prompt', data: { meta: { timestamp: 1794295590 } } }), row('t1', 'error', '/w/no.js'), row('t2', 'success', '/w/ui.js')].join('\n') + '\n')
+  const log = join(crew, 'crew-log/sessions', `${SID}-5dafb4d6`, 'log.jsonl')
+  appendFileSync(log, `${JSON.stringify({ type: 'subagent/spawned', time: NOW - 5, data: { agent_id: 'sub1', task: 'ui' } })}\n`)
+  const cache = new Map()
+  const first = readKiro(crew, NOW, 60_000, cache)[0][1]
+  assert.deepEqual([first.files.edited, first.files.editedTimes['/w/ui.js'], first.agents[0].files], [['/w/ui.js'], 1794295590000, 1])
+  appendFileSync(log, `${JSON.stringify({ type: 'subagent/completed', time: NOW - 1, data: { agent_id: 'sub1' } })}\n`)
+  readKiro(crew, NOW, 60_000, cache)
+  // The chat idles out of the list, its subagent's folder goes, then the chat goes on.
+  assert.deepEqual(readKiro(crew, Date.now() + 120_000, 60_000, cache), [])
+  writeFileSync(join(crew, 'subagents/sub1/state.json'), '')
+  appendFileSync(log, '\n')
+  assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, ['/w/ui.js'])
 })

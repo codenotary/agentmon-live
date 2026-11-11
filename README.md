@@ -62,7 +62,7 @@ kirocrew app enable agentmon-live
 
 Kiro Crew asks you to trust the app before its code runs. That code is [`kiro/hooks.py`](kiro/hooks.py), about 100 lines of standard-library Python that run with Kiro Crew's own rights and start the web view's server. Read it before you say yes. Then open a chat, click + in the side panel and pick **AgentMon Live**. The tab works on Linux; on macOS and Windows open the web view in a browser.
 
-- **What you see:** turns with their time split, tool calls with duration and result, waiting approvals, subagents, the task list, the context gauge, prompts and answers. kiro-cli reports credits, so the cost tile reads **Credits** and tokens stay empty.
+- **What you see:** turns with their time split, tool calls with duration and result, waiting approvals and time blocked on you, subagents and the files they wrote, events and insights, the task list, the context gauge, prompts and answers. kiro-cli reports credits, so the cost tile reads **Credits** and tokens stay empty.
 - **What stays empty:** the done gate, Focus, verification and learning. Those come from the plugin inside a Claude Code session.
 - **To remove it:** `kirocrew app uninstall agentmon-live`.
 
