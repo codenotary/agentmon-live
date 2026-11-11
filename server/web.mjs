@@ -83,7 +83,7 @@ function peerUid(socket) {
   if (process.env.AGENTMON_WEB_NO_UID) return undefined
   if (process.platform === 'darwin') {
     try {
-      return uidFromLsof(execFileSync('lsof', ['-nP', `-iTCP@127.0.0.1:${socket.remotePort}`, '-sTCP:ESTABLISHED', '-Fpu'], { encoding: 'utf8', timeout: 2000 }), process.pid)
+      return uidFromLsof(execFileSync('/usr/sbin/lsof', ['-nP', `-iTCP@127.0.0.1:${socket.remotePort}`, '-sTCP:ESTABLISHED', '-Fpu'], { encoding: 'utf8', timeout: 2000 }), process.pid)
     } catch {
       return undefined
     }
