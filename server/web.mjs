@@ -1,4 +1,4 @@
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { execFile, spawn, spawnSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, get, request } from 'node:http'
@@ -79,14 +79,12 @@ const sign = (token, text) => createHmac('sha256', token).update(text).digest('h
 
 // The account that holds the other end of a local connection, as the system lists it; undefined where it cannot be told (Windows, or the listing failed).
 // It is what lets a browser of the same account in with nothing to type or carry, also through an SSH port forward, whose end here is that account's sshd.
-function peerUid(socket) {
+async function peerUid(socket) {
   if (process.env.AGENTMON_WEB_NO_UID) return undefined
   if (process.platform === 'darwin') {
-    try {
-      return uidFromLsof(execFileSync('/usr/sbin/lsof', ['-nP', `-iTCP@127.0.0.1:${socket.remotePort}`, '-sTCP:ESTABLISHED', '-Fpu'], { encoding: 'utf8', timeout: 2000 }), process.pid)
-    } catch {
-      return undefined
-    }
+    const args = ['-nP', `-iTCP@127.0.0.1:${socket.remotePort}`, '-sTCP:ESTABLISHED', '-Fpun']
+    const text = await new Promise(done => execFile('/usr/sbin/lsof', args, { encoding: 'utf8', timeout: 2000 }, (e, out) => done(e ? '' : out)))
+    return uidFromLsof(text, process.pid, `127.0.0.1:${socket.remotePort}->127.0.0.1:${socket.localPort}`)
   }
   if (process.platform !== 'linux') return undefined
   const hex = n => n.toString(16).toUpperCase().padStart(4, '0')
@@ -103,13 +101,14 @@ function peerUid(socket) {
   return undefined
 }
 
-// macOS has no /proc: lsof names each process holding the connection, `p<pid>` then `u<uid>`. This server holds the same pair, so the other process is the peer.
-// One lsof cannot see another account's sockets, so a peer of another account leaves only this server listed: refused.
-export function uidFromLsof(text, selfPid) {
+// macOS has no /proc: lsof lists each process (`p`, `u`) and its sockets (`n`); the peer is the one holding this connection from the other end, never just a socket on the same port.
+export function uidFromLsof(text, selfPid, pair) {
   let pid
+  let uid
   for (const line of String(text).split('\n')) {
-    if (line.startsWith('p')) pid = Number(line.slice(1))
-    else if (line.startsWith('u') && pid !== selfPid && /^u\d+$/.test(line)) return Number(line.slice(1))
+    if (line.startsWith('p')) [pid, uid] = [Number(line.slice(1)), undefined]
+    else if (/^u\d+$/.test(line)) uid = Number(line.slice(1))
+    else if (line === `n${pair}` && pid !== selfPid && uid !== undefined) return uid
   }
   return undefined
 }
@@ -159,8 +158,8 @@ function serve(port, fixture, isOpen) {
   }
   const isSessionWrite = (req, res) => isWriteAllowed(req) && isSession(req, res)
   const isReader = (req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
-  const isSameUser = req => {
-    const uid = peerUid(req.socket)
+  const isSameUser = async req => {
+    const uid = await peerUid(req.socket)
     return uid !== undefined && uid === process.getuid()
   }
   // In memory, so a plugin update that removes this folder leaves a running server whole.
@@ -244,19 +243,23 @@ function serve(port, fixture, isOpen) {
       const code = String(req.headers['x-agentmon-code'] ?? '')
       const isInvited = tickets.get(code) > Date.now()
       tickets.delete(code)
-      if (isLocked && !isInvited && !isSameUser(req)) return forbid(res)
-      return reply(res, 200, 'application/json', JSON.stringify({ pass }))
+      const enter = () => reply(res, 200, 'application/json', JSON.stringify({ pass }))
+      if (!isLocked || isInvited) return enter()
+      return void isSameUser(req).then(ok => (ok ? enter() : forbid(res)))
     }
     // A session asks what the browser must open. Where the kernel names the account behind a connection, the plain address does; elsewhere it carries a code.
     // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if Windows machines are shared.
     if (path === '/ticket' && req.method === 'POST') {
       if (!isSessionWrite(req, res)) return forbid(res)
-      if (!isLocked || isSameUser(req)) return reply(res, 200, 'application/json', '{}')
-      const now = Date.now()
-      for (const [c, until] of tickets) if (until <= now || tickets.size >= KEEP_TICKETS) tickets.delete(c)
-      const code = randomBytes(16).toString('hex')
-      tickets.set(code, now + TICKET_MS)
-      return reply(res, 200, 'application/json', JSON.stringify({ code }))
+      if (!isLocked) return reply(res, 200, 'application/json', '{}')
+      return void isSameUser(req).then(ok => {
+        if (ok) return reply(res, 200, 'application/json', '{}')
+        const now = Date.now()
+        for (const [c, until] of tickets) if (until <= now || tickets.size >= KEEP_TICKETS) tickets.delete(c)
+        const code = randomBytes(16).toString('hex')
+        tickets.set(code, now + TICKET_MS)
+        return reply(res, 200, 'application/json', JSON.stringify({ code }))
+      })
     }
 
     const asked = path.match(/^\/pane\/([\w-]{1,80})\/(open|close)$/)

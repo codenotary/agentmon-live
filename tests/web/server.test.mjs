@@ -536,13 +536,17 @@ test('only an object is a snapshot, and one posted over several lines still arri
   assert.match(text, /data: {"id":"s","snapshot":{"v":1,"n":7},"age":\d+}\n\n$/)
 })
 
-test('on macOS the peer of a connection is the process lsof lists beside this server', async () => {
+test('on macOS the peer of a connection is the process lsof lists holding it from the other end', async () => {
   const { uidFromLsof } = await import('../../server/web.mjs')
-  const lsof = (...rows) => rows.map(([p, u]) => `p${p}\nu${u}\nf12\n`).join('')
-  assert.equal(uidFromLsof(lsof([100, 501], [200, 501]), 100), 501)
-  assert.equal(uidFromLsof(lsof([200, 502], [100, 501]), 100), 502)
+  const pair = '127.0.0.1:52000->127.0.0.1:47311'
+  const lsof = (...rows) => rows.map(([p, u, n]) => `p${p}\nu${u}\nf12\nn${n}\n`).join('')
+  const server = [100, 501, '127.0.0.1:47311->127.0.0.1:52000']
+  assert.equal(uidFromLsof(lsof(server, [200, 501, pair]), 100, pair), 501)
+  assert.equal(uidFromLsof(lsof([200, 502, pair], server), 100, pair), 502)
   // Another account's browser is not listed to us: only this server shows, and that is no peer.
-  assert.equal(uidFromLsof(lsof([100, 501]), 100), undefined)
-  assert.equal(uidFromLsof('lsof: status error\n', 100), undefined)
-  assert.equal(uidFromLsof('', 100), undefined)
+  assert.equal(uidFromLsof(lsof(server), 100, pair), undefined)
+  // A process of ours on the same port but another connection (another account's listener it dialled) is no peer.
+  assert.equal(uidFromLsof(lsof(server, [300, 501, '127.0.0.1:47999->127.0.0.1:52000']), 100, pair), undefined)
+  assert.equal(uidFromLsof('lsof: status error\n', 100, pair), undefined)
+  assert.equal(uidFromLsof('', 100, pair), undefined)
 })
