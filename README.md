@@ -54,13 +54,29 @@ The web view lists every open [Kiro Crew](https://kiro.dev) chat beside your Cla
 
 To have AgentMon start with Kiro Crew and show in a tab beside the chat, install this repo as a Kiro Crew app. It needs `node`.
 
+<details>
+<summary>Install from a clone</summary>
+
 ```sh
 git clone https://github.com/codenotary/agentmon-live
-kirocrew app install ./agentmon-live
-kirocrew app enable agentmon-live
+kirocrew app install <path>/agentmon-live
 ```
 
-Kiro Crew asks you to trust the app before its code runs. That code is [`kiro/hooks.py`](kiro/hooks.py), about 100 lines of standard-library Python that run with Kiro Crew's own rights and start the web view's server. Read it before you say yes. Then open a chat, click + in the side panel and pick **AgentMon Live**. The tab works on Linux and macOS.
+</details>
+
+Then turn it on in Kiro Crew:
+
+1. Open **Library** in the left bar. AgentMon Live is listed under **Disabled**: click **Enable**. Kiro Crew asks you to trust the app before its code runs. That code is [`kiro/hooks.py`](kiro/hooks.py), about 100 lines of standard-library Python that run with Kiro Crew's own rights and start the web view's server. Read it before you say yes.
+
+   <img src="docs/kiro/library.png" alt="Kiro Crew Library with AgentMon Live under Disabled" width="420">
+
+2. Open a chat, click **+** above the side panel and pick **AgentMon Live**.
+
+   <img src="docs/kiro/add-tab.png" alt="The + menu of Kiro Crew's side panel with AgentMon Live" width="720">
+
+3. The tab shows the chat live: where each turn went, tool calls, files, the session log. The tab works on Linux and macOS.
+
+   <img src="docs/kiro/tab.png" alt="AgentMon Live in a Kiro Crew tab beside the chat" width="720">
 
 - **What you see:** turns with their time split, tool calls with duration and result, waiting approvals and time blocked on you, subagents and the files they wrote, events and insights, the task list, the context gauge, prompts and answers. kiro-cli reports credits, so the cost tile reads **Credits** and tokens stay empty.
 - **What stays empty:** the done gate, Focus, verification and learning. Those come from the plugin inside a Claude Code session.
