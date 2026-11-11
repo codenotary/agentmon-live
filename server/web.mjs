@@ -1,6 +1,6 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, get, request } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -77,10 +77,18 @@ function isSame(given, token) {
 
 const sign = (token, text) => createHmac('sha256', token).update(text).digest('hex')
 
-// The account that holds the other end of a local connection, as the kernel lists it; undefined where it cannot be told (not Linux, or /proc closed).
+// The account that holds the other end of a local connection, as the system lists it; undefined where it cannot be told (Windows, or the listing failed).
 // It is what lets a browser of the same account in with nothing to type or carry, also through an SSH port forward, whose end here is that account's sshd.
 function peerUid(socket) {
-  if (process.platform !== 'linux' || process.env.AGENTMON_WEB_NO_UID) return undefined
+  if (process.env.AGENTMON_WEB_NO_UID) return undefined
+  if (process.platform === 'darwin') {
+    try {
+      return uidFromLsof(execFileSync('lsof', ['-nP', `-iTCP@127.0.0.1:${socket.remotePort}`, '-sTCP:ESTABLISHED', '-Fpu'], { encoding: 'utf8', timeout: 2000 }), process.pid)
+    } catch {
+      return undefined
+    }
+  }
+  if (process.platform !== 'linux') return undefined
   const hex = n => n.toString(16).toUpperCase().padStart(4, '0')
   const ends = [hex(socket.remotePort), hex(socket.localPort)]
   try {
@@ -91,6 +99,17 @@ function peerUid(socket) {
     }
   } catch {
     return undefined
+  }
+  return undefined
+}
+
+// macOS has no /proc: lsof names each process holding the connection, `p<pid>` then `u<uid>`. This server holds the same pair, so the other process is the peer.
+// One lsof cannot see another account's sockets, so a peer of another account leaves only this server listed: refused.
+export function uidFromLsof(text, selfPid) {
+  let pid
+  for (const line of String(text).split('\n')) {
+    if (line.startsWith('p')) pid = Number(line.slice(1))
+    else if (line.startsWith('u') && pid !== selfPid && /^u\d+$/.test(line)) return Number(line.slice(1))
   }
   return undefined
 }
@@ -229,7 +248,7 @@ function serve(port, fixture, isOpen) {
       return reply(res, 200, 'application/json', JSON.stringify({ pass }))
     }
     // A session asks what the browser must open. Where the kernel names the account behind a connection, the plain address does; elsewhere it carries a code.
-    // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if macOS or Windows machines are shared.
+    // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if Windows machines are shared.
     if (path === '/ticket' && req.method === 'POST') {
       if (!isSessionWrite(req, res)) return forbid(res)
       if (!isLocked || isSameUser(req)) return reply(res, 200, 'application/json', '{}')
@@ -448,9 +467,19 @@ function open(url) {
   })
 }
 
-const [mode, arg, ...flags] = process.argv.slice(2)
-const isOpen = flags.includes('--open')
-if (mode === 'serve') serve(Number(arg), flags[0] === '--fixture' ? flags[1] : undefined, isOpen)
-else if (mode === 'ensure') process.exit(await ensure(Number(arg), isOpen))
-else if (mode === 'open') process.exit(await open(arg))
-else process.exit(2)
+// Run as a program; a test imports it for `uidFromLsof` only.
+const isMain = () => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+}
+if (isMain()) {
+  const [mode, arg, ...flags] = process.argv.slice(2)
+  const isOpen = flags.includes('--open')
+  if (mode === 'serve') serve(Number(arg), flags[0] === '--fixture' ? flags[1] : undefined, isOpen)
+  else if (mode === 'ensure') process.exit(await ensure(Number(arg), isOpen))
+  else if (mode === 'open') process.exit(await open(arg))
+  else process.exit(2)
+}

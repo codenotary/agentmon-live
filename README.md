@@ -60,7 +60,7 @@ kirocrew app install ./agentmon-live
 kirocrew app enable agentmon-live
 ```
 
-Kiro Crew asks you to trust the app before its code runs. That code is [`kiro/hooks.py`](kiro/hooks.py), about 100 lines of standard-library Python that run with Kiro Crew's own rights and start the web view's server. Read it before you say yes. Then open a chat, click + in the side panel and pick **AgentMon Live**. The tab works on Linux; on macOS and Windows open the web view in a browser.
+Kiro Crew asks you to trust the app before its code runs. That code is [`kiro/hooks.py`](kiro/hooks.py), about 100 lines of standard-library Python that run with Kiro Crew's own rights and start the web view's server. Read it before you say yes. Then open a chat, click + in the side panel and pick **AgentMon Live**. The tab works on Linux and macOS.
 
 - **What you see:** turns with their time split, tool calls with duration and result, waiting approvals and time blocked on you, subagents and the files they wrote, events and insights, the task list, the context gauge, prompts and answers. kiro-cli reports credits, so the cost tile reads **Credits** and tokens stay empty.
 - **What stays empty:** the done gate, Focus, verification and learning. Those come from the plugin inside a Claude Code session.
@@ -138,7 +138,7 @@ One searchable stream of your prompts, Claude's answers, tool calls and subagent
 ## Cost and privacy
 
 - **Your session stays on your machine.** The web view listens on `127.0.0.1` only, and what AgentMon learns is kept in Claude Code's local plugin store. Secrets are masked before they are shown.
-- **The web view is yours alone.** On Linux the server asks the system which account a browser runs as and lets only yours in: you open the address and type nothing, also through an SSH port forward. On macOS and Windows AgentMon opens the page with a one-time code (`o` or `/agentmon open`), and the browser keeps its pass until the server stops. Sessions and server prove to each other that they belong to your account, with a secret that never leaves `~/.claude/agentmon-live/web.token`. `webToken: off` turns all of this off; see the [guide](docs/guide.md#web-view) for the limits.
+- **The web view is yours alone.** On Linux and macOS the server asks the system which account a browser runs as and lets only yours in: you open the address and type nothing, also through an SSH port forward. On Windows AgentMon opens the page with a one-time code (`o` or `/agentmon open`), and the browser keeps its pass until the server stops. Sessions and server prove to each other that they belong to your account, with a secret that never leaves `~/.claude/agentmon-live/web.token`. `webToken: off` turns all of this off; see the [guide](docs/guide.md#web-view) for the limits.
 - **Kiro Crew chats are read, not changed.** The server reads Kiro Crew's log files under `~/.kiro/crew/` and sends nothing to Kiro Crew. Only Kiro Crew's own page may frame the web view, and only while Kiro Crew runs.
 - **One optional model call.** Before Claude stops, Fable, a second model, may check that every part of your request got an answer and that nothing you did not ask for got built: a small call with about 12,000 characters of session text, at most 30 per session by default. Set `advisorMode` to `gate` for no model calls at all.
 - **One network check.** It asks GitHub for the latest release. No session data goes with it.
