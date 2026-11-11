@@ -8,6 +8,7 @@ import { dirname, join } from 'node:path'
 import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import * as kiro from '../../server/kiro.mjs'
 import { foldCrewLog, LABELS, readKiro, toolText } from '../../server/kiro.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
@@ -284,4 +285,40 @@ test("a subagent's files come from kiro-cli's transcript of its chat, and stay o
   writeFileSync(join(crew, 'subagents/sub1/state.json'), '')
   appendFileSync(log, '\n')
   assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, ['/w/ui.js'])
+})
+
+test('an approval left open when its call ends counts once, and with two calls open it holds neither', () => {
+  const log = [
+    entries[0],
+    { type: 'turn/started', time: NOW - 100_000, data: {} },
+    { type: 'tool/called', time: NOW - 100_000, data: { call_id: 'c1', kind: 'execute' } },
+    { type: 'approval/requested', time: NOW - 100_000, data: { approval_id: 'a1', reason: 'Running: make' } },
+    { type: 'tool/completed', time: NOW - 60_000, data: { call_id: 'c1', elapsed_ms: 40_000, status: 'failed' } },
+    { type: 'tool/called', time: NOW - 50_000, data: { call_id: 'c2', kind: 'execute' } },
+    { type: 'tool/called', time: NOW - 50_000, data: { call_id: 'c3', kind: 'read' } },
+    { type: 'approval/requested', time: NOW - 50_000, data: { approval_id: 'a2', reason: 'Running: ls' } },
+  ]
+  const { snapshot: s } = foldCrewLog(log, NOW)
+  assert.deepEqual([s.turns[0].buckets.shell, s.turns[0].buckets.you], [0, 40_000 + 50_000])
+  assert.deepEqual(s.active.map(a => [a.id, Boolean(a.isAsking)]), [['c2', false], ['c3', false], ['a2', true]])
+})
+
+test("a subagent whose folder is not written yet when it ends is read again on the next poll", () => {
+  const dir = home(open())
+  const crew = join(dir, 'crew')
+  cpSync(join(dir, 'crew-log'), join(crew, 'crew-log'), { recursive: true })
+  const log = join(crew, 'crew-log/sessions', `${SID}-5dafb4d6`, 'log.jsonl')
+  appendFileSync(log, [{ type: 'subagent/spawned', time: NOW - 5, data: { agent_id: 'sub1', task: 'ui' } }, { type: 'subagent/completed', time: NOW - 1, data: { agent_id: 'sub1' } }].map(e => `${JSON.stringify(e)}\n`).join(''))
+  const cache = new Map()
+  assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, [])
+  mkdirSync(join(crew, 'subagents/sub1'), { recursive: true })
+  writeFileSync(join(crew, 'subagents/sub1/state.json'), JSON.stringify({ session_id: 'cli1' }))
+  mkdirSync(join(dir, 'sessions/cli'), { recursive: true })
+  writeFileSync(join(dir, 'sessions/cli/cli1.jsonl'), `${JSON.stringify({ kind: 'ToolResults', data: { content: [{ data: { toolUseId: 't', status: 'success' } }], results: { t: { tool: { kind: { BuiltIn: { FileWrite: { path: '/w/ui.js' } } } } } } } })}\n`)
+  assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, ['/w/ui.js'])
+})
+
+test("a chat's thresholds are the pane's, in hooks/insights.ts", () => {
+  const src = readFileSync(join(HERE, '../../hooks/insights.ts'), 'utf8')
+  for (const name of ['LONG_CALL_MS', 'BIG_RESULT_TOKENS', 'WAIT_MIN_MS', 'WAIT_SHARE']) assert.equal(kiro[name], Number(new RegExp(`export const ${name} = ([\\d_.]+)`).exec(src)?.[1].replaceAll('_', '')), name)
 })

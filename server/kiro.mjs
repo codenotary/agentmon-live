@@ -24,14 +24,31 @@ const KEEP_TURNS = 50
 const CUT = 300
 const ANSWER_CUT = 4000
 const BUCKET = { execute: 'shell', read: 'read', search: 'read', edit: 'edit', fetch: 'web' }
-// As LONG_CALL_MS, BIG_RESULT_TOKENS, WAIT_MIN_MS and WAIT_SHARE in hooks/insights.ts.
-const LONG_CALL_MS = 60_000
-const BIG_RESULT_TOKENS = 10_000
-const WAIT_MIN_MS = 30_000
-const WAIT_SHARE = 0.3
-const dur = ms => (ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.round(ms / 1000)} s`)
+// As in hooks/insights.ts; a test holds them equal.
+export const LONG_CALL_MS = 60_000
+export const BIG_RESULT_TOKENS = 10_000
+export const WAIT_MIN_MS = 30_000
+export const WAIT_SHARE = 0.3
+const pad = n => String(n).padStart(2, '0')
+// As `dur` in hooks/insights.ts, which the pane prints.
+const dur = ms => {
+  const s = Math.max(0, ms) / 1000
+  const m = Math.floor(s / 60)
+  return s < 60 ? `${Math.round(s)}s` : m < 60 ? `${m}m${pad(Math.floor(s % 60))}s` : `${Math.floor(m / 60)}h${pad(m % 60)}m`
+}
 const bump = (o, k, n = 1) => {
   o[k] = (o[k] ?? 0) + n
+}
+function recordEdit(snap, path, at) {
+  snap.files.editedTimes[path] = Math.max(snap.files.editedTimes[path] ?? 0, at)
+  snap.files.editedAt = Math.max(snap.files.editedAt, at)
+  bump(snap.insights.edits, path)
+}
+// An approval's wait is the person's: off the call it held, onto the turn.
+function settle(ask, at, turn) {
+  const wait = Math.max(0, at - ask.startedAt)
+  if (ask.call) ask.call.waitMs = (ask.call.waitMs ?? 0) + wait
+  if (turn) bump(turn.buckets, 'you', wait)
 }
 // The crew log times tool calls only; the rest of a turn's wall time is the model's.
 const modelMs = t => Math.max(0, t.wallMs - Object.entries(t.buckets).reduce((a, [k, ms]) => a + (k === 'model' ? 0 : ms), 0))
@@ -136,33 +153,32 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
       call.ms = Number(d.elapsed_ms) || at - call.at
       if (d.is_error || d.status === 'failed') call.isFailed = true
       const path = text.get(call.id)?.path
-      if (path && !call.isFailed && call.kind === 'edit') {
-        snap.files.editedTimes[path] = at
-        snap.files.editedAt = at
-        bump(snap.insights.edits, path)
-      } else if (path && !call.isFailed && call.kind === 'read') {
+      if (path && !call.isFailed && call.kind === 'edit') recordEdit(snap, path, at)
+      else if (path && !call.isFailed && call.kind === 'read') {
         reads.add(path)
         bump(snap.insights.reads, path)
       }
-      // Time waiting for an approval is the person's, not the tool's.
+      // A call can end with its approval still open, such as one declined by timeout.
+      for (const [k, a] of asking) {
+        if (a.call !== call) continue
+        settle(a, at, turn)
+        asking.delete(k)
+      }
       const ran = Math.max(0, call.ms - (call.waitMs ?? 0))
       if (turn) bump(turn.buckets, BUCKET[call.kind] ?? 'other', ran)
       if (ran >= LONG_CALL_MS) snap.insights.slow.push({ tool: call.tool, what: call.what, who: WHO, ms: ran, at })
       const tokens = Math.round((Number(d.result_bytes) || 0) / 4)
       if (tokens >= BIG_RESULT_TOKENS) snap.insights.big.push({ tool: call.tool, what: call.what, tokens, at })
     } else if (e.type === 'approval/requested') {
-      // The gateway asks for the call it holds, the last one opened.
-      const call = [...open.values()].at(-1)
+      // The gateway asks for the call it holds; the log does not name it, so only a lone open call is taken for it.
+      const call = open.size === 1 ? [...open.values()][0] : undefined
       const ask = { id: call?.id ?? String(d.approval_id), who: WHO, tool: String(d.tool || call?.tool || 'approval'), what: cut(d.reason), startedAt: at, isAsking: true, call }
       asking.set(String(d.approval_id), ask)
       bump(snap.insights.askedAll, ask.what)
     } else if (e.type === 'approval/decided') {
       const ask = asking.get(String(d.approval_id))
       asking.delete(String(d.approval_id))
-      if (!ask) continue
-      const wait = Math.max(0, at - ask.startedAt)
-      if (ask.call) ask.call.waitMs = (ask.call.waitMs ?? 0) + wait
-      if (turn) bump(turn.buckets, 'you', wait)
+      if (ask) settle(ask, at, turn)
     }
     else if (e.type === 'subagent/spawned') {
       const card = { id: String(d.agent_id), type: String(d.agent || 'subagent'), model: String(d.model ?? ''), effort: '', task: cut(String(d.task ?? '').split('\n')[0]), status: 'running', files: 0, tools: 0, input: 0, output: 0, startedAt: at, prompt: String(d.task ?? '').slice(0, ANSWER_CUT), callId: [...open.keys()].at(-1) }
@@ -206,11 +222,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
   for (const card of snap.agents) {
     const edits = editsOf(card)
     card.files = new Set(edits.map(x => x.path)).size
-    for (const { path, at } of edits) {
-      snap.files.editedTimes[path] = Math.max(snap.files.editedTimes[path] ?? 0, at)
-      snap.files.editedAt = Math.max(snap.files.editedAt, at)
-      bump(snap.insights.edits, path)
-    }
+    for (const { path, at } of edits) recordEdit(snap, path, at)
   }
   snap.insights.slow.sort((a, b) => b.ms - a.ms)
   snap.insights.big.sort((a, b) => b.tokens - a.tokens)
@@ -237,6 +249,7 @@ function focusOf(snap, asks, calls, last, now) {
 
 // The files a subagent wrote, from kiro-cli's own transcript of its chat; `subagents/<id>/` goes once the result is delivered, so the caller keeps what it read.
 // shortcut: both are internal formats of Kiro Crew and kiro-cli, and kiro-cli's home is taken as the crew home's parent; drop this once the crew log reports a subagent's tool calls.
+// shortcut: a running subagent's transcript is parsed whole each time it changes (under 1 MB seen), read from an offset once one grows past that.
 export function subagentEdits(home, id, since) {
   if (!/^[\w-]+$/.test(String(id))) return undefined
   try {
@@ -319,7 +332,11 @@ export function readKiro(home, now, idleMs, cache = new Map()) {
       // A finished subagent's transcript is read once more after it ended, then kept.
       const editsOf = card => {
         let seen = agents.get(card.id)
-        if (!seen?.isFinal) agents.set(card.id, (seen = { ...subagentEdits(home, card.id, seen), isFinal: card.status !== 'running' }))
+        if (!seen?.isFinal) {
+          const got = subagentEdits(home, card.id, seen)
+          // A read that failed is tried again on the next poll.
+          agents.set(card.id, (seen = { ...(got ?? seen), isFinal: got !== undefined && card.status !== 'running' }))
+        }
         return seen.edits ?? []
       }
       const { snapshot, isClosed, isLive } = foldCrewLog(hit.entries, now, hit.text, editsOf)
