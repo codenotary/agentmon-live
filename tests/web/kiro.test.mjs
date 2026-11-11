@@ -322,3 +322,25 @@ test("a chat's thresholds are the pane's, in hooks/insights.ts", () => {
   const src = readFileSync(join(HERE, '../../hooks/insights.ts'), 'utf8')
   for (const name of ['LONG_CALL_MS', 'BIG_RESULT_TOKENS', 'WAIT_MIN_MS', 'WAIT_SHARE']) assert.equal(kiro[name], Number(new RegExp(`export const ${name} = ([\\d_.]+)`).exec(src)?.[1].replaceAll('_', '')), name)
 })
+
+test("a subagent read that fails after an earlier one keeps that one's files and is tried again", () => {
+  const dir = home(open())
+  const crew = join(dir, 'crew')
+  cpSync(join(dir, 'crew-log'), join(crew, 'crew-log'), { recursive: true })
+  mkdirSync(join(crew, 'subagents/sub1'), { recursive: true })
+  writeFileSync(join(crew, 'subagents/sub1/state.json'), JSON.stringify({ session_id: 'cli1' }))
+  mkdirSync(join(dir, 'sessions/cli'), { recursive: true })
+  const wrote = path => `${JSON.stringify({ kind: 'ToolResults', data: { content: [{ data: { toolUseId: path, status: 'success' } }], results: { [path]: { tool: { kind: { BuiltIn: { FileWrite: { path } } } } } } } })}\n`
+  writeFileSync(join(dir, 'sessions/cli/cli1.jsonl'), wrote('/w/a.js'))
+  const log = join(crew, 'crew-log/sessions', `${SID}-5dafb4d6`, 'log.jsonl')
+  appendFileSync(log, `${JSON.stringify({ type: 'subagent/spawned', time: NOW - 5, data: { agent_id: 'sub1', task: 'ui' } })}\n`)
+  const cache = new Map()
+  assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, ['/w/a.js'])
+  // It ends while its state file is half written; its last write lands meanwhile.
+  appendFileSync(join(dir, 'sessions/cli/cli1.jsonl'), wrote('/w/b.js'))
+  writeFileSync(join(crew, 'subagents/sub1/state.json'), '{"session_')
+  appendFileSync(log, `${JSON.stringify({ type: 'subagent/completed', time: NOW - 1, data: { agent_id: 'sub1' } })}\n`)
+  assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, ['/w/a.js'])
+  writeFileSync(join(crew, 'subagents/sub1/state.json'), JSON.stringify({ session_id: 'cli1' }))
+  assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, ['/w/a.js', '/w/b.js'])
+})

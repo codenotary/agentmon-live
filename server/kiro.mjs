@@ -271,7 +271,7 @@ export function subagentEdits(home, id, since) {
     }
     return { mtime, edits }
   } catch {
-    return since
+    return undefined
   }
 }
 
