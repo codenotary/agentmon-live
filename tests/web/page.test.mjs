@@ -789,4 +789,6 @@ test('a Kiro Crew chat finds its session by slot, the one with the latest turn w
   assert.equal(sessionOfSlot(sessions, 'chat-2'), 'other')
   assert.equal(sessionOfSlot(sessions, 'chat-9'), undefined)
   assert.equal(sessionOfSlot(sessions, ''), undefined)
+  // Resumed: the new session has no turn yet and is still the chat now.
+  assert.equal(sessionOfSlot(new Map([...sessions, at('resumed', 'chat-1')]), 'chat-1'), 'resumed')
 })

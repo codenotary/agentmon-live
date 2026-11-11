@@ -245,7 +245,7 @@ function serve(port, fixture, isOpen) {
       tickets.delete(code)
       const enter = () => reply(res, 200, 'application/json', JSON.stringify({ pass }))
       if (!isLocked || isInvited) return enter()
-      return void isSameUser(req).then(ok => (ok ? enter() : forbid(res)))
+      return void isSameUser(req).then(ok => (ok ? enter() : forbid(res))).catch(() => res.destroy())
     }
     // A session asks what the browser must open. Where the kernel names the account behind a connection, the plain address does; elsewhere it carries a code.
     // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if Windows machines are shared.
@@ -259,7 +259,7 @@ function serve(port, fixture, isOpen) {
         const code = randomBytes(16).toString('hex')
         tickets.set(code, now + TICKET_MS)
         return reply(res, 200, 'application/json', JSON.stringify({ code }))
-      })
+      }).catch(() => res.destroy())
     }
 
     const asked = path.match(/^\/pane\/([\w-]{1,80})\/(open|close)$/)
