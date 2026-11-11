@@ -785,6 +785,30 @@ test('check now during a turn waits for the answer, and never sends anything bac
   await ui.unmount()
 })
 
+test('a check queued in a turn that ends with no Stop runs from that turn: at once when aborted, at the next prompt after an answer', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts, ['OK', 'OK'])
+  await start($)
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
+  await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Half the parser.', isAborted: true, reason: 'aborted' })
+  await clock.settle()
+  expect(prompts.length).toBe(1)
+  expect(prompts[0]).toContain('Final answer:\nHalf the parser.')
+
+  await $.turn.start({ text: 'Fix the lexer', turnId: 'm2' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
+  await $.turn.complete({ ...DONE, turnId: 'm2', answer: 'Lexer fixed.' })
+  await clock.settle()
+  expect(prompts.length).toBe(1)
+  await $.turn.start({ text: 'Now the docs', turnId: 'm3' })
+  await clock.settle()
+  expect(prompts.length).toBe(2)
+  expect(prompts[1]).toContain('Final answer:\nLexer fixed.')
+  expect(prompts[1]).toContain('Fix the lexer')
+})
+
 test('material is wrapped and cannot close its wrapper early', async ($, on) => {
   const clock = mock.clock(on)
   const prompts: string[] = []

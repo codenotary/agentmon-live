@@ -489,6 +489,12 @@ export const register: Register = on => {
       isContinued = false
       // A prompt that says the last edit turn's change did not work; read before the turn's files reset.
       const isFix = turn.edited.size > 0 && isCorrection(e.text)
+      // No Stop followed the last answer, so the check it waited for runs now, on that turn's material.
+      if (isCheckQueued) {
+        isCheckQueued = false
+        const [last, answer, ref] = [{ ...turn }, lastAnswer, workRef()]
+        $.clock.after(0, () => checkNow($, last, answer, ref))
+      }
       turn.prompt = mask(e.text)
       turn.startedAt = await $.clock.now()
       resetTurn(turn, await read($, checks))
