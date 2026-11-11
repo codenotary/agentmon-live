@@ -21,6 +21,7 @@ const NOTICE_BAD_MS = 10_000
 // How often a session off screen, or a hidden tab, redraws the page.
 const QUIET_MS = 5000
 const WATCH_MS = 5000
+const ASK_SLOT_MS = 60_000
 // Two of the server's 15 s pings missed, and some margin.
 const STALL_MS = 35_000
 
@@ -184,9 +185,17 @@ export function useClock(s: WebSnapshot): number {
   return clockOf(s)
 }
 
+// The tab's chat stays named to the server while the tab shows it, so an idle one is listed too.
+let tabSlot = ''
+let askedAt = 0
+function askSlot(): void {
+  if (!tabSlot || !pass) return
+  askedAt = Date.now()
+  void fetch(`/kiro/${encodeURIComponent(tabSlot)}`, { method: 'POST', headers: { 'x-agentmon-pass': pass } }).catch(() => undefined)
+}
 const readSlot = () => {
   const slot = new URLSearchParams(location.hash.slice(1)).get('kiro')
-  if (slot) wantSlot = slot
+  if (slot) [wantSlot, tabSlot] = [slot, slot]
 }
 function followSlot(): void {
   const id = wantSlot ? sessionOfSlot(state.sessions, wantSlot) : undefined
@@ -198,6 +207,7 @@ if (typeof window !== 'undefined') {
   readSlot()
   window.addEventListener('hashchange', () => {
     readSlot()
+    askSlot()
     followSlot()
   })
 }
@@ -284,7 +294,11 @@ export function connect(): void {
     return events
   }
   let events: EventSource | undefined
-  const reopen = () => void enter().then(() => (events = open()))
+  const reopen = () =>
+    void enter().then(() => {
+      events = open()
+      askSlot()
+    })
   reopen()
   setInterval(() => {
     const now = Date.now()
@@ -295,6 +309,7 @@ export function connect(): void {
       if (!state.isDown) set({ isDown: true, downAt: now })
       reopen()
     }
+    if (now - askedAt > ASK_SLOT_MS) askSlot()
     const silent = silentIds(state.receivedAt, now)
     if ([...silent].join('\n') !== [...state.silent].join('\n')) set({ silent })
   }, WATCH_MS)

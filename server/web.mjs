@@ -5,13 +5,16 @@ import { createServer, get, request } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { kiroHome, kiroHost, readKiro, stateDir } from './kiro.mjs'
+import { kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
 // A snapshot at the publisher's caps is about 700 KB of characters; in Chinese or Japanese each takes three bytes.
 const MAX_BODY = 4 * 1024 * 1024
 const KIRO_RESEND_MS = 15_000
+// How long a tab's ask for an idle Kiro chat holds; the tab asks again every minute.
+const KIRO_WANT_MS = 120_000
+const KEEP_WANTED = 8
 const MAX_BACKLOG = 16 * 1024 * 1024
 const PORT_TRIES = 20
 const TOKEN = /^[0-9a-f]{64}$/
@@ -269,6 +272,15 @@ function serve(port, fixture, isOpen) {
       paneRequests.set(asked[1], asked[2] === 'open')
       return reply(res, 204)
     }
+    // Kiro Crew's tab names the chat beside it, so an idle or closed one is listed too while the tab shows it.
+    const wants = path.match(/^\/kiro\/([\w-]{1,80})$/)
+    if (wants && req.method === 'POST') {
+      if (!isOwnPage(req, port) || !isReader(req, query)) return forbid(res)
+      wanted.delete(wants[1])
+      if (wanted.size >= KEEP_WANTED) wanted.delete(wanted.keys().next().value)
+      wanted.set(wants[1], Date.now() + KIRO_WANT_MS)
+      return reply(res, 204)
+    }
     const taken = path.match(/^\/pane\/([\w-]{1,80})$/)
     if (taken && req.method === 'POST') {
       if (!isSessionWrite(req, res)) return forbid(res)
@@ -324,10 +336,19 @@ function serve(port, fixture, isOpen) {
   // A chat on the Claude harness with the mod loaded posts under the same id, and its own snapshot says more: that one stays.
   // Only behind the lock: a session chose `webToken: off` for itself, a Kiro Crew chat did not.
   const kiroCache = new Map()
+  const wanted = new Map()
+  const slotCache = new Map()
   const kiroIdleMs = envMs('AGENTMON_KIRO_IDLE_MS', 30 * 60_000)
   if (isLocked) setInterval(() => {
     const now = Date.now()
     const live = new Map(readKiro(kiroHome(), now, kiroIdleMs, kiroCache))
+    for (const [slot, until] of wanted) {
+      if (until < now) wanted.delete(slot)
+      else if (![...live.values()].some(s => s.session.slot === slot)) {
+        const got = readKiroSlot(kiroHome(), slot, now, slotCache)
+        if (got) live.set(...got)
+      }
+    }
     for (const [id, s] of sessions) if (s.isKiro && !live.has(id)) drop(id)
     for (const [id, snapshot] of live) {
       const had = sessions.get(id)

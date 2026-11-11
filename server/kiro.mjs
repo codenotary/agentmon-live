@@ -366,6 +366,52 @@ export function readKiro(home, now, idleMs, cache = new Map()) {
   return out
 }
 
+// The chat Kiro Crew's tab sits beside, idle or closed: its newest log, as it ended. `cache` keeps each log's slot and its last fold.
+export function readKiroSlot(home, slot, now, cache = new Map()) {
+  const root = join(home, 'crew-log', 'sessions')
+  let best
+  const seen = new Set()
+  try {
+    for (const dir of readdirSync(root)) {
+      const file = join(root, dir, 'log.jsonl')
+      seen.add(file)
+      let head = cache.get(file)
+      if (!head) {
+        head = { slot: '', createdAt: 0 }
+        try {
+          const first = JSON.parse(firstLine(file))
+          Object.assign(head, { slot: String(first.slot ?? ''), createdAt: Number(first.createdAt) || 0 })
+        } catch {}
+        cache.set(file, head)
+      }
+      if (head.slot === slot && (!best || head.createdAt > best.head.createdAt)) best = { file, head }
+    }
+  } catch {
+    return undefined
+  }
+  for (const file of cache.keys()) if (!seen.has(file)) cache.delete(file)
+  if (!best) return undefined
+  try {
+    const { size } = statSync(best.file)
+    if (best.head.size !== size) Object.assign(best.head, { size, snapshot: foldCrewLog(lines(readFileSync(best.file, 'utf8')), now, toolText(home, slot)).snapshot })
+    const { snapshot } = best.head
+    return /^[\w-]{1,80}$/.test(snapshot.session.id) ? [snapshot.session.id, { ...snapshot, now }] : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// A log's first line, without reading a long log whole.
+function firstLine(file) {
+  const buf = Buffer.alloc(4096)
+  const fd = openSync(file, 'r')
+  try {
+    return buf.subarray(0, readSync(fd, buf, 0, buf.length, 0)).toString('utf8').split('\n', 1)[0]
+  } finally {
+    closeSync(fd)
+  }
+}
+
 // Written by the Kiro Crew app's start hook (`kiro/hooks.py`): the gateway's pid and the pages that may frame this one.
 export const kiroHostFile = () => process.env.AGENTMON_KIRO_FILE || join(stateDir(), 'kiro.json')
 

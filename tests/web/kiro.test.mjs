@@ -394,3 +394,42 @@ test('a running subagent transcript is read from where the last read stopped, a 
   writeFileSync(file, wrote('/w/c.js'))
   assert.deepEqual(paths(kiro.subagentEdits(crew, 'sub1', got)), ['/w/c.js'])
 })
+
+test('the chat a tab sits beside is read even when closed: its newest log, and none for an unknown slot', () => {
+  const dir = home()
+  const slot = entries[0].slot
+  const newer = 'aaaaaaaa-0000-4000-8000-000000000000'
+  mkdirSync(join(dir, 'crew-log/sessions', `${newer}-1`), { recursive: true })
+  writeFileSync(join(dir, 'crew-log/sessions', `${newer}-1`, 'log.jsonl'), `${JSON.stringify({ ...entries[0], id: newer, createdAt: entries[0].createdAt + 1 })}\n${JSON.stringify({ type: 'session/closed', time: NOW, data: { reason: 'reset' } })}\n`)
+  assert.equal(readKiro(dir, NOW, 60_000).length, 0)
+  const cache = new Map()
+  const [id, snapshot] = kiro.readKiroSlot(dir, slot, NOW, cache)
+  assert.deepEqual([id, snapshot.session.slot], [newer, slot])
+  assert.equal(kiro.readKiroSlot(dir, 'chat-0-0', NOW, cache), undefined)
+})
+
+test('a closed chat a tab asks for is listed while the ask holds, and only to the page that may read', async () => {
+  const dir = home()
+  const port = 47472
+  const token = 'd'.repeat(64)
+  writeFileSync(join(dir, 'web.token'), token)
+  const env = { ...process.env, KIROCREW_HOME: dir, AGENTMON_KIRO_FILE: join(dir, 'kiro.json'), AGENTMON_KIRO_POLL_MS: '50', AGENTMON_WEB_TOKEN_FILE: join(dir, 'web.token') }
+  children.push(spawn(process.execPath, [join(HERE, '../../server/web.mjs'), 'serve', String(port)], { env, stdio: 'ignore' }))
+  const ask = pass => new Promise(resolve => {
+    const req = request({ host: '127.0.0.1', port, path: `/kiro/${entries[0].slot}`, method: 'POST', headers: { origin: `http://127.0.0.1:${port}`, 'x-agentmon-pass': pass } }, res => res.resume().on('end', () => resolve(res.statusCode)))
+    req.on('error', () => resolve(0))
+    req.end()
+  })
+  let boot
+  for (let i = 0; i < 60 && !boot; i += 1) {
+    boot = await new Promise(resolve => request({ host: '127.0.0.1', port, path: '/health' }, res => {
+      let text = ''
+      res.on('data', d => (text += d)).on('end', () => resolve(JSON.parse(text).boot))
+    }).on('error', () => setTimeout(() => resolve(undefined), 50)).end())
+  }
+  const pass = createHmac('sha256', token).update(`browser:${port}:${boot}`).digest('hex')
+  assert.equal(await ask('wrong'), 403)
+  assert.equal(await ask(pass), 204)
+  const text = await events(port, t => t.includes(`"id":"${SID}"`), pass)
+  assert.match(text, new RegExp(`"slot":"${entries[0].slot}"`))
+})
