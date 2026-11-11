@@ -1,5 +1,5 @@
 // Kiro Crew writes `crew-log/sessions/<sid>-<digest>/log.jsonl` for a chat on any harness, so reading it needs no plugin inside the chat.
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -250,7 +250,6 @@ function focusOf(snap, asks, calls, last, now) {
 
 // The files a subagent wrote, from kiro-cli's own transcript of its chat; `subagents/<id>/` goes once the result is delivered, so the caller keeps what it read.
 // shortcut: both are internal formats of Kiro Crew and kiro-cli, and kiro-cli's home is taken as the crew home's parent; drop this once the crew log reports a subagent's tool calls.
-// shortcut: a running subagent's transcript is parsed whole each time it changes (under 1 MB seen), read from an offset once one grows past that.
 export function subagentEdits(home, id, since) {
   if (!/^[\w-]+$/.test(String(id))) return undefined
   try {
@@ -261,9 +260,19 @@ export function subagentEdits(home, id, since) {
     // Size too: a write in the same mtime tick as the last read must not look unchanged.
     const mtime = `${mtimeMs}:${size}`
     if (since?.mtime === mtime) return since
-    const edits = []
-    let at = 0
-    for (const row of lines(readFileSync(file, 'utf8'))) {
+    // Only what was appended since the last read, up to the last whole line; a shorter file was rewritten and is read again.
+    const start = since?.offset <= size ? since.offset : 0
+    const buf = Buffer.alloc(size - start)
+    const fd = openSync(file, 'r')
+    try {
+      readSync(fd, buf, 0, buf.length, start)
+    } finally {
+      closeSync(fd)
+    }
+    const end = buf.lastIndexOf(10) + 1
+    const edits = start ? [...since.edits] : []
+    let at = start ? since.at : 0
+    for (const row of lines(buf.subarray(0, end).toString('utf8'))) {
       const d = row.data ?? {}
       at = Number(d.meta?.timestamp) * 1000 || at
       if (row.kind !== 'ToolResults') continue
@@ -272,7 +281,7 @@ export function subagentEdits(home, id, since) {
         if (c.data?.status === 'success' && typeof path === 'string') edits.push({ path, at })
       }
     }
-    return { mtime, edits }
+    return { mtime, edits, at, offset: start + end }
   } catch {
     return undefined
   }

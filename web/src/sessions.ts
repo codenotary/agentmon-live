@@ -40,7 +40,7 @@ export const currentOf = (st: Pick<SessionState, 'sessions' | 'picked' | 'shown'
 // The session of a Kiro Crew chat; a resumed chat has several, and the one with the latest turn is the chat now, a fresh one with no turn yet the newest.
 export function sessionOfSlot(sessions: ReadonlyMap<string, WebSnapshot>, slot: string): string | undefined {
   if (!slot) return undefined
-  const lastTurn = (s: WebSnapshot) => s.turns.at(-1)?.startedAt ?? Infinity
+  const lastTurn = (s: WebSnapshot) => s.turns.at(-1)?.startedAt ?? Number.MAX_SAFE_INTEGER
   return [...sessions.values()].filter(s => s.session.slot === slot).sort((a, b) => lastTurn(a) - lastTurn(b)).at(-1)?.session.id
 }
 

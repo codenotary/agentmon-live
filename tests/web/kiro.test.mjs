@@ -375,3 +375,22 @@ test('a Kiro snapshot names the chat slot its crew log was opened for, and none 
   const noSlot = [{ ...entries[0], slot: undefined }, ...entries.slice(1)]
   assert.equal('slot' in foldCrewLog(noSlot, NOW).snapshot.session, false)
 })
+
+test('a running subagent transcript is read from where the last read stopped, a half line waits, a rewrite starts over', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentmon-kiro-'))
+  const crew = join(dir, 'crew')
+  mkdirSync(join(crew, 'subagents/sub1'), { recursive: true })
+  writeFileSync(join(crew, 'subagents/sub1/state.json'), JSON.stringify({ session_id: 'cli1' }))
+  mkdirSync(join(dir, 'sessions/cli'), { recursive: true })
+  const file = join(dir, 'sessions/cli/cli1.jsonl')
+  const wrote = path => `${JSON.stringify({ kind: 'ToolResults', data: { content: [{ data: { toolUseId: path, status: 'success' } }], results: { [path]: { tool: { kind: { BuiltIn: { FileWrite: { path } } } } } } } })}\n`
+  const paths = got => got.edits.map(e => e.path)
+  writeFileSync(file, wrote('/w/a.js') + wrote('/w/b.js').slice(0, 20))
+  let got = kiro.subagentEdits(crew, 'sub1')
+  assert.deepEqual(paths(got), ['/w/a.js'])
+  appendFileSync(file, wrote('/w/b.js').slice(20))
+  got = kiro.subagentEdits(crew, 'sub1', got)
+  assert.deepEqual(paths(got), ['/w/a.js', '/w/b.js'])
+  writeFileSync(file, wrote('/w/c.js'))
+  assert.deepEqual(paths(kiro.subagentEdits(crew, 'sub1', got)), ['/w/c.js'])
+})
