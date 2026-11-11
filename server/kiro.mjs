@@ -34,7 +34,7 @@ const pad = n => String(n).padStart(2, '0')
 const dur = ms => {
   const s = Math.max(0, ms) / 1000
   const m = Math.floor(s / 60)
-  return s < 60 ? `${Math.round(s)}s` : m < 60 ? `${m}m${pad(Math.floor(s % 60))}s` : `${Math.floor(m / 60)}h${pad(m % 60)}m`
+  return s < 10 ? `${s.toFixed(1)}s` : s < 60 ? `${Math.round(s)}s` : m < 60 ? `${m}m${pad(Math.floor(s % 60))}s` : `${Math.floor(m / 60)}h${pad(m % 60)}m`
 }
 const bump = (o, k, n = 1) => {
   o[k] = (o[k] ?? 0) + n
@@ -44,10 +44,10 @@ function recordEdit(snap, path, at) {
   snap.files.editedAt = Math.max(snap.files.editedAt, at)
   bump(snap.insights.edits, path)
 }
-// An approval's wait is the person's: off the call it held, onto the turn.
+// An approval's wait is the person's: off every call open while it waited, onto the turn.
 function settle(ask, at, turn) {
   const wait = Math.max(0, at - ask.startedAt)
-  if (ask.call) ask.call.waitMs = (ask.call.waitMs ?? 0) + wait
+  for (const c of ask.calls) c.waitMs = (c.waitMs ?? 0) + wait
   if (turn) bump(turn.buckets, 'you', wait)
 }
 // The crew log times tool calls only; the rest of a turn's wall time is the model's.
@@ -171,8 +171,9 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
       if (tokens >= BIG_RESULT_TOKENS) snap.insights.big.push({ tool: call.tool, what: call.what, tokens, at })
     } else if (e.type === 'approval/requested') {
       // The gateway asks for the call it holds; the log does not name it, so only a lone open call is taken for it.
-      const call = open.size === 1 ? [...open.values()][0] : undefined
-      const ask = { id: call?.id ?? String(d.approval_id), who: WHO, tool: String(d.tool || call?.tool || 'approval'), what: cut(d.reason), startedAt: at, isAsking: true, call }
+      const calls = [...open.values()]
+      const call = calls.length === 1 ? calls[0] : undefined
+      const ask = { id: call?.id ?? String(d.approval_id), who: WHO, tool: String(d.tool || call?.tool || 'approval'), what: cut(d.reason), startedAt: at, isAsking: true, call, calls }
       asking.set(String(d.approval_id), ask)
       bump(snap.insights.askedAll, ask.what)
     } else if (e.type === 'approval/decided') {
@@ -212,7 +213,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
     snap.main.turnAt = turn.startedAt
     snap.main.turnLive = true
   }
-  const asks = [...asking.values()].map(({ call, ...a }) => a)
+  const asks = [...asking.values()].map(({ call, calls, ...a }) => a)
   const held = new Set(asks.map(a => a.id))
   const calls = [...open.values()].filter(c => !held.has(c.id)).map(c => ({ id: c.id, who: c.who, tool: c.tool, what: c.what, startedAt: c.at }))
   // A subagent runs on after the call that started it returned, so it shows as running in its own right.
@@ -256,7 +257,9 @@ export function subagentEdits(home, id, since) {
     const { session_id: sid } = JSON.parse(readFileSync(join(home, 'subagents', id, 'state.json'), 'utf8'))
     if (!/^[\w-]+$/.test(String(sid))) return undefined
     const file = join(dirname(home), 'sessions', 'cli', `${sid}.jsonl`)
-    const mtime = statSync(file).mtimeMs
+    const { mtimeMs, size } = statSync(file)
+    // Size too: a write in the same mtime tick as the last read must not look unchanged.
+    const mtime = `${mtimeMs}:${size}`
     if (since?.mtime === mtime) return since
     const edits = []
     let at = 0
@@ -292,7 +295,7 @@ export function toolText(home, slot) {
       } catch {}
       // A call the crew log gives no name shows one in its title: "Running: @server/tool".
       const tool = /(@[\w-]+\/[\w-]+)/.exec(String(row.content ?? ''))?.[1]
-      text.set(String(row.meta.tool_call_id), { what: cut(path && !row.meta.input?.startsWith('{') ? path : input || row.meta.purpose || row.content), path: typeof path === 'string' ? path : undefined, tool })
+      text.set(String(row.meta.tool_call_id), { what: cut(path && !String(row.meta.input).startsWith('{') ? path : input || row.meta.purpose || row.content), path: typeof path === 'string' ? path : undefined, tool })
     }
   } catch {}
   return text

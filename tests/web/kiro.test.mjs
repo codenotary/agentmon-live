@@ -344,3 +344,27 @@ test("a subagent read that fails after an earlier one keeps that one's files and
   writeFileSync(join(crew, 'subagents/sub1/state.json'), JSON.stringify({ session_id: 'cli1' }))
   assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, ['/w/a.js', '/w/b.js'])
 })
+
+test('an approval asked with two calls open takes its wait off both, and counts it once', () => {
+  const log = [
+    entries[0],
+    { type: 'turn/started', time: NOW - 100_000, data: {} },
+    { type: 'tool/called', time: NOW - 100_000, data: { call_id: 'c1', kind: 'execute' } },
+    { type: 'tool/called', time: NOW - 100_000, data: { call_id: 'c2', kind: 'read' } },
+    { type: 'approval/requested', time: NOW - 100_000, data: { approval_id: 'a1', reason: 'Running: make' } },
+    { type: 'approval/decided', time: NOW - 70_000, data: { approval_id: 'a1' } },
+    { type: 'tool/completed', time: NOW - 65_000, data: { call_id: 'c1', elapsed_ms: 35_000 } },
+    { type: 'tool/completed', time: NOW - 65_000, data: { call_id: 'c2', elapsed_ms: 35_000 } },
+    { type: 'turn/completed', time: NOW - 60_000, data: { duration_ms: 40_000 } },
+  ]
+  const b = foldCrewLog(log, NOW).snapshot.turns[0].buckets
+  assert.deepEqual([b.you, b.shell, b.read], [30_000, 5000, 5000])
+})
+
+test('a tool row whose input is not text keeps the rows after it', () => {
+  const dir = home()
+  mkdirSync(join(dir, 'sessions'))
+  const rows = [{ role: 'tool', content: 'x', meta: { tool_call_id: 'o1', input: ['--- /w/a.py'] } }, { role: 'tool', content: 'y', meta: { tool_call_id: 'o2', input: '--- /w/b.py\n+++ /w/b.py' } }]
+  writeFileSync(join(dir, 'sessions/dashboard_chat-9.jsonl'), rows.map(r => `${JSON.stringify(r)}\n`).join(''))
+  assert.equal(toolText(dir, 'chat-9').get('o2')?.path, '/w/b.py')
+})
