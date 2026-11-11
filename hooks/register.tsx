@@ -934,7 +934,8 @@ export const register: Register = on => {
       // Memory files change outside Edit and Write too: Bash, an editor, a git checkout.
       queueMemoryCheck($)
     }
-    if (e.agentId === undefined && isCheckQueued) {
+    // An answer is followed by a Stop, which runs the check after the gate: both ask Fable, and only one may at a time.
+    if (e.agentId === undefined && isCheckQueued && e.reason !== 'answer') {
       isCheckQueued = false
       $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
     }
@@ -943,30 +944,41 @@ export const register: Register = on => {
 
   // The done gate: before Claude stops, what is visibly unfinished goes back to it, once per prompt.
   on('classic.Stop', async ($, e, next) => {
-    const r = await next(e)
-    // Another hook already sends it back: never stack.
-    if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
-    await noteShellEdit($, turn)
-    // A light turn has nothing to gate; while this turn's subagents still run, the work is not over yet.
-    // A background agent from an earlier turn does not hold every later turn's gate.
-    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running' && a.startedAt >= turn.startedAt)) return r
-    // Fable looks at the continuation too, so the pane says whether the send-back was answered.
-    const found = await openGaps($, turn, e.last_assistant_message ?? '')
-    // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
-    const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
-    if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
-    if (found.judged) await addLog($, { who: t.gateLog.who, what: workRef(), result: found.lines.length === 0 ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
-    void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
-    // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
-    void saveDebugLog($)
-    if (found.lines.length === 0 && found.judged) isPassed = true
-    if (isSent) blockAt = turn.tools
-    await benchPrompt($, turn, blockAt, isPassed)
-    if (!isSent) return r
-    isGateUsed = true
-    const block = t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n'))
-    noteGaps(block)
-    return { ...r, block }
+    const isQueued = isCheckQueued
+    isCheckQueued = false
+    let isBlocked = false
+    try {
+      const r = await next(e)
+      isBlocked = Boolean(r.block)
+      // Another hook already sends it back: never stack.
+      if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
+      await noteShellEdit($, turn)
+      // A light turn has nothing to gate; while this turn's subagents still run, the work is not over yet.
+      // A background agent from an earlier turn does not hold every later turn's gate.
+      if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running' && a.startedAt >= turn.startedAt)) return r
+      // Fable looks at the continuation too, so the pane says whether the send-back was answered.
+      const found = await openGaps($, turn, e.last_assistant_message ?? '')
+      // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
+      const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
+      if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
+      if (found.judged) await addLog($, { who: t.gateLog.who, what: workRef(), result: found.lines.length === 0 ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
+      void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
+      // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
+      void saveDebugLog($)
+      if (found.lines.length === 0 && found.judged) isPassed = true
+      if (isSent) blockAt = turn.tools
+      await benchPrompt($, turn, blockAt, isPassed)
+      if (!isSent) return r
+      isGateUsed = true
+      isBlocked = true
+      const block = t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n'))
+      noteGaps(block)
+      return { ...r, block }
+    } finally {
+      // A turn sent back goes on, so the check waits for its next stop.
+      if (isQueued && isBlocked) isCheckQueued = true
+      else if (isQueued) $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
+    }
   }).catch(($, e, next) => failOpen($, 'classic.Stop', next.error, () => next(e)))
 
   // How this session began, when not fresh: a resume, a /clear or a fork. A compaction logs itself.

@@ -59,7 +59,7 @@ export async function consult($: EngineInterface, question: string, body: string
   const text = rest.filter(l => !l.startsWith('→')).reduce((a, l) => `${a} ${l}`, head)
   const fix = rest.find(l => l.startsWith('→'))?.replace(/^→\s*/, '') || undefined
   // A verdict may lead with OK ("OK. All covered.") or reason first and end in OK; "not OK", "OK, but …", "OK on coverage. …" and one that says what would settle it are no pass.
-  const ok = !fix && ((/^OK\s*(?:[.!:—–-]|$)/i.test(head) && !OBJECTION.test(text)) || /(^|[.!]\s+)OK\.?$/i.test(rest.filter(l => !l.startsWith('→')).at(-1) ?? head))
+  const ok = !fix && !OBJECTION.test(text) && (/^OK\s*(?:[.!:—–-]|$)/i.test(head) || /(^|[.!]\s+)OK\.?$/i.test(rest.filter(l => !l.startsWith('→')).at(-1) ?? head))
   return { ok, text: ok ? '' : text, fix: ok ? undefined : fix }
 }
 

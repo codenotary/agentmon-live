@@ -658,6 +658,16 @@ test('"OK, but …" is no pass: the gap goes back to Claude', async ($, on) => {
   expect((await $.classic.Stop({ ...STOP })).block).toContain('the docs part of the request is not answered')
 })
 
+test('an objection that comes before the closing OK is no pass either', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [], ['The docs part is not answered, but the code is fine. OK.'])
+  await start($)
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toContain('The docs part is not answered')
+})
+
 test('the old plan mode maps to gate mode', async ($, on) => {
 
   withOptions(on, { advisorMode: 'plan' })
@@ -763,6 +773,10 @@ test('check now during a turn waits for the answer, and never sends anything bac
   expect(r.text).toBe('The done gate checks the answer when this turn ends.')
   expect(prompts.length).toBe(0)
   await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Parser fixed.' })
+  await clock.settle()
+  // Not before the Stop, where the done gate asks Fable first.
+  expect(prompts.length).toBe(0)
+  await $.classic.Stop({ ...STOP })
   await clock.settle()
   expect(prompts.length).toBe(1)
   expect(prompts[0]).toContain('Final answer:\nParser fixed.')
