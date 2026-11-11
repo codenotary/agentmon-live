@@ -2,6 +2,7 @@
   "name": "agentmon-live",
   "version": "0.38.0",
   "displayName": "AgentMon Live",
+  "iconPath": ".claude-plugin/icon.png",
   "description": "See what every chat is doing, live: turns, tool calls, approvals, subagents, context and credits, on any harness",
   "author": "vchaindz",
   "license": "Apache-2.0",
