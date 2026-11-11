@@ -68,7 +68,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
   const head = entries[0]?.type === 'session' ? entries[0] : {}
   const snap = {
     v: 1,
-    session: { id: String(head.id ?? ''), cwd: String(head.cwd ?? '') },
+    session: { id: String(head.id ?? ''), cwd: String(head.cwd ?? ''), ...(head.slot ? { slot: String(head.slot) } : {}) },
     now,
     lang: 'en',
     labels: LABELS,

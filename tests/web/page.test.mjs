@@ -9,7 +9,7 @@ import { alertOf, keepEvents, keptEvents, kindOf, nextEvents, splitEvents } from
 import { agentNames, pathIn, blockedOf, callTime, chipsWith, kilo, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, toolGroup, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
 import { chipCounts, foldAgents, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
-import { currentOf, silentIds, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
+import { currentOf, sessionOfSlot, silentIds, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
 import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../../web/src/kpi.ts'
 import { labelsOf, lastKnown, PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, lanesIn, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
@@ -781,3 +781,12 @@ test('a plan-context or long-turn item whose number grows is the same item, not 
   assert.deepEqual(long.map(e => e.key), ['long:4'])
 })
 
+
+test('a Kiro Crew chat finds its session by slot, the one with the latest turn when it was resumed', () => {
+  const at = (id, slot, startedAt) => [id, { session: { id, cwd: '/w', slot }, turns: startedAt ? [{ startedAt }] : [] }]
+  const sessions = new Map([at('old', 'chat-1', 100), at('new', 'chat-1', 200), at('other', 'chat-2', 300), at('claude', undefined, 400)])
+  assert.equal(sessionOfSlot(sessions, 'chat-1'), 'new')
+  assert.equal(sessionOfSlot(sessions, 'chat-2'), 'other')
+  assert.equal(sessionOfSlot(sessions, 'chat-9'), undefined)
+  assert.equal(sessionOfSlot(sessions, ''), undefined)
+})

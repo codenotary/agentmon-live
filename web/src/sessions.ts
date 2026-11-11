@@ -37,6 +37,13 @@ export function silentIds(receivedAt: ReadonlyMap<string, number>, now: number):
 export const currentOf = (st: Pick<SessionState, 'sessions' | 'picked' | 'shown'>): WebSnapshot | undefined =>
   (st.picked ? st.sessions.get(st.picked) : undefined) ?? (st.shown ? st.sessions.get(st.shown) : [...st.sessions.values()].at(-1))
 
+// The session of a Kiro Crew chat; a resumed chat has several, and the one with the latest turn is the chat now.
+export function sessionOfSlot(sessions: ReadonlyMap<string, WebSnapshot>, slot: string): string | undefined {
+  if (!slot) return undefined
+  const lastTurn = (s: WebSnapshot) => s.turns?.at(-1)?.startedAt ?? 0
+  return [...sessions.values()].filter(s => s.session.slot === slot).sort((a, b) => lastTurn(a) - lastTurn(b)).at(-1)?.session.id
+}
+
 // What belongs to the session being left goes with it.
 const left = { whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set<string>() }
 

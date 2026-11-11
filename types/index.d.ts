@@ -255,7 +255,8 @@ export type WebFocus = { key: string; tag: string; text: string; isUrgent: boole
 // What a session posts to the web view's server. The page draws from this alone; change `v` when a field changes meaning.
 export type WebSnapshot = {
   v: 1
-  session: { id: string; cwd: string; branch?: string }
+  // `slot`: the Kiro Crew chat a Kiro session belongs to, as Kiro Crew's address names it.
+  session: { id: string; cwd: string; branch?: string; slot?: string }
   now: number
   lang: string
   labels: Record<string, unknown>

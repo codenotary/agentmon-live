@@ -72,7 +72,7 @@ Then turn it on in Kiro Crew:
 
    <img src="docs/kiro/add-tab.png" alt="The + menu of Kiro Crew's side panel with AgentMon Live" width="720">
 
-3. The tab shows the chat live: where each turn went, tool calls, files, the session log. The tab works on Linux and macOS.
+3. The tab opens on the chat beside it and follows when you switch chats; you can still pick another session in its top bar. It shows the chat live: where each turn went, tool calls, files, the session log. The tab works on Linux and macOS.
 
    <img src="docs/kiro/tab.png" alt="AgentMon Live in a Kiro Crew tab beside the chat" width="720">
 

@@ -4,7 +4,7 @@ import type { Call, WebSnapshot } from '../../types/index'
 import { keepEvents, keptEvents } from './events.ts'
 import { DEFAULT_VIEW } from './flow.ts'
 import { parseIds } from './format.ts'
-import { currentOf, silentIds, withLive, withoutSessions, withSnapshot, type SessionState } from './sessions.ts'
+import { currentOf, sessionOfSlot, silentIds, withLive, withoutSessions, withSnapshot, type SessionState } from './sessions.ts'
 
 export { currentOf }
 
@@ -109,10 +109,10 @@ export function useStore<T>(pick?: (st: State) => T): T | State {
 // What a session last said can no longer be trusted.
 export const hasNoSignal = (st: Pick<State, 'isDown' | 'silent'>, id: string) => st.isDown || st.silent.has(id)
 
-export function pick(id: string): void {
-  save(PICK_KEY, id)
-  // A section's link in the address belongs to the session being left.
-  history.replaceState(null, '', location.pathname + location.search)
+export function pick(id: string, isSaved = true): void {
+  if (isSaved) save(PICK_KEY, id)
+  // A section's link in the address belongs to the session being left; Kiro Crew's `#kiro=` stays, so a reload opens the same chat.
+  if (isSaved) history.replaceState(null, '', location.pathname + location.search)
   set({ picked: id, shown: id, whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set() })
 }
 
@@ -179,6 +179,26 @@ export function useClock(s: WebSnapshot): number {
   return clockOf(s)
 }
 
+// In Kiro Crew's tab, the chat beside it, from `#kiro=<slot>`: picked once when its session is here, so a pick by hand afterwards stays.
+let wantSlot = ''
+const readSlot = () => {
+  const slot = new URLSearchParams(location.hash.slice(1)).get('kiro')
+  if (slot) wantSlot = slot
+}
+function followSlot(): void {
+  const id = wantSlot ? sessionOfSlot(state.sessions, wantSlot) : undefined
+  if (id === undefined) return
+  wantSlot = ''
+  if (state.picked !== id) pick(id, false)
+}
+if (typeof window !== 'undefined') {
+  readSlot()
+  window.addEventListener('hashchange', () => {
+    readSlot()
+    followSlot()
+  })
+}
+
 const focusKeys = (s: WebSnapshot | undefined) => s?.focus?.map(f => f.key).join('\n')
 
 // Only the session on screen redraws at once; a hidden tab waits too, unless what needs the person changed, which the tab title shows.
@@ -203,6 +223,7 @@ function received(id: string, snapshot: WebSnapshot, age = 0): void {
   const isShown = currentOf(state)?.session.id === id
   if (isShown && (!document.hidden || focusKeys(snapshot) !== before)) emit()
   else emitSoon()
+  followSlot()
 }
 
 // The session applies it within a second and says so in its next snapshot, which moves the button.

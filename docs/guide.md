@@ -101,7 +101,7 @@ Every running session on the machine shares one server. With more than one runni
   - Kiro Crew asks you to trust the app before its code runs. That code is `kiro/hooks.py`, about 100 lines of standard-library Python that run inside Kiro Crew's gateway with its rights: it writes `~/.claude/agentmon-live/kiro.json` (the gateway's process id and address) and starts `node server/web.mjs ensure 47311`. Read it before you say yes.
   - It needs `node`, found on your `PATH` or under nvm, fnm, Volta or Homebrew.
   - The tab shows every session, not only the chat it sits beside: Kiro Crew does not tell an app which chat a tab belongs to. It expects the server on port 47311.
-  - The tab works on Linux and macOS, where the server can tell that the page belongs to your account.
+  - The tab opens on the chat beside it and follows when you switch chats; a session you pick in its top bar stays until the next switch. The tab works on Linux and macOS, where the server can tell that the page belongs to your account.
   - Only Kiro Crew's own page may frame the web view, and only while its gateway runs. After Kiro Crew quits, the server stops a minute after its last session.
 - **Without the app and with no Claude Code session open** nothing starts the server. Start it yourself: `node /path/to/agentmon-live/server/web.mjs ensure 47311`. A Kiro Crew script hook cannot: Kiro Crew runs hooks in its sandbox, which hides the crew log and has no `node` on its `PATH`.
 - **Web view only:** the pane is part of Claude Code.

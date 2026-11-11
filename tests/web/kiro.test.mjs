@@ -368,3 +368,10 @@ test('a tool row whose input is not text keeps the rows after it', () => {
   writeFileSync(join(dir, 'sessions/dashboard_chat-9.jsonl'), rows.map(r => `${JSON.stringify(r)}\n`).join(''))
   assert.equal(toolText(dir, 'chat-9').get('o2')?.path, '/w/b.py')
 })
+
+test('a Kiro snapshot names the chat slot its crew log was opened for, and none when the log has none', () => {
+  const withSlot = [{ ...entries[0], slot: 'chat-3-1794408878' }, ...entries.slice(1)]
+  assert.equal(foldCrewLog(withSlot, NOW).snapshot.session.slot, 'chat-3-1794408878')
+  const noSlot = [{ ...entries[0], slot: undefined }, ...entries.slice(1)]
+  assert.equal('slot' in foldCrewLog(noSlot, NOW).snapshot.session, false)
+})
