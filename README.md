@@ -52,17 +52,15 @@ Claude Code when done.
 
 The web view lists every open [Kiro Crew](https://kiro.dev) chat beside your Claude Code sessions, whatever harness the chat runs on (kiro-cli, Claude Code, Codex and the others). It reads the log Kiro Crew writes, so this needs nothing installed in Kiro Crew: open the web view and the chats are there.
 
-To have AgentMon start with Kiro Crew and show in a tab beside the chat, install this repo as a Kiro Crew app. It needs `node`.
-
 <details>
-<summary>Install from a clone</summary>
+<summary>A tab beside the chat: install AgentMon as a Kiro Crew app</summary>
+
+To have AgentMon start with Kiro Crew and show in a tab beside the chat, install this repo as a Kiro Crew app. It needs `node`.
 
 ```sh
 git clone https://github.com/codenotary/agentmon-live
 kirocrew app install <path>/agentmon-live
 ```
-
-</details>
 
 Then turn it on in Kiro Crew:
 
@@ -83,6 +81,8 @@ Then turn it on in Kiro Crew:
 - **To remove it:** `kirocrew app uninstall agentmon-live`.
 
 The [guide](docs/guide.md#web-view) has the rest, including a registry install from Kiro Crew's settings.
+
+</details>
 
 ## Why you want it
 
