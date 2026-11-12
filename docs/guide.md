@@ -107,6 +107,21 @@ Every running session on the machine shares one server. With more than one runni
 - **Without the app and with no Claude Code session open** nothing starts the server. Start it yourself: `node /path/to/agentmon-live/server/web.mjs ensure 47311`. A Kiro Crew script hook cannot: Kiro Crew runs hooks in its sandbox, which hides the crew log and has no `node` on its `PATH`.
 - **Web view only:** the pane is part of Claude Code.
 
+**Codex chats.** The server also lists every [Codex](https://developers.openai.com/codex) chat on the machine that wrote in the last 30 minutes: the CLI, `codex exec`, the IDE extension and its subagents. It reads the session files Codex writes under `~/.codex/sessions/` (`CODEX_HOME` if you set it), so nothing has to be installed in Codex. The top bar names such a session `Codex` and its version.
+
+- **What you see:** turns with their time split, prompts and answers, tool calls with the command the shell got, duration and result, a call still running, files read and edited, tokens and cache hit, the context gauge, and the 5-hour and weekly limits when your plan reports them.
+- **Verification:** the last test, lint, typecheck and build command, each ok, failed or unknown, from the command and its exit status. There are no test counts, a pipe, `||` or a later command after `;` leaves the result unknown, and so does a command longer than 300 characters.
+- **What stays empty:** approvals and time blocked on you, subagent cards (a subagent's chat lists as a session of its own), the task list, cost in dollars, the done gate and learning.
+- **When it leaves:** 30 minutes after Codex last wrote to the chat's file; a turn under way gets two hours. Codex writes no entry when a chat closes, so a closed chat stays listed until then.
+- **Start with Codex:** install this repo as a Codex plugin, and each Codex session starts the server if it is not up. It needs `node`, on macOS or Linux.
+  - `codex plugin marketplace add codenotary/agentmon-live`, then `codex plugin add agentmon-live@agentmon-live`.
+  - Codex runs a plugin's hook only after you trust it: open `/hooks` in Codex and trust AgentMon Live's `SessionStart` hook. The hook is one line in [`codex/hooks.json`](../codex/hooks.json): `node server/web.mjs ensure 47311`.
+  - Then open `http://127.0.0.1:47311/`.
+  - To remove it: `codex plugin remove agentmon-live@agentmon-live`.
+- **Without the plugin** the chats still show whenever the server runs: a Claude Code session with the mod starts it, or start it yourself as above.
+- A Kiro Crew chat on the Codex harness shows twice, once from each log.
+- Like Kiro Crew chats, these sessions are listed only with `webToken` on.
+
 **Sessions in a VM or a container.** A session that cannot reach the server on your machine writes its snapshots to a folder the server reads. The mod must be installed where the session runs.
 
 - **In the VM or container:** mount the shared folder at `/var/lib/agentmon-live/spool`. A session that finds that folder writes `<session id>.json` there and starts no server of its own. For another path, set `AGENTMON_SPOOL` in the environment Claude Code starts with. The pane's link and `/agentmon open` have no address to give there, and the page shows no pane button for such a session: nothing flows back into it.

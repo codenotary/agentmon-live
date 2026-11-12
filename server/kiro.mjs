@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 export const kiroHome = () => process.env.KIROCREW_HOME ?? join(homedir(), '.kiro', 'crew')
 // Where the server keeps its own files: the account's secret, and the Kiro Crew app's note.
 export const stateDir = () => join(homedir(), '.claude', 'agentmon-live')
-const LIVE_PATIENCE = 4
+export const LIVE_PATIENCE = 4
 const sidePath = (home, slot) => join(home, 'sessions', `dashboard_${slot}.jsonl`)
 // The page prints these as they come; a mod's session sends them in its own language.
 export const LABELS = {
@@ -80,7 +80,7 @@ const dur = ms => {
 const bump = (o, k, n = 1) => {
   o[k] = (o[k] ?? 0) + n
 }
-function recordEdit(snap, path, at) {
+export function recordEdit(snap, path, at) {
   snap.files.editedTimes[path] = Math.max(snap.files.editedTimes[path] ?? 0, at)
   snap.files.editedAt = Math.max(snap.files.editedAt, at)
   bump(snap.insights.edits, path)
@@ -114,8 +114,8 @@ export function mask(s) {
     .replace(BARE_BEARER, '$1 ***')
 }
 // Log text goes to the page masked; the first cut keeps the scan cheap on a large input.
-const cut = text => mask(String(text ?? '').slice(0, 2000)).slice(0, CUT)
-const lines = text => text.split('\n').flatMap(line => {
+export const cut = text => mask(String(text ?? '').slice(0, 2000)).slice(0, CUT)
+export const lines = text => text.split('\n').flatMap(line => {
   // The last line may be half written, and the crew log's own rule is to skip a line that does not parse.
   try {
     return line.trim() ? [JSON.parse(line)] : []
