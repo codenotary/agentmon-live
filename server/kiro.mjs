@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 export const kiroHome = () => process.env.KIROCREW_HOME ?? join(homedir(), '.kiro', 'crew')
 // Where the server keeps its own files: the account's secret, and the Kiro Crew app's note.
 export const stateDir = () => join(homedir(), '.claude', 'agentmon-live')
-export const LIVE_PATIENCE = 4
+const LIVE_PATIENCE = 4
 const sidePath = (home, slot) => join(home, 'sessions', `dashboard_${slot}.jsonl`)
 // The page prints these as they come; a mod's session sends them in its own language.
 export const LABELS = {
@@ -115,7 +115,7 @@ export function mask(s) {
 }
 // Log text goes to the page masked; the first cut keeps the scan cheap on a large input.
 export const cut = text => mask(String(text ?? '').slice(0, 2000)).slice(0, CUT)
-export const lines = text => text.split('\n').flatMap(line => {
+const lines = text => text.split('\n').flatMap(line => {
   // The last line may be half written, and the crew log's own rule is to skip a line that does not parse.
   try {
     return line.trim() ? [JSON.parse(line)] : []
@@ -380,51 +380,27 @@ export function toolText(home, slot) {
 }
 
 // A chat that crashed never writes `session/closed`, so one outside a turn leaves the list after `idleMs` without a write.
-export function readKiro(home, now, idleMs, cache = new Map()) {
-  const root = join(home, 'crew-log', 'sessions')
-  let dirs
-  try {
-    dirs = readdirSync(root)
-  } catch {
-    return []
-  }
+// One poll over session logs, for every reader. `fold(hit)` gets `{ entries, agents }`, which stay until the log grows, and gives `{ snapshot, isClosed, isLive }`.
+export function pollLogs(files, now, idleMs, cache, fold) {
   const out = []
   const seen = new Set()
-  for (const dir of dirs) {
+  for (const file of files) {
     try {
-      const file = join(root, dir, 'log.jsonl')
       const stat = statSync(file)
       seen.add(file)
       let hit = cache.get(file)
-      let side = ''
-      try {
-        if (hit?.slot) side = String(statSync(sidePath(home, hit.slot)).mtimeMs)
-      } catch {}
       // A long tool call writes nothing, so a turn under way gets more time; a chat that crashed in one still leaves.
       const isStale = isLive => now - stat.mtimeMs > idleMs * (isLive ? LIVE_PATIENCE : 1)
       // A chat that is closed or idle stays so until its log grows: nothing to fold, and an old log is not read at all.
       if (!hit && isStale(true)) cache.set(file, (hit = { size: stat.size, isDone: true }))
       if (hit?.isDone && hit.size === stat.size) continue
-      // The transcript beside the log is rewritten every few seconds; the log is read again only when it grew.
       if (hit?.size !== stat.size) hit = { size: stat.size, entries: lines(readFileSync(file, 'utf8')), agents: hit?.agents ?? new Map() }
-      if (hit.side !== side || !hit.text) Object.assign(hit, { side, slot: hit.entries[0]?.slot, text: toolText(home, hit.entries[0]?.slot) })
       cache.set(file, hit)
-      const { agents } = hit
-      // A finished subagent's transcript is read once more after it ended, then kept.
-      const editsOf = card => {
-        let seen = agents.get(card.id)
-        if (!seen?.isFinal) {
-          const got = subagentEdits(home, card.id, seen)
-          // A read that failed is tried again on the next poll.
-          agents.set(card.id, (seen = { ...(got ?? seen), isFinal: got !== undefined && card.status !== 'running' }))
-        }
-        return seen.edits ?? []
-      }
-      const { snapshot, isClosed, isLive } = foldCrewLog(hit.entries, now, hit.text, editsOf)
+      const { snapshot, isClosed, isLive } = fold(hit)
       // Its entries are not needed again.
       if (isClosed || isStale(isLive)) {
         // A subagent's folder may be gone when the chat goes on, so what was read from it stays.
-        cache.set(file, { size: stat.size, isDone: true, agents })
+        cache.set(file, { size: stat.size, isDone: true, agents: hit.agents })
         continue
       }
       if (!/^[\w-]{1,80}$/.test(snapshot.session.id)) continue
@@ -433,6 +409,37 @@ export function readKiro(home, now, idleMs, cache = new Map()) {
   }
   for (const file of cache.keys()) if (!seen.has(file)) cache.delete(file)
   return out
+}
+
+export function readKiro(home, now, idleMs, cache = new Map()) {
+  const root = join(home, 'crew-log', 'sessions')
+  let dirs
+  try {
+    dirs = readdirSync(root)
+  } catch {
+    return []
+  }
+  return pollLogs(dirs.map(dir => join(root, dir, 'log.jsonl')), now, idleMs, cache, hit => {
+    const slot = hit.entries[0]?.slot
+    let side = ''
+    try {
+      if (slot) side = String(statSync(sidePath(home, slot)).mtimeMs)
+    } catch {}
+    // The transcript beside the log is rewritten every few seconds; the log is read again only when it grew.
+    if (hit.side !== side || !hit.text) Object.assign(hit, { side, slot, text: toolText(home, slot) })
+    const { agents } = hit
+    // A finished subagent's transcript is read once more after it ended, then kept.
+    const editsOf = card => {
+      let seen = agents.get(card.id)
+      if (!seen?.isFinal) {
+        const got = subagentEdits(home, card.id, seen)
+        // A read that failed is tried again on the next poll.
+        agents.set(card.id, (seen = { ...(got ?? seen), isFinal: got !== undefined && card.status !== 'running' }))
+      }
+      return seen.edits ?? []
+    }
+    return foldCrewLog(hit.entries, now, hit.text, editsOf)
+  })
 }
 
 // The chat Kiro Crew's tab sits beside, idle or closed: its newest log, as it ended. `cache` keeps each log's slot and its last fold.

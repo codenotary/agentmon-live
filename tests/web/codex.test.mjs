@@ -59,6 +59,22 @@ test('files, tokens, context and limits come from what Codex reports', () => {
   assert.deepEqual(s.usage, { rate: [{ kind: 'five_hour', pct: 12, resetsAt: 1794400000000 }, { kind: 'seven_day', pct: 40, resetsAt: 1794900000000 }], usd: 0, ctxTokens: 50000, ctxWindow: 200000, ctxPct: 25 })
 })
 
+test('the end of a turn closes the call it cut off, and a count without limits keeps the last ones', () => {
+  const stamp = sec => new Date(Date.parse('2026-11-10T10:00:00Z') + sec * 1000).toISOString()
+  const more = [
+    { timestamp: stamp(85), type: 'event_msg', payload: { type: 'token_count', info: null } },
+    { timestamp: stamp(86), type: 'event_msg', payload: { type: 'turn_aborted' } },
+    { timestamp: stamp(90), type: 'event_msg', payload: { type: 'task_started' } },
+    { timestamp: stamp(91), type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'call_6', name: 'exec', input: 'tools.exec_command({cmd:"npm run build"})' } },
+    { timestamp: stamp(92), type: 'event_msg', payload: { type: 'item_completed', item: { type: 'CommandExecution', command: ['zsh', '-lc', 'npm run build'], parsed_cmd: [], status: 'completed', exit_code: 0 } } },
+  ]
+  const s = foldRollout([...entries, ...more], Date.parse(stamp(95))).snapshot
+  assert.deepEqual(s.active.map(a => a.id), ['call_6'])
+  assert.deepEqual(s.trace.slice(-2).map(c => [c.id, c.what, c.ms]), [['call_5', 'npm run lint', 4000], ['call_6', 'npm run build', undefined]])
+  assert.deepEqual(s.checks.map(c => c.kind), ['test'])
+  assert.deepEqual(s.usage.rate.map(r => r.kind), ['five_hour', 'seven_day'])
+})
+
 test('a failed script fails its call, and an empty rollout still folds', () => {
   const failed = entries.map(e => (e.payload.call_id === 'call_2' && e.payload.output ? { ...e, payload: { ...e.payload, output: 'Script failed\nWall time 0.0 seconds\n' } } : e))
   assert.equal(foldRollout(failed, NOW).snapshot.trace[1].isFailed, true)

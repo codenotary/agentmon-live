@@ -112,11 +112,12 @@ Every running session on the machine shares one server. With more than one runni
 - **What you see:** turns with their time split, prompts and answers, tool calls with the command the shell got, duration and result, a call still running, files read and edited, tokens and cache hit, the context gauge, and the 5-hour and weekly limits when your plan reports them.
 - **Verification:** the last test, lint, typecheck and build command, each ok, failed or unknown, from the command and its exit status. There are no test counts, a pipe, `||` or a later command after `;` leaves the result unknown, and so does a command longer than 300 characters.
 - **What stays empty:** approvals and time blocked on you, subagent cards (a subagent's chat lists as a session of its own), the task list, cost in dollars, the done gate and learning.
-- **When it leaves:** 30 minutes after Codex last wrote to the chat's file; a turn under way gets two hours. Codex writes no entry when a chat closes, so a closed chat stays listed until then.
+- **When it leaves:** 30 minutes after Codex last wrote to the chat's file; a turn under way gets two hours. Codex writes no entry when a chat closes, so a closed chat stays listed until then. Only the folders of the last days are read: a chat resumed in an older day's file does not show.
 - **Start with Codex:** install this repo as a Codex plugin, and each Codex session starts the server if it is not up. It needs `node`, on macOS or Linux.
   - `codex plugin marketplace add codenotary/agentmon-live`, then `codex plugin add agentmon-live@agentmon-live`.
   - Codex runs a plugin's hook only after you trust it: open `/hooks` in Codex and trust AgentMon Live's `SessionStart` hook. The hook is one line in [`codex/hooks.json`](../codex/hooks.json): `node server/web.mjs ensure 47311`.
   - Then open `http://127.0.0.1:47311/`.
+  - The hook always starts the server on port 47311 with the checks on. `webPort` and `webToken` are read only in a Claude Code session: with another port set there, a Codex session that starts first brings up a second server on 47311.
   - To remove it: `codex plugin remove agentmon-live@agentmon-live`.
 - **Without the plugin** the chats still show whenever the server runs: a Claude Code session with the mod starts it, or start it yourself as above.
 - A Kiro Crew chat on the Codex harness shows twice, once from each log.

@@ -1,18 +1,24 @@
 // Codex writes each chat to `sessions/YYYY/MM/DD/rollout-<time>-<id>.jsonl`, so reading it needs nothing installed in Codex.
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { cut, foldCrewLog, lines, LIVE_PATIENCE, recordEdit } from './kiro.mjs'
+import { cut, foldCrewLog, pollLogs, recordEdit } from './kiro.mjs'
 
 export const codexHome = () => process.env.CODEX_HOME ?? join(homedir(), '.codex')
 const READS = new Set(['read', 'search', 'list_files'])
 // The kinds the page draws a quota gauge for.
 const WINDOW = { 300: 'five_hour', 10080: 'seven_day' }
+const DAY_MS = 86_400_000
+// As many idle spans back as `pollLogs` keeps a turn under way.
+const LIVE_DAYS_SLACK = 4
+// What Codex answers when it hands a script back with its command still running.
+const RUNNING = 'Script running'
 const textOf = content => (Array.isArray(content) ? content.map(c => c?.text ?? '').join('') : String(content ?? ''))
 
 // The model's call is a script around `tools.<name>(…)`: the command or the patched files are what the page shows.
+// shortcut: the first `tools.<name>` in the script names the call, even in a comment; parse the script when chats show wrong labels.
 function callOf(input, name) {
   const script = String(input ?? '')
   const tool = script.match(/tools\.(\w+)/)?.[1] ?? String(name || 'tool')
@@ -55,7 +61,7 @@ export function foldRollout(entries, now) {
     const hasRun = call.commands.length > 0
     if (hasRun) text.set(id, { tool: 'shell', what: cut(call.commands.join('\n')), ...(call.isRead && call.path ? { path: call.path } : {}) })
     // Codex hands a long script back while its command still runs: no kind, so no check counts as passed before its exit status is in.
-    const kind = hasRun ? (call.isRead ? 'read' : 'execute') : body.startsWith('Script running') ? undefined : call.kind
+    const kind = hasRun ? (call.isRead ? 'read' : 'execute') : body.startsWith(RUNNING) ? undefined : call.kind
     // Both at once: the call's kind is known only now.
     emit('tool/called', call.at, { call_id: id, kind })
     emit('tool/completed', at, { call_id: id, is_error: Boolean(call.isFailed) || body.startsWith('Script failed'), result_bytes: body.length })
@@ -107,8 +113,9 @@ export function foldRollout(entries, now) {
         else if (call) call.isFailed = true
       } else if (item.type === 'Extension' && call && String(item.kind).startsWith('web')) call.kind = 'fetch'
     } else if (p.type === 'token_count') {
-      const limits = p.rate_limits ?? {}
-      rate = [limits.primary, limits.secondary].flatMap(r => (r && WINDOW[r.window_minutes] ? [{ kind: WINDOW[r.window_minutes], pct: Number(r.used_percent) || 0, ...(r.resets_at ? { resetsAt: r.resets_at * 1000 } : {}) }] : []))
+      const limits = p.rate_limits
+      // Not every count carries the limits: the last ones known stay.
+      if (limits) rate = [limits.primary, limits.secondary].flatMap(r => (r && WINDOW[r.window_minutes] ? [{ kind: WINDOW[r.window_minutes], pct: Number(r.used_percent) || 0, ...(r.resets_at ? { resetsAt: r.resets_at * 1000 } : {}) }] : []))
       if (!p.info) continue
       total = p.info.total_token_usage ?? total
       context = { used: Number(p.info.last_token_usage?.total_tokens) || 0, window: Number(p.info.model_context_window) || 0 }
@@ -119,6 +126,9 @@ export function foldRollout(entries, now) {
       emit('turn/completed', at, { duration_ms: p.duration_ms, tokens: { input: grown('input_tokens') - grown('cached_input_tokens'), cache_read: grown('cached_input_tokens'), output: grown('output_tokens') } })
       before = total
       isTurn = false
+      // A call the turn's end cut off never gets its output: it ends here, with no result to count as a check.
+      for (const [id, call] of open) finish(id, call, at, RUNNING)
+      open.clear()
     }
   }
   // A call with no output yet is running.
@@ -137,38 +147,15 @@ export function foldRollout(entries, now) {
 }
 
 // Every Codex chat written to lately, as `[id, snapshot]`. A rollout has no closing entry: a chat leaves `idleMs` after its last write.
-// shortcut: stats every rollout each poll and reads a growing one whole, look only at the newest day folders and read the tail when a home holds tens of thousands or a chat's file passes tens of MB.
+// shortcut: only the day folders a listed chat can sit in are looked at, so a chat resumed in an older day's file is not seen, and a growing rollout is read whole; read the tail when a chat's file passes tens of MB.
 export function readCodex(home, now, idleMs, cache = new Map()) {
-  const root = join(home, 'sessions')
-  let names
-  try {
-    names = readdirSync(root, { recursive: true }).filter(n => /rollout-[^/\\]*\.jsonl$/.test(n))
-  } catch {
-    return []
-  }
-  const out = []
-  const seen = new Set()
-  for (const name of names) {
+  const files = []
+  // A folder's day is local time: one day of slack either side.
+  for (let day = now - idleMs * LIVE_DAYS_SLACK - DAY_MS; day < now + DAY_MS; day += DAY_MS) {
+    const dir = join(home, 'sessions', ...new Date(day).toISOString().slice(0, 10).split('-'))
     try {
-      const file = join(root, name)
-      const stat = statSync(file)
-      seen.add(file)
-      let hit = cache.get(file)
-      // A long tool call writes nothing, so a turn under way gets more time.
-      const isStale = isLive => now - stat.mtimeMs > idleMs * (isLive ? LIVE_PATIENCE : 1)
-      if (!hit && isStale(true)) cache.set(file, (hit = { size: stat.size, isDone: true }))
-      if (hit?.isDone && hit.size === stat.size) continue
-      if (hit?.size !== stat.size) hit = { size: stat.size, entries: lines(readFileSync(file, 'utf8')) }
-      cache.set(file, hit)
-      const { snapshot, isLive } = foldRollout(hit.entries, now)
-      if (isStale(isLive)) {
-        cache.set(file, { size: stat.size, isDone: true })
-        continue
-      }
-      if (!/^[\w-]{1,80}$/.test(snapshot.session.id)) continue
-      out.push([snapshot.session.id, snapshot])
+      for (const name of readdirSync(dir)) if (/^rollout-.*\.jsonl$/.test(name)) files.push(join(dir, name))
     } catch {}
   }
-  for (const file of cache.keys()) if (!seen.has(file)) cache.delete(file)
-  return out
+  return pollLogs(files, now, idleMs, cache, hit => foldRollout(hit.entries, now))
 }
