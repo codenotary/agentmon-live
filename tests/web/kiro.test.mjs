@@ -328,6 +328,12 @@ test('a chat\'s test, lint, typecheck and build commands fill Verification', () 
   assert.deepEqual(checks(call('t3', NOW - 60)).map(c => c.result), ['unknown'])
   assert.deepEqual(checks(call('c1', NOW - 50, { status: 'failed' })).map(c => [c.kind, c.result, c.command]), [['lint', 'unknown', 'npm run lint'], ['typecheck', 'failed', 'npx tsc --noEmit']])
   assert.deepEqual(checks(call('l1', NOW - 40)), [])
+  // Past `;` the shell reports the last line: only its check is known.
+  text.set('s1', { what: 'npm test; npm run build' }).set('s2', { what: 'npm test; echo done' }).set('long', { what: `npm test ${'x'.repeat(292)}` })
+  assert.deepEqual(checks(call('s1', NOW - 30)).map(c => [c.kind, c.result]), [['test', 'unknown'], ['build', 'ok']])
+  assert.deepEqual(checks(call('s2', NOW - 20)).map(c => c.result), ['unknown'])
+  // A command cut at 300 characters may hide a pipe past the cut.
+  assert.deepEqual(checks(call('long', NOW - 10)).map(c => c.result), ['unknown'])
 })
 
 test('a call whose approval was rejected ran nothing: no check, no edit', () => {
@@ -341,6 +347,16 @@ test('a call whose approval was rejected ran nothing: no check, no edit', () => 
   const fold = decision => foldCrewLog([entries[0], { type: 'turn/started', time: NOW - 100, data: {} }, ...asked('t1', 'execute', NOW - 90, decision), ...asked('e1', 'edit', NOW - 80, decision)], NOW, text).snapshot
   assert.deepEqual([fold('rejected').checks, fold('rejected').files.edited], [[], []])
   assert.deepEqual([fold('approved').checks.map(c => c.result), fold('approved').files.edited], [['ok'], ['/w/a.py']])
+  // Two calls open: the log does not say which one was rejected, so the check is unknown.
+  const both = [
+    { type: 'tool/called', time: NOW - 60, data: { call_id: 't1', name: '', kind: 'execute' } },
+    { type: 'tool/called', time: NOW - 59, data: { call_id: 'e1', name: '', kind: 'edit' } },
+    { type: 'approval/requested', time: NOW - 58, data: { approval_id: 'a', reason: 'Running' } },
+    { type: 'approval/decided', time: NOW - 57, data: { approval_id: 'a', decision: 'rejected' } },
+    { type: 'tool/completed', time: NOW - 56, data: { call_id: 't1', status: 'completed' } },
+    { type: 'tool/completed', time: NOW - 55, data: { call_id: 'e1', status: 'completed' } },
+  ]
+  assert.deepEqual(foldCrewLog([entries[0], { type: 'turn/started', time: NOW - 100, data: {} }, ...both], NOW, text).snapshot.checks.map(c => c.result), ['unknown'])
 })
 
 test('the check patterns are the pane\'s, in hooks/format.ts', () => {
@@ -369,6 +385,15 @@ test("a chat's text is masked as the pane's, with the patterns of hooks/format.t
   const s = foldCrewLog(log, NOW, text).snapshot
   assert.equal(s.trace[0].what, 'curl -H "Authorization: Bearer ***" https://example.com && npm test')
   assert.deepEqual(s.checks.map(c => [c.kind, c.command]), [['test', 'npm test']])
+  // An answer whose secret straddles the cut, and a subagent's task, are masked whole.
+  const more = [
+    { type: 'turn/started', time: NOW - 80, data: {} },
+    { type: 'message/sent', time: NOW - 79, data: { text: `${'x'.repeat(3985)} Authorization: ${bearer}` } },
+    { type: 'subagent/spawned', time: NOW - 78, data: { agent_id: 'sub1', agent: 'mate', task: `call it with Authorization: ${bearer}` } },
+  ]
+  const t = foldCrewLog([entries[0], ...more], NOW).snapshot
+  assert.ok(!JSON.stringify(t).includes('abc123'), 'a secret reached the snapshot')
+  assert.equal(t.turns.at(-1).answer.length, 4000)
 })
 
 test("a chat's thresholds are the pane's, in hooks/insights.ts", () => {

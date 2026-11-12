@@ -52,19 +52,20 @@ export function checksOf(command) {
   return [...found].map(([kind, part]) => ({ kind, part }))
 }
 
-// A pipe, `||`, or a command after `;` or a newline hides the check's own exit status.
-function hidesExit(command) {
+// A pipe or `||` hides every exit status; past `;` or a newline the shell reports only its last line's.
+function hidesExit(command, kind) {
   if (/\|\|/.test(command) || (/[^|]\|[^|]/.test(command) && !/pipefail/.test(command))) return true
-  const lines = command.split(/[;\n]/)
-  return lines.slice(lines.findIndex(l => checksOf(l).length > 0) + 1).some(l => l.trim())
+  return !checksOf(command.split(/[;\n]/).findLast(l => l.trim()) ?? '').some(c => c.kind === kind)
 }
 
 // The crew log gives a call's command and whether it failed, not its output: no counts, and a hidden exit status stays unknown.
-function recordChecks(snap, call) {
+// `isUnsure`: the call may not have run. A command cut at `CUT` may hide a pipe or a later check past the cut.
+function recordChecks(snap, call, isUnsure) {
   const found = checksOf(call.what)
+  const isOpen = isUnsure || call.what.length >= CUT
   for (const [i, { kind, part }] of found.entries()) {
     const old = snap.checks.find(c => c.kind === kind)
-    const result = call.isFailed ? (i === found.length - 1 ? 'failed' : 'unknown') : hidesExit(call.what) ? 'unknown' : 'ok'
+    const result = isOpen ? 'unknown' : call.isFailed ? (i === found.length - 1 ? 'failed' : 'unknown') : hidesExit(call.what, kind) ? 'unknown' : 'ok'
     const greenAt = old?.result === 'ok' ? old.at : old?.greenAt
     snap.checks = [...snap.checks.filter(c => c !== old), { kind, command: part, who: WHO, at: call.at, result, ...(greenAt === undefined ? {} : { greenAt }) }]
   }
@@ -153,6 +154,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
   const open = new Map()
   const asking = new Map()
   const rejected = new Set()
+  const unsure = new Set()
   const agents = new Map()
   const reads = new Set()
   let credits = 0
@@ -173,7 +175,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
       if (turn && !turn.prompt) turn.prompt = cut(d.text)
       else prompt = cut(d.text)
     } else if (e.type === 'message/sent') {
-      if (turn && d.text) turn.answer = mask(String(d.text).slice(0, ANSWER_CUT))
+      if (turn && d.text) turn.answer = mask(String(d.text)).slice(0, ANSWER_CUT)
     } else if (e.type === 'turn/started') {
       // A turn that never reported its end is over once the next one starts.
       if (turn) {
@@ -216,7 +218,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
       if (d.is_error || d.status === 'failed') call.isFailed = true
       // A call whose approval was rejected still ends as `completed` in the log: it never ran.
       const isRejected = rejected.delete(call.id)
-      if (call.kind === 'execute' && !isRejected) recordChecks(snap, call)
+      if (call.kind === 'execute' && !isRejected) recordChecks(snap, call, unsure.delete(call.id))
       const path = isRejected ? undefined : text.get(call.id)?.path
       if (path && !call.isFailed && call.kind === 'edit') recordEdit(snap, path, at)
       else if (path && !call.isFailed && call.kind === 'read') {
@@ -244,11 +246,12 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
     } else if (e.type === 'approval/decided') {
       const ask = asking.get(String(d.approval_id))
       asking.delete(String(d.approval_id))
-      if (ask?.call && d.decision === 'rejected') rejected.add(ask.call.id)
+      // With several calls open the log does not say which one was rejected: none of them is known to have run.
+      if (ask && d.decision === 'rejected') ask.call ? rejected.add(ask.call.id) : ask.calls.forEach(c => unsure.add(c.id))
       if (ask) settle(ask, at, turn)
     }
     else if (e.type === 'subagent/spawned') {
-      const card = { id: String(d.agent_id), type: String(d.agent || 'subagent'), model: String(d.model ?? ''), effort: '', task: cut(String(d.task ?? '').split('\n')[0]), status: 'running', files: 0, tools: 0, input: 0, output: 0, startedAt: at, prompt: String(d.task ?? '').slice(0, ANSWER_CUT), callId: [...open.keys()].at(-1) }
+      const card = { id: String(d.agent_id), type: String(d.agent || 'subagent'), model: String(d.model ?? ''), effort: '', task: cut(String(d.task ?? '').split('\n')[0]), status: 'running', files: 0, tools: 0, input: 0, output: 0, startedAt: at, prompt: mask(String(d.task ?? '')).slice(0, ANSWER_CUT), callId: [...open.keys()].at(-1) }
       agents.set(card.id, card)
       snap.log.push({ at, who: card.type, what: card.task, result: 'started', agentId: card.id })
     } else if (e.type === 'subagent/completed' || e.type === 'subagent/failed') {
