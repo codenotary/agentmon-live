@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 export const kiroHome = () => process.env.KIROCREW_HOME ?? join(homedir(), '.kiro', 'crew')
 // Where the server keeps its own files: the account's secret, and the Kiro Crew app's note.
 export const stateDir = () => join(homedir(), '.claude', 'agentmon-live')
-const LIVE_PATIENCE = 4
+export const LIVE_PATIENCE = 4
 const sidePath = (home, slot) => join(home, 'sessions', `dashboard_${slot}.jsonl`)
 // The page prints these as they come; a mod's session sends them in its own language.
 export const LABELS = {
@@ -380,7 +380,7 @@ export function toolText(home, slot) {
 }
 
 // A chat that crashed never writes `session/closed`, so one outside a turn leaves the list after `idleMs` without a write.
-// One poll over session logs, for every reader. `fold(hit)` gets `{ entries, agents }`, which stay until the log grows, and gives `{ snapshot, isClosed, isLive }`.
+// One poll over session logs, for every reader. `fold(hit)` gets `{ entries }`, which stay until the log grows, and gives `{ snapshot, isClosed, isLive }`; what it puts in `hit.kept` outlives them.
 export function pollLogs(files, now, idleMs, cache, fold) {
   const out = []
   const seen = new Set()
@@ -394,13 +394,12 @@ export function pollLogs(files, now, idleMs, cache, fold) {
       // A chat that is closed or idle stays so until its log grows: nothing to fold, and an old log is not read at all.
       if (!hit && isStale(true)) cache.set(file, (hit = { size: stat.size, isDone: true }))
       if (hit?.isDone && hit.size === stat.size) continue
-      if (hit?.size !== stat.size) hit = { size: stat.size, entries: lines(readFileSync(file, 'utf8')), agents: hit?.agents ?? new Map() }
+      if (hit?.size !== stat.size) hit = { size: stat.size, entries: lines(readFileSync(file, 'utf8')), ...(hit?.kept && { kept: hit.kept }) }
       cache.set(file, hit)
       const { snapshot, isClosed, isLive } = fold(hit)
       // Its entries are not needed again.
       if (isClosed || isStale(isLive)) {
-        // A subagent's folder may be gone when the chat goes on, so what was read from it stays.
-        cache.set(file, { size: stat.size, isDone: true, agents: hit.agents })
+        cache.set(file, { size: stat.size, isDone: true, ...(hit.kept && { kept: hit.kept }) })
         continue
       }
       if (!/^[\w-]{1,80}$/.test(snapshot.session.id)) continue
@@ -427,7 +426,8 @@ export function readKiro(home, now, idleMs, cache = new Map()) {
     } catch {}
     // The transcript beside the log is rewritten every few seconds; the log is read again only when it grew.
     if (hit.side !== side || !hit.text) Object.assign(hit, { side, slot, text: toolText(home, slot) })
-    const { agents } = hit
+    // A subagent's folder may be gone when the chat goes on, so what was read from it stays.
+    const agents = (hit.kept ??= new Map())
     // A finished subagent's transcript is read once more after it ended, then kept.
     const editsOf = card => {
       let seen = agents.get(card.id)

@@ -4,15 +4,13 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { cut, foldCrewLog, pollLogs, recordEdit } from './kiro.mjs'
+import { cut, foldCrewLog, LIVE_PATIENCE, pollLogs, recordEdit } from './kiro.mjs'
 
 export const codexHome = () => process.env.CODEX_HOME ?? join(homedir(), '.codex')
 const READS = new Set(['read', 'search', 'list_files'])
 // The kinds the page draws a quota gauge for.
 const WINDOW = { 300: 'five_hour', 10080: 'seven_day' }
 const DAY_MS = 86_400_000
-// As many idle spans back as `pollLogs` keeps a turn under way.
-const LIVE_DAYS_SLACK = 4
 // What Codex answers when it hands a script back with its command still running.
 const RUNNING = 'Script running'
 const textOf = content => (Array.isArray(content) ? content.map(c => c?.text ?? '').join('') : String(content ?? ''))
@@ -115,7 +113,7 @@ export function foldRollout(entries, now) {
     } else if (p.type === 'token_count') {
       const limits = p.rate_limits
       // Not every count carries the limits: the last ones known stay.
-      if (limits) rate = [limits.primary, limits.secondary].flatMap(r => (r && WINDOW[r.window_minutes] ? [{ kind: WINDOW[r.window_minutes], pct: Number(r.used_percent) || 0, ...(r.resets_at ? { resetsAt: r.resets_at * 1000 } : {}) }] : []))
+      if (limits?.primary || limits?.secondary) rate = [limits.primary, limits.secondary].flatMap(r => (r && WINDOW[r.window_minutes] ? [{ kind: WINDOW[r.window_minutes], pct: Number(r.used_percent) || 0, ...(r.resets_at ? { resetsAt: r.resets_at * 1000 } : {}) }] : []))
       if (!p.info) continue
       total = p.info.total_token_usage ?? total
       context = { used: Number(p.info.last_token_usage?.total_tokens) || 0, window: Number(p.info.model_context_window) || 0 }
@@ -147,14 +145,15 @@ export function foldRollout(entries, now) {
 }
 
 // Every Codex chat written to lately, as `[id, snapshot]`. A rollout has no closing entry: a chat leaves `idleMs` after its last write.
-// shortcut: only the day folders a listed chat can sit in are looked at, so a chat resumed in an older day's file is not seen, and a growing rollout is read whole; read the tail when a chat's file passes tens of MB.
+// shortcut: only the day folders a listed chat can sit in are looked at, so a chat first written to again in an older day's file is not seen, and a growing rollout is read whole; read the tail when a chat's file passes tens of MB.
 export function readCodex(home, now, idleMs, cache = new Map()) {
-  const files = []
+  // A chat listed already stays in, however old its folder: one that runs for days is still written to.
+  const files = new Set([...cache].flatMap(([file, hit]) => (hit.isDone ? [] : [file])))
   // A folder's day is local time: one day of slack either side.
-  for (let day = now - idleMs * LIVE_DAYS_SLACK - DAY_MS; day < now + DAY_MS; day += DAY_MS) {
+  for (let day = now - idleMs * LIVE_PATIENCE - DAY_MS; day < now + DAY_MS; day += DAY_MS) {
     const dir = join(home, 'sessions', ...new Date(day).toISOString().slice(0, 10).split('-'))
     try {
-      for (const name of readdirSync(dir)) if (/^rollout-.*\.jsonl$/.test(name)) files.push(join(dir, name))
+      for (const name of readdirSync(dir)) if (/^rollout-.*\.jsonl$/.test(name)) files.add(join(dir, name))
     } catch {}
   }
   return pollLogs(files, now, idleMs, cache, hit => foldRollout(hit.entries, now))

@@ -99,7 +99,7 @@ test('closed chats, long idle ones and a missing folder list nothing; a half-wri
   assert.deepEqual(readKiro(dir, Date.now(), 60_000), [])
   utimesSync(file, new Date(Date.now() - 120_000), new Date(Date.now() - 120_000))
   // An idle chat's lines are let go, and a log already old is not read.
-  assert.deepEqual([...cache.values()], [{ size: readFileSync(file).length, isDone: true, agents: new Map() }])
+  assert.deepEqual([...cache.values()], [{ size: readFileSync(file).length, isDone: true, kept: new Map() }])
   // A chat whose folder is gone is forgotten.
   cache.set('gone/log.jsonl', {})
   readKiro(dir, Date.now(), 60_000, cache)

@@ -62,7 +62,7 @@ test('files, tokens, context and limits come from what Codex reports', () => {
 test('the end of a turn closes the call it cut off, and a count without limits keeps the last ones', () => {
   const stamp = sec => new Date(Date.parse('2026-11-10T10:00:00Z') + sec * 1000).toISOString()
   const more = [
-    { timestamp: stamp(85), type: 'event_msg', payload: { type: 'token_count', info: null } },
+    { timestamp: stamp(85), type: 'event_msg', payload: { type: 'token_count', info: null, rate_limits: {} } },
     { timestamp: stamp(86), type: 'event_msg', payload: { type: 'turn_aborted' } },
     { timestamp: stamp(90), type: 'event_msg', payload: { type: 'task_started' } },
     { timestamp: stamp(91), type: 'response_item', payload: { type: 'custom_tool_call', call_id: 'call_6', name: 'exec', input: 'tools.exec_command({cmd:"npm run build"})' } },
@@ -102,7 +102,12 @@ test('the reader lists a chat written to lately, reads it again only when it gre
   utimesSync(file, NOW / 1000, NOW / 1000)
   const [[, s]] = readCodex(home, NOW, 60_000, cache)
   assert.equal(s.main.turnLive, undefined)
-  assert.deepEqual(readCodex(home, NOW + 61_000, 60_000, cache), [])
+  // Still written to days later: its folder is out of the window, the chat is not.
+  const later = NOW + 5 * 86_400_000
+  utimesSync(file, later / 1000, later / 1000)
+  assert.deepEqual(readCodex(home, later, 60_000, cache).map(([id]) => id), [SID])
+  assert.deepEqual(readCodex(home, later, 60_000).map(([id]) => id), [])
+  assert.deepEqual(readCodex(home, later + 61_000, 60_000, cache), [])
   assert.deepEqual(readCodex(join(home, 'none'), NOW, 60_000), [])
 })
 
