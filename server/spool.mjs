@@ -37,7 +37,8 @@ export function readSpool(dir, now, ttlMs, cache) {
       const { mark, value } = readChanged(path, cache.get(id)?.mark)
       // Alive is a change this server saw, not the file's time: a VM's clock may differ.
       if (value?.ended === true) cache.set(id, { mark, seenAt: -Infinity })
-      else if (isSnapshot(value)) cache.set(id, { mark, seenAt: now, snapshot: value })
+      // The server says where a session runs, whatever its file claims.
+      else if (isSnapshot(value)) cache.set(id, { mark, seenAt: now, snapshot: { ...value, session: { ...value.session, place: 'sandbox' } } })
     } catch {
       // Half written, or gone since the listing: the last one read stands.
     }

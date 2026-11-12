@@ -151,6 +151,8 @@ let isLooping = false
 let endedId: string | undefined
 // A folder the host's server reads, for a session that cannot reach it: one in a VM or a container.
 let spool: string | undefined
+// Where a VM or a container has the host's folder: one mount is the whole setup, with no variable to set.
+const SPOOL_DIR = '/var/lib/agentmon-live/spool'
 const spoolFile = (id: string) => `${spool}/${id}.json`
 // A turn from before this time belongs to an ended session.
 let ringFrom = 0
@@ -340,7 +342,7 @@ export async function startWeb($: EngineInterface, dir: string): Promise<void> {
   lastEnsureAt = await $.clock.now()
   const head = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir }).catch(() => undefined)
   branch = head?.exitCode === 0 ? head.stdout.trim() : undefined
-  spool = (await $.env.get('AGENTMON_SPOOL')) || undefined
+  spool = (await $.env.get('AGENTMON_SPOOL')) || ((await $.fs.exists(SPOOL_DIR).catch(() => false)) ? SPOOL_DIR : undefined)
   if (!isLooping) {
     isLooping = true
     publishLoop($)

@@ -101,7 +101,7 @@ On another machine, forward the port under the same number and open the same add
 - **A session shows only while it runs.** The server stops a minute after the last one ends.
 - **A run of a few seconds with no tool call** can end before its first post and never show.
 - **To have the page up before a run,** start the server yourself; it still stops after a minute with no session: `node ~/.claude/plugins/cache/agentmon-live/agentmon-live/<version>/server/web.mjs ensure 47311`.
-- **A session in a VM or a container** cannot reach the server: set `AGENTMON_SPOOL` there to a folder shared with your machine, and the server reads its snapshots from `~/.claude/agentmon-live/spool`. The [guide](docs/guide.md#web-view) has the rules.
+- **A session in a VM or a container** cannot reach the server: mount your `~/.claude/agentmon-live/spool` there at `/var/lib/agentmon-live/spool`, and its sessions show in the web view, marked **sandbox**. The [guide](docs/guide.md#web-view) has the rules.
 - **Without the plugin** no Claude Code session shows: only the plugin posts them. Kiro Crew chats still do.
 
 </details>

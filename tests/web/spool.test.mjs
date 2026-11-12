@@ -19,6 +19,7 @@ test('a snapshot in the folder is a session, under its file name', () => {
   const [[id, snapshot]] = readSpool(dir, 1000, TTL, new Map())
   assert.equal(id, 'box-1')
   assert.equal(snapshot.session.id, 'box-1')
+  assert.equal(snapshot.session.place, 'sandbox')
   assert.deepEqual(readSpool(join(dir, 'missing'), 1000, TTL, new Map()), [])
 })
 

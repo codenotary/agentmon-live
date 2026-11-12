@@ -24,6 +24,7 @@ export const es: Strings = {
       dismiss: 'Descartar',
       wasRunning: 'estaba en curso',
       wasWaiting: 'esperaba',
+      sandbox: 'entorno aislado',
       runningThen: 'En curso en la última actualización',
       noSessions: 'No hay ninguna sesión en marcha. Inicia Claude Code y esta página se llena.',
       update: 'Esta sesión usa otra versión de AgentMon Live. Actualízala para ver todo aquí.',
