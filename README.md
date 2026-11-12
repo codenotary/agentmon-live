@@ -85,6 +85,26 @@ The [guide](docs/guide.md#web-view) has the rest, including a registry install f
 
 </details>
 
+### Standalone
+
+<details>
+<summary>No Claude Code terminal: headless runs and the web view alone</summary>
+
+The pane needs the Claude Code terminal. The web view does not: any Claude Code run that loads the plugin shows there, such as `claude -p`.
+
+1. Install the plugin once: `claude plugin install agentmon-live --marketplace codenotary/agentmon-live`.
+2. Run Claude Code as you do, for example `claude -p "..."`. The plugin starts the server and posts the session. There is nothing to set.
+3. Open `http://127.0.0.1:47311/` in a browser. On Linux and macOS you type nothing more. On Windows an address typed by hand shows no sessions: it needs the one-time code from `/agentmon open`, or `webToken: off`, which lets any local process read your sessions.
+
+On another machine, forward the port under the same number and open the same address: `ssh -L 47311:127.0.0.1:47311 <host>`.
+
+- **A session shows only while it runs.** The server stops a minute after the last one ends.
+- **A run of a few seconds with no tool call** can end before its first post and never show.
+- **To have the page up before a run,** start the server yourself; it still stops after a minute with no session: `node ~/.claude/plugins/cache/agentmon-live/agentmon-live/<version>/server/web.mjs ensure 47311`.
+- **Without the plugin** no Claude Code session shows: only the plugin posts them. Kiro Crew chats still do.
+
+</details>
+
 ## Why you want it
 
 - **See it happen.** Every agent, tool call and handoff, live in your browser, in the [agent flow](#overview).
