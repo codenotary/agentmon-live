@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
+import { readSpool } from './spool.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
@@ -43,7 +44,7 @@ const HEADERS = {
 
 // Which server is newer: file times, because a rebuild keeps the version and a total order stops two sessions replacing each other in turn.
 function stampOfFiles() {
-  return Math.max(...['app.html', 'web.mjs', 'kiro.mjs'].map(f => statSync(join(HERE, f)).mtimeMs))
+  return Math.max(...['app.html', 'web.mjs', 'kiro.mjs', 'spool.mjs'].map(f => statSync(join(HERE, f)).mtimeMs))
 }
 
 // One secret per account, in a file only that account reads: another account's process on this machine can reach the port, not the sessions.
@@ -339,9 +340,12 @@ function serve(port, fixture, isOpen) {
   const wanted = new Map()
   const slotCache = new Map()
   const kiroIdleMs = envMs('AGENTMON_KIRO_IDLE_MS', 30 * 60_000)
+  // Sessions in a VM or a container write here; listed under the same rules as a Kiro Crew chat.
+  const spoolDir = process.env.AGENTMON_SPOOL || join(stateDir(), 'spool')
+  const spoolCache = new Map()
   if (isLocked) setInterval(() => {
     const now = Date.now()
-    const live = new Map(readKiro(kiroHome(), now, kiroIdleMs, kiroCache))
+    const live = new Map([...readKiro(kiroHome(), now, kiroIdleMs, kiroCache), ...readSpool(spoolDir, now, ttlMs, spoolCache)])
     for (const [slot, until] of wanted) {
       if (until < now) wanted.delete(slot)
       else if (![...live.values()].some(s => s.session.slot === slot)) {

@@ -149,6 +149,9 @@ let turnRing: WebTurn[] = []
 let isLooping = false
 // `/clear` ends a session with no new session.start: the loop goes on, under the new id, and only the ended id goes quiet.
 let endedId: string | undefined
+// A folder the host's server reads, for a session that cannot reach it: one in a VM or a container.
+let spool: string | undefined
+const spoolFile = (id: string) => `${spool}/${id}.json`
 // A turn from before this time belongs to an ended session.
 let ringFrom = 0
 let lastJson = ''
@@ -219,7 +222,8 @@ export function changeKey(snapshot: WebSnapshot): string {
 async function publish($: EngineInterface): Promise<number> {
   const [id, now] = await Promise.all([$.session.id(), $.clock.now()])
   if (id === endedId) return PUBLISH_MS
-  const hasTab = await takePaneRequest($, id)
+  // Nothing says whether a tab watches the folder: write as if one does.
+  const hasTab = spool ? true : await takePaneRequest($, id)
   // Every tick, tab or none: the ring takes a finished turn only as it goes by.
   const insStored = await read($, insights)
   const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
@@ -280,9 +284,12 @@ async function publish($: EngineInterface): Promise<number> {
   const json = changeKey(snapshot)
   const dueEvery = snapshot.turns.at(-1)?.isLive ? CLOCK_MS : HEARTBEAT_MS
   if (json === lastJson && now - lastPostAt < dueEvery) return wait
-  const r = await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(id)}`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(snapshot) })
-  // Something else may hold the port now: throw, so the loop's retry looks for our server.
-  if (!r.ok) throw new Error(`post answered ${r.status}`)
+  if (spool) await $.fs.write(spoolFile(id), JSON.stringify(snapshot))
+  else {
+    const r = await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(id)}`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(snapshot) })
+    // Something else may hold the port now: throw, so the loop's retry looks for our server.
+    if (!r.ok) throw new Error(`post answered ${r.status}`)
+  }
   lastPostAt = now
   lastJson = json
   return wait
@@ -294,13 +301,15 @@ function publishLoop($: EngineInterface, wait = PUBLISH_MS): void {
     if (cfg.webOn) {
       try {
         // No address means the first start failed: this retry is the way back.
-        if (!cfg.webUrl) throw new Error('no server')
+        if (!spool && !cfg.webUrl) throw new Error('no server')
         next = await publish($)
       } catch (error) {
         const now = await $.clock.now()
         if (now - lastEnsureAt >= ENSURE_EVERY_MS) {
           lastEnsureAt = now
           void debug($, 'web.down', { message: String(error) })
+          // A folder has no server to look for: the next write is the retry.
+          if (spool) return publishLoop($, next)
           // A server that idled out or was killed: the next post reaches the new one, and the page's EventSource finds it too.
           await ensureServer($).then(async () => {
             $.ui.invalidate('ui.render')
@@ -331,10 +340,12 @@ export async function startWeb($: EngineInterface, dir: string): Promise<void> {
   lastEnsureAt = await $.clock.now()
   const head = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir }).catch(() => undefined)
   branch = head?.exitCode === 0 ? head.stdout.trim() : undefined
+  spool = (await $.env.get('AGENTMON_SPOOL')) || undefined
   if (!isLooping) {
     isLooping = true
     publishLoop($)
   }
+  if (spool) return
   try {
     await ensureServer($)
     lastEnsureAt = -Infinity
@@ -354,6 +365,8 @@ export async function stopWeb($: EngineInterface, sessionId: string): Promise<vo
   turnRing = []
   lastJson = ''
   ringFrom = await $.clock.now()
+  // The engine has no call to remove a file: the server does, on this mark.
+  if (spool) return $.fs.write(spoolFile(sessionId), '{"ended":true}')
   if (!cfg.webUrl) return
   await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: jsonHeaders() })
 }

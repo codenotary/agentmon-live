@@ -107,6 +107,14 @@ Every running session on the machine shares one server. With more than one runni
 - **Without the app and with no Claude Code session open** nothing starts the server. Start it yourself: `node /path/to/agentmon-live/server/web.mjs ensure 47311`. A Kiro Crew script hook cannot: Kiro Crew runs hooks in its sandbox, which hides the crew log and has no `node` on its `PATH`.
 - **Web view only:** the pane is part of Claude Code.
 
+**Sessions in a VM or a container.** A session that cannot reach the server on your machine writes its snapshots to a folder the server reads. The mod must be installed where the session runs.
+
+- **In the VM or container:** set `AGENTMON_SPOOL` to a folder, in the environment Claude Code starts with. The session writes `<folder>/<session id>.json` and starts no server of its own. The pane's link and `/agentmon open` have no address to give there.
+- **On your machine:** share that folder with the VM or container. The server reads `~/.claude/agentmon-live/spool`, or the folder in its own `AGENTMON_SPOOL`, every 2 seconds. With no Claude Code session open here, start the server yourself as above; it stays up while a session writes.
+- **When it leaves:** when the session ends, or 90 seconds after its file last changed. The server removes the file.
+- **What can write the folder can add a session to your page.** The server reads plain files only, follows no link, and takes at most 64 files of 4 MB. The page shows a snapshot's text as text. It does not check every field: a broken snapshot can leave the page blank until its file is gone.
+- Like Kiro Crew chats, these sessions are listed only with `webToken` on.
+
 The page only reads, with one exception: the pane button tells the session to hide or show its pane. Nothing else flows from the browser back into a session. The server listens on `127.0.0.1` only and refuses other host names and writes from web pages. Secrets are masked first, as in the pane.
 
 Only your account uses the port (`webToken`, on by default):
