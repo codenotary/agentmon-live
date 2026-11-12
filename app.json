@@ -9,7 +9,7 @@
   "author": "Codenotary",
   "license": "Apache-2.0",
   "minKiroCrewVersion": "0.12.0",
-  "tags": ["monitoring", "observability"],
+  "tags": ["agents", "observability", "dashboard", "monitoring", "terminal"],
   "platform": { "os": ["macos", "linux"] },
   "backend": {
     "hooks": {
