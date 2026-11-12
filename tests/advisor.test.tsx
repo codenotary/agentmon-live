@@ -229,6 +229,20 @@ test('a test that failed this turn before the first code edit is not blamed when
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
 })
 
+test('a failing chain before the first code edit excuses no later failure: its blame was a guess', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [])
+  await start($)
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint -- fail && npm run build' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm run build -- fail' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toContain('build failed')
+})
+
 test('a check that ran before the last code edit is stale; a doc edit after it is not', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
@@ -246,6 +260,19 @@ test('a check that ran before the last code edit is stale; a doc edit after it i
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'b', new_string: 'c' })
   await clock.settle()
   expect((await $.classic.Stop({ ...STOP })).block).toContain('test ran before the last edit: npm test')
+})
+
+test('a test run in the background backs no "tests pass"', async ($, on) => {
+  withOptions(on, { advisorMode: 'gate' })
+  const clock = mock.clock(on)
+  engine(on)
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test', run_in_background: true })
+  await clock.settle()
+  const r = await $.classic.Stop({ ...STOP, last_assistant_message: 'Fixed the parser. All tests pass.' })
+  expect(r.block).toContain('the answer says "All tests pass", but no test ran after the last code edit')
 })
 
 test('an answer that says the tests pass with no check after the last edit is sent back', async ($, on) => {
@@ -658,6 +685,16 @@ test('"OK, but …" is no pass: the gap goes back to Claude', async ($, on) => {
   expect((await $.classic.Stop({ ...STOP })).block).toContain('the docs part of the request is not answered')
 })
 
+test('an objection that comes before the closing OK is no pass either', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [], ['The docs part is not answered, but the code is fine. OK.'])
+  await start($)
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `step-${i}` })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toContain('The docs part is not answered')
+})
+
 test('the old plan mode maps to gate mode', async ($, on) => {
 
   withOptions(on, { advisorMode: 'plan' })
@@ -764,11 +801,39 @@ test('check now during a turn waits for the answer, and never sends anything bac
   expect(prompts.length).toBe(0)
   await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Parser fixed.' })
   await clock.settle()
+  // Not before the Stop, where the done gate asks Fable first.
+  expect(prompts.length).toBe(0)
+  await $.classic.Stop({ ...STOP })
+  await clock.settle()
   expect(prompts.length).toBe(1)
   expect(prompts[0]).toContain('Final answer:\nParser fixed.')
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^⚠ stopped with this left open:$/ })).toBeTruthy()
   await ui.unmount()
+})
+
+test('a check queued in a turn that ends with no Stop runs from that turn: at once when aborted, at the next prompt after an answer', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts, ['OK', 'OK'])
+  await start($)
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
+  await $.turn.complete({ ...DONE, turnId: 'm1', answer: 'Half the parser.', isAborted: true, reason: 'aborted' })
+  await clock.settle()
+  expect(prompts.length).toBe(1)
+  expect(prompts[0]).toContain('Final answer:\nHalf the parser.')
+
+  await $.turn.start({ text: 'Fix the lexer', turnId: 'm2' })
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
+  await $.turn.complete({ ...DONE, turnId: 'm2', answer: 'Lexer fixed.' })
+  await clock.settle()
+  expect(prompts.length).toBe(1)
+  await $.turn.start({ text: 'Now the docs', turnId: 'm3' })
+  await clock.settle()
+  expect(prompts.length).toBe(2)
+  expect(prompts[1]).toContain('Final answer:\nLexer fixed.')
+  expect(prompts[1]).toContain('Fix the lexer')
 })
 
 test('material is wrapped and cannot close its wrapper early', async ($, on) => {

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { brief, mask } from '../hooks/format'
+import { brief, hasSecret, mask } from '../hooks/format'
 
 test('mask hides JSON-quoted secret keys', () => {
   expect(mask('{"password": "hunter2"}')).toBe('{"password": "***"}')
@@ -56,3 +56,23 @@ test('mask hides pass, passphrase, credentials, private keys and a bare bearer t
   expect(mask('maxTokens: 4000')).toBe('maxTokens: 4000')
 })
 
+
+test('hasSecret takes a literal secret and leaves references, wildcards and plain words', () => {
+  // Fake values, joined here so the source holds nothing a secret scanner takes for a key.
+  const fake = (...parts: string[]) => parts.join('')
+  expect(hasSecret(`Bash(curl -H "Authorization: ${fake('Bea', 'rer abc123', 'def456ghi789')}" https://example.com)`)).toBe(true)
+  expect(hasSecret(`Bash(curl -H "X-Api-Key: ${fake('9f8e7d6c', '5b4a3210ffee')}" https://example.com)`)).toBe(true)
+  expect(hasSecret(`Bash(OPENAI_API_KEY=${fake('sk-', 'proj-abcdefgh', 'ijklmnop1234')} npm test)`)).toBe(true)
+  expect(hasSecret('Bash(git clone https://user:pw@example.com/repo.git)')).toBe(true)
+  expect(hasSecret('Bash(gh auth token:*)')).toBe(false)
+  expect(hasSecret('Bash(export API_KEY=$FOO)')).toBe(false)
+  expect(hasSecret('Bash(curl -H "Authorization: Bearer $TOKEN" https://example.com)')).toBe(false)
+  expect(hasSecret('Bash(npm run token-refresh:*)')).toBe(false)
+  expect(hasSecret('MAX_THINKING_TOKENS=31999')).toBe(false)
+  expect(hasSecret('KEY_FILE=/home/me/keys/service-account-2024.json')).toBe(false)
+  expect(hasSecret('Bash(export SSL_KEY_PATH=~/ssl/private/server2024.pem)')).toBe(false)
+  expect(hasSecret('echo use Bearer authentication here')).toBe(false)
+  expect(hasSecret('Bash(git clone https://user:$PW@example.com/repo.git)')).toBe(false)
+  expect(hasSecret('Bash(git clone https://myorganizationname@dev.azure.com/myorganizationname/p/_git/r)')).toBe(false)
+  expect(hasSecret(`Bash(git clone https://${fake('ghp12345', '67890abcdefghij')}@github.com/o/r.git)`)).toBe(true)
+})

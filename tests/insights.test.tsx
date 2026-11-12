@@ -414,3 +414,12 @@ test('each turn-shaped Focus rule fires at its threshold and not below', () => {
   expect(keys({ mcpTokens: 100_000 })).toContain('mcp')
   expect(keys({ mcpTokens: 99_000 })).not.toContain('mcp')
 })
+
+test('a secret in a project settings file is red when git would commit it, yellow when ignored', () => {
+  const leak = { file: '.claude/settings.local.json', count: 2, sample: 'Authorization: Bearer ***' }
+  const secret = (leaks: { file: string; count: number; sample: string; isIgnored: boolean }[]) =>
+    focusList({ ins: EMPTY_INSIGHTS, doing: [], agents: [], window: 1000000, now: 0, leaks }).filter(x => x.tag === 'secret')
+  expect(secret([{ ...leak, isIgnored: false }]).map(x => [x.color, x.score, x.text])).toEqual([['red', 90, 'plain-text secrets: 2 · .claude/settings.local.json · git will commit it · rotate the key, remove the entry']])
+  expect(secret([{ ...leak, isIgnored: true }]).map(x => [x.color, x.text])).toEqual([['yellow', 'plain-text secrets: 2 · .claude/settings.local.json · git-ignored · remove the entry']])
+  expect(secret([])).toEqual([])
+})

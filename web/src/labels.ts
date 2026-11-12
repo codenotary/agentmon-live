@@ -24,6 +24,7 @@ export const PAGE_EN = {
   "context": "Context",
   "quota": "7-day quota",
   "cost": "Session cost",
+  "credits": "Credits",
   "turns": "Turns",
   "events": "Events",
   "cleared": "cleared",

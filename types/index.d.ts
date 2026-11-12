@@ -242,6 +242,9 @@ export type Task = { id: string; subject: string; activeForm?: string; status: '
 // A skill or prompt command whose text the session loaded: how often, by whom last, and when.
 export type SkillUse = { name: string; count: number; who: string; at: number }
 
+// A project settings file with secrets in plain text: how many, whether git leaves the file out, and the first one masked.
+export type Leak = { file: string; count: number; isIgnored: boolean; sample: string }
+
 // Test files this turn edited, what the edits took out, and test runs that shrank, for a person to look at beside a passing run.
 export type TestLine = { before?: string; after?: string }
 export type TestEdit = { path: string; removed: number; skips: number; at: number; changed?: number; lines?: TestLine[] }
@@ -255,7 +258,8 @@ export type WebFocus = { key: string; tag: string; text: string; isUrgent: boole
 // What a session posts to the web view's server. The page draws from this alone; change `v` when a field changes meaning.
 export type WebSnapshot = {
   v: 1
-  session: { id: string; cwd: string; branch?: string }
+  // `slot`: the Kiro Crew chat a Kiro session belongs to, as Kiro Crew's address names it.
+  session: { id: string; cwd: string; branch?: string; slot?: string }
   now: number
   lang: string
   labels: Record<string, unknown>
@@ -265,7 +269,8 @@ export type WebSnapshot = {
   // Absent from a session of an older version, which cannot take the page's request.
   isPaneOpen?: boolean
   focus: WebFocus[]
-  usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number }
+  // `credits` only from a Kiro Crew chat on kiro-cli, which reports them in place of tokens and cost.
+  usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number; credits?: number }
   turns: WebTurn[]
   turnCount: number
   active: Active[]

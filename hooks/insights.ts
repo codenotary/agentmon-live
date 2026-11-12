@@ -1,4 +1,4 @@
-import type { Active, Card, Check, Insights, TurnTime, TestReview } from '../types'
+import type { Active, Card, Check, Insights, Leak, TurnTime, TestReview } from '../types'
 import { needsReview, reviewLines, reviewText } from './testreview'
 import { fenced } from './lang/fenced'
 import { clockTime, decimal, isHigh, kilo, limitName, modelName, pad, shortPath } from './format'
@@ -111,21 +111,31 @@ export function areaOf(path: string, cwd: string): string {
   return dirs.slice(0, CONTAINERS.has(dirs[0] ?? '') ? 2 : 1).join('/')
 }
 
-// The path a call works on, if it names one.
-export function pathOf(call: object): string | undefined {
+// The file a call reads or edits, if it names one.
+export function fileOf(call: object): string | undefined {
   const a = call as Record<string, unknown>
-  const v = a.file_path ?? a.notebook_path ?? a.path
+  const v = a.file_path ?? a.notebook_path
   return typeof v === 'string' && v ? v : undefined
 }
 
-// Keep the `n` keys with the highest counts, so a long session's maps stay small.
+// The path a call works on, if it names one: its file, or the folder a search looks in.
+export function pathOf(call: object): string | undefined {
+  const v = (call as Record<string, unknown>).path
+  return fileOf(call) ?? (typeof v === 'string' && v ? v : undefined)
+}
+
+// Keep the `n` keys with the highest counts, so a long session's maps stay small; among equal counts the newest stays, so a new key can still grow.
 export function trimCounts(r: Record<string, number>, n = KEEP_KEYS): Record<string, number> {
   const entries = Object.entries(r)
-  return entries.length <= n ? r : Object.fromEntries(entries.sort((a, b) => b[1] - a[1]).slice(0, n))
+  return entries.length <= n ? r : Object.fromEntries(entries.reverse().sort((a, b) => b[1] - a[1]).slice(0, n))
 }
 
 export function bump(r: Record<string, number>, key: string, by = 1): Record<string, number> {
-  return trimCounts({ ...r, [key]: (r[key] ?? 0) + by })
+  const next = { ...r, [key]: (r[key] ?? 0) + by }
+  if (Object.keys(next).length <= KEEP_KEYS) return next
+  // The key just counted always stays: cut by its count of 1, a key that arrives late could never grow.
+  const { [key]: mine, ...rest } = next
+  return { ...trimCounts(rest, KEEP_KEYS - 1), [key]: mine! }
 }
 
 export function pushDuration(r: Record<string, number[]>, tool: string, ms: number): Record<string, number[]> {
@@ -203,12 +213,18 @@ export type FocusInput = {
   // The branch against its base, and the files this session edited (absolute paths).
   base?: BaseDrift
   edited?: readonly string[]
+  leaks?: readonly Leak[]
 }
 
 // Everything worth a look, most important first. Pure: the pane draws it, the tests read it.
-export function focusList({ ins, doing, agents, percent, window, tokens, now, learned = [], base, edited = [], testReview }: FocusInput): Insight[] {
+export function focusList({ ins, doing, agents, percent, window, tokens, now, learned = [], base, edited = [], testReview, leaks = [] }: FocusInput): Insight[] {
   const t = cfg.t.ins
   const out: Insight[] = [...learned]
+
+  // A secret in a settings file git would commit is urgent; in an ignored file it still sits on disk in plain text.
+  for (const l of leaks) {
+    out.push({ key: `secret:${l.file}:${l.count}`, score: l.isIgnored ? 60 : 90, tag: t.tag.secret, color: l.isIgnored ? 'yellow' : 'red', text: t.secretText(l.count, l.file, l.isIgnored), prompt: t.promptSecret(l.file, fenced(l.sample), l.isIgnored) })
+  }
 
   // A green run after the tests themselves changed: some updates are right, so a person looks; it sends nothing back.
   if (testReview && needsReview(testReview)) {

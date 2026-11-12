@@ -31,6 +31,7 @@
       "context": "Context",
       "quota": "7-day quota",
       "cost": "Session cost",
+      "credits": "Credits",
       "turns": "Turns",
       "running": "Running now",
       "turnClock": "Where each turn went",

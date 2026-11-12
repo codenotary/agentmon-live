@@ -54,9 +54,11 @@ const SECRET_NAME = /((?<![a-z])(?:(?:api[_-]?key|token|secret|key|password|pass
 const PREFIXED_SECRET = /\b([a-z_]{0,40}(?:password|passwd|pass(?:phrase)?|secret|token|api_?key|credentials?|private_?key))(?![a-z])(["']?\s*[=:]\s*)(?:(["'])[^"'\n]{1,200}\3|[^\s"',;]+)/gi
 // Only `[^\s:@/]` and `[^\s@/]` follow `://`, so each scan stops at the next slash or space: linear.
 const URL_CREDENTIALS = /:\/\/([^\s:@/]+):[^\s@/]+@/g
+// `https://<token>@github.com`: a token alone, with no `user:` before it.
+const URL_TOKEN = /:\/\/[^\s:@/]{16,}@/g
 const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|[sr]k_(?:live|test)_\w{16,}|gh[pousr]_\w{20,}|hf_\w{20,}|whsec_\w{20,}|ya29\.[\w-]{20,}|xapp-[\w-]{10,}|hooks\.slack\.com\/services\/[\w/]+|github_pat_\w{20,}|glpat-[\w-]{20,}|xox[abprs]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|npm_\w{36}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]+)/g
-// `curl -u user:pw`, `mysql -ppw`, `sshpass -p pw`, `redis-cli -a pw`, `--password pw` and cookie headers carry secrets without a telling name.
-const FLAG_SECRET = /(\s(?:-u\s*|--user[=\s]\s*)[^\s:"']+:)[^\s"']+|(\b(?:mysql|mysqldump|mariadb)\b[^|;&\n]{0,200}?\s-p)[^\s"']+|(\bsshpass\s+-p\s*|\bredis-cli\b[^|;&\n]{0,200}?\s-a\s+|--password[=\s]\s*)[^\s"']+|(\b(?:set-)?cookie\s*:\s*)[^\n"']+/gi
+// `curl -u user:pw`, `mysql -ppw`, `sshpass -p pw`, `docker login -p pw`, `redis-cli -a pw`, `--password pw` and cookie headers carry secrets without a telling name.
+const FLAG_SECRET = /(\s(?:-u\s*|--user[=\s]\s*)[^\s:"']+:)[^\s"']+|(\b(?:mysql|mysqldump|mariadb)\b[^|;&\n]{0,200}?\s-p)[^\s"']+|(\bsshpass\s+-p\s*|\bdocker\s+login\b[^|;&\n]{0,200}?\s-p\s+|\bredis-cli\b[^|;&\n]{0,200}?\s-a\s+|--password[=\s]\s*)[^\s"']+|(\b(?:set-)?cookie\s*:\s*)[^\n"']+/gi
 // A bearer token on its own, with no `Authorization:` before it.
 const BARE_BEARER = /\b(Bearer)\s+[\w.~+/-]{8,}=*/gi
 // A PEM private key spans lines: masked whole, up to its END line or the end of the text.
@@ -67,11 +69,26 @@ export function mask(s: string): string {
   return s
     .replace(PRIVATE_KEY, '$1***')
     .replace(URL_CREDENTIALS, '://$1:***@')
+    .replace(URL_TOKEN, '://***@')
     .replace(FLAG_SECRET, (_, user, mysql, flag, cookie) => `${user ?? mysql ?? flag ?? cookie}***`)
     .replace(SECRET_NAME, (_, name, sep, quote, quotedScheme, scheme) => (quote ? `${name}${sep}${quote}${quotedScheme ?? ''}***${quote}` : `${name}${sep}${scheme ?? ''}***`))
     .replace(PREFIXED_SECRET, (_, name, sep, quote = '') => `${name}${sep}${quote}***${quote}`)
     .replace(SECRET_SHAPE, '***')
     .replace(BARE_BEARER, '$1 ***')
+}
+
+const isLiteral = (m: string) => !/[$*<{]/.test(m)
+// `KEY_FILE=/etc/ssl/server2024.pem` names a file, not a key.
+const isPath = (m: string) => /[=:\s]["']?(?:~|\.{0,2}\/)/.test(m)
+const looksRandom = (m: string) => (m.match(/[^\s"'=:]{12,}/g) ?? []).some(run => /\d/.test(run))
+
+// shortcut: a named secret counts only with a 12+ character value that has a digit, so a short password is missed; upgrade when those show up in settings.
+export function hasSecret(s: string): boolean {
+  const hits = (re: RegExp) => s.match(re) ?? []
+  return [SECRET_SHAPE, PRIVATE_KEY].some(re => hits(re).length > 0)
+    || hits(URL_CREDENTIALS).some(isLiteral)
+    || hits(URL_TOKEN).some(looksRandom)
+    || [SECRET_NAME, PREFIXED_SECRET, FLAG_SECRET, BARE_BEARER].some(re => hits(re).some(m => isLiteral(m) && !isPath(m) && looksRandom(m)))
 }
 
 // What a call shows in the detail tabs and under Running now: `git push`, `npm test`, `sentry search_issues crash`.
@@ -172,19 +189,19 @@ export function failLine(answer: string): string | undefined {
 }
 
 // `pnpm --filter web test`, `npm --prefix api test`, `yarn workspace web test` run the same script in one package.
-const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:(?:--filter|-F|--prefix|-C|--dir|-w|--workspace)(?:=|\s+)\S+\s+|workspace\s+\S+\s+)*(?:run\s+)?`
+const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:(?:--filter|-F|--prefix|-C|--dir|-w|--workspace)(?:=|\s+)\S+\s+|(?:-r|--recursive)\s+|workspace\s+\S+\s+)*(?:run\s+)?`
 // Each pattern must start a command; the first kind that matches wins, so `tsc` is a typecheck, not a build.
 const CHECKS: [CheckKind, RegExp][] = [
   ['typecheck', new RegExp(String.raw`^(?:tsc|${RUN}(?:typecheck|type-check)|mypy|pyright|cargo check)\b`)],
   ['lint', new RegExp(String.raw`^(?:${RUN}lint|eslint|ruff|clippy|golangci-lint|flake8|biome (?:check|lint)|(?:claude )?plugin validate)\b`)],
-  ['test', new RegExp(String.raw`^(?:${RUN}test|go test|cargo test|pytest|jest|vitest|mocha|(?:claude )?plugin test|make test)\b`)],
+  ['test', new RegExp(String.raw`^(?:${RUN}(?:test\b|t(?![\w:-]))|go test|cargo test|pytest|unittest|jest|vitest|mocha|node --test|deno test|playwright test|gradlew? test|mvn test|dotnet test|(?:claude )?plugin test|make test)\b`)],
   ['build', new RegExp(String.raw`^(?:${RUN}build|cargo build|go build|make(?!\s+(?:clean|distclean|install|help)\b)|webpack|esbuild|vite build)\b`)],
 ]
 
 // Which check a shell command runs, if any, and the part of the command that runs it. Only the commands
 // themselves count: heredoc bodies are dropped, quoted text blanked, and a runner must start a command, so
 // `cat <<EOF … npm test … EOF`, `echo "x; npm test"` or `grep lint x` is no check. Wrappers (`npx`, `uv run`,
-// `python -m`, a path) are skipped.
+// `python -m`, `timeout 60`, `env X=1`, a path) are skipped.
 export function findCheck(command: string): { kind: CheckKind; part: string } | undefined {
   return findChecks(command)[0]
 }
@@ -209,7 +226,7 @@ function partsOf(command: string): { blank: string; parts: { head: string; part:
   let start = 0
   for (const m of blank.matchAll(/&&|\|\||;|\||\n|$/g)) {
     const head = blank.slice(start, m.index).trim()
-    parts.push({ end: m.index, head: head.replace(/^(?:\w+=\S*\s+)*(?:(?:npx(?:\s+(?:(?:-p|--package)(?:=|\s+)\S+|-y|--yes))*|bunx|sudo|time|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''), part: plain.slice(start, m.index).trim() })
+    parts.push({ end: m.index, head: head.replace(/^(?:\w+=\S*\s+)*(?:(?:npx(?:\s+(?:(?:-p|--package)(?:=|\s+)\S+|-y|--yes))*|bunx|sudo|time|timeout\s+\S+|env(?:\s+\w+=\S*)*|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/, ''), part: plain.slice(start, m.index).trim() })
     start = m.index + m[0].length
     if (m[0] === '') break
   }
@@ -234,7 +251,8 @@ const PASSES = /\b0\s+(?:fail(?:ed|ures?)?|errors?|problems?)\b|\bfail(?:ed|ures
 export function outcomeOf(output: string, kind: CheckKind): 'ok' | 'failed' | 'unknown' {
   // The summary is at the end; the cap keeps the scans cheap on huge logs.
   const out = output.slice(-20_000)
-  for (const line of out.split('\n').filter(l => l.trim()).slice(-15).reverse()) {
+  // jest's `Snapshots: 3 passed` sits below `Tests: 2 failed` and says nothing about the tests.
+  for (const line of out.split('\n').filter(l => l.trim() && !/^\s*Snapshots:/.test(l)).slice(-15).reverse()) {
     if (FAIL_COUNT.test(line) || /^\s*FAIL\b/.test(line)) return 'failed'
     if (PASSES.test(line)) return 'ok'
   }

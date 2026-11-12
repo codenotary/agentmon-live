@@ -4,7 +4,7 @@ import type { Call, WebSnapshot } from '../../types/index'
 import { keepEvents, keptEvents } from './events.ts'
 import { DEFAULT_VIEW } from './flow.ts'
 import { parseIds } from './format.ts'
-import { currentOf, silentIds, withLive, withoutSessions, withSnapshot, type SessionState } from './sessions.ts'
+import { currentOf, sessionOfSlot, silentIds, withLive, withoutSessions, withSnapshot, type SessionState } from './sessions.ts'
 
 export { currentOf }
 
@@ -21,6 +21,7 @@ const NOTICE_BAD_MS = 10_000
 // How often a session off screen, or a hidden tab, redraws the page.
 const QUIET_MS = 5000
 const WATCH_MS = 5000
+const ASK_SLOT_MS = 60_000
 // Two of the server's 15 s pings missed, and some margin.
 const STALL_MS = 35_000
 
@@ -109,10 +110,15 @@ export function useStore<T>(pick?: (st: State) => T): T | State {
 // What a session last said can no longer be trusted.
 export const hasNoSignal = (st: Pick<State, 'isDown' | 'silent'>, id: string) => st.isDown || st.silent.has(id)
 
-export function pick(id: string): void {
-  save(PICK_KEY, id)
-  // A section's link in the address belongs to the session being left.
-  history.replaceState(null, '', location.pathname + location.search)
+// In Kiro Crew's tab, the chat beside it, from `#kiro=<slot>`: picked once when its session is here, so a pick by hand afterwards stays.
+let wantSlot = ''
+export function pick(id: string, isSaved = true): void {
+  // By hand: kept, ends the wait for the chat, and drops the address's section link; an automatic pick keeps `#kiro=` for a reload.
+  if (isSaved) {
+    save(PICK_KEY, id)
+    wantSlot = ''
+    history.replaceState(null, '', location.pathname + location.search)
+  }
   set({ picked: id, shown: id, whoFilter: null, flowView: DEFAULT_VIEW, openAgents: new Set() })
 }
 
@@ -179,6 +185,33 @@ export function useClock(s: WebSnapshot): number {
   return clockOf(s)
 }
 
+// The tab's chat stays named to the server while the tab shows it, so an idle one is listed too.
+let tabSlot = ''
+let askedAt = 0
+function askSlot(): void {
+  if (!tabSlot || !pass) return
+  askedAt = Date.now()
+  void fetch(`/kiro/${encodeURIComponent(tabSlot)}`, { method: 'POST', headers: { 'x-agentmon-pass': pass } }).catch(() => undefined)
+}
+const readSlot = () => {
+  const slot = new URLSearchParams(location.hash.slice(1)).get('kiro')
+  if (slot) [wantSlot, tabSlot] = [slot, slot]
+}
+function followSlot(): void {
+  const id = wantSlot ? sessionOfSlot(state.sessions, wantSlot) : undefined
+  if (id === undefined) return
+  wantSlot = ''
+  if (state.picked !== id) pick(id, false)
+}
+if (typeof window !== 'undefined') {
+  readSlot()
+  window.addEventListener('hashchange', () => {
+    readSlot()
+    askSlot()
+    followSlot()
+  })
+}
+
 const focusKeys = (s: WebSnapshot | undefined) => s?.focus?.map(f => f.key).join('\n')
 
 // Only the session on screen redraws at once; a hidden tab waits too, unless what needs the person changed, which the tab title shows.
@@ -203,6 +236,7 @@ function received(id: string, snapshot: WebSnapshot, age = 0): void {
   const isShown = currentOf(state)?.session.id === id
   if (isShown && (!document.hidden || focusKeys(snapshot) !== before)) emit()
   else emitSoon()
+  if (wantSlot && snapshot.session.slot === wantSlot) followSlot()
 }
 
 // The session applies it within a second and says so in its next snapshot, which moves the button.
@@ -260,7 +294,11 @@ export function connect(): void {
     return events
   }
   let events: EventSource | undefined
-  const reopen = () => void enter().then(() => (events = open()))
+  const reopen = () =>
+    void enter().then(() => {
+      events = open()
+      askSlot()
+    })
   reopen()
   setInterval(() => {
     const now = Date.now()
@@ -271,6 +309,7 @@ export function connect(): void {
       if (!state.isDown) set({ isDown: true, downAt: now })
       reopen()
     }
+    if (now - askedAt > ASK_SLOT_MS) askSlot()
     const silent = silentIds(state.receivedAt, now)
     if ([...silent].join('\n') !== [...state.silent].join('\n')) set({ silent })
   }, WATCH_MS)

@@ -1,15 +1,20 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { execFile, spawn, spawnSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, get, request } from 'node:http'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
 // A snapshot at the publisher's caps is about 700 KB of characters; in Chinese or Japanese each takes three bytes.
 const MAX_BODY = 4 * 1024 * 1024
+const KIRO_RESEND_MS = 15_000
+// How long a tab's ask for an idle Kiro chat holds; the tab asks again every minute.
+const KIRO_WANT_MS = 120_000
+const KEEP_WANTED = 8
 const MAX_BACKLOG = 16 * 1024 * 1024
 const PORT_TRIES = 20
 const TOKEN = /^[0-9a-f]{64}$/
@@ -38,14 +43,14 @@ const HEADERS = {
 
 // Which server is newer: file times, because a rebuild keeps the version and a total order stops two sessions replacing each other in turn.
 function stampOfFiles() {
-  return Math.max(statSync(join(HERE, 'app.html')).mtimeMs, statSync(fileURLToPath(import.meta.url)).mtimeMs)
+  return Math.max(...['app.html', 'web.mjs', 'kiro.mjs'].map(f => statSync(join(HERE, f)).mtimeMs))
 }
 
 // One secret per account, in a file only that account reads: another account's process on this machine can reach the port, not the sessions.
 // It never leaves this file and the processes that read it: `ensure` and the server prove to each other that they hold it, and what a session or a tab sends is made for one server run or cannot be turned back into it.
 // The same file whatever CLAUDE_CONFIG_DIR says, so sessions with different ones still share a server.
 function readToken() {
-  const path = process.env.AGENTMON_WEB_TOKEN_FILE || join(homedir(), '.claude', 'agentmon-live', 'web.token')
+  const path = process.env.AGENTMON_WEB_TOKEN_FILE || join(stateDir(), 'web.token')
   const read = () => {
     try {
       return readFileSync(path, 'utf8').trim()
@@ -55,12 +60,15 @@ function readToken() {
   }
   if (!TOKEN.test(read())) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
-    // `wx` first: of two servers starting together, the second reads the first one's.
+    // Put in place whole: of two servers starting together, the second reads the first one's, never a half-written one.
+    const draft = `${path}.${process.pid}`
+    writeFileSync(draft, randomBytes(32).toString('hex'), { mode: 0o600 })
     try {
-      writeFileSync(path, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 })
+      linkSync(draft, path)
     } catch {
-      if (!TOKEN.test(read())) writeFileSync(path, randomBytes(32).toString('hex'), { mode: 0o600 })
+      if (!TOKEN.test(read())) renameSync(draft, path)
     }
+    rmSync(draft, { force: true })
   }
   return read()
 }
@@ -72,10 +80,16 @@ function isSame(given, token) {
 
 const sign = (token, text) => createHmac('sha256', token).update(text).digest('hex')
 
-// The account that holds the other end of a local connection, as the kernel lists it; undefined where it cannot be told (not Linux, or /proc closed).
+// The account that holds the other end of a local connection, as the system lists it; undefined where it cannot be told (Windows, or the listing failed).
 // It is what lets a browser of the same account in with nothing to type or carry, also through an SSH port forward, whose end here is that account's sshd.
-function peerUid(socket) {
-  if (process.platform !== 'linux' || process.env.AGENTMON_WEB_NO_UID) return undefined
+async function peerUid(socket) {
+  if (process.env.AGENTMON_WEB_NO_UID) return undefined
+  if (process.platform === 'darwin') {
+    const args = ['-nP', `-iTCP@127.0.0.1:${socket.remotePort}`, '-sTCP:ESTABLISHED', '-Fpun']
+    const text = await new Promise(done => execFile('/usr/sbin/lsof', args, { encoding: 'utf8', timeout: 2000 }, (e, out) => done(e ? '' : out)))
+    return uidFromLsof(text, process.pid, `127.0.0.1:${socket.remotePort}->127.0.0.1:${socket.localPort}`)
+  }
+  if (process.platform !== 'linux') return undefined
   const hex = n => n.toString(16).toUpperCase().padStart(4, '0')
   const ends = [hex(socket.remotePort), hex(socket.localPort)]
   try {
@@ -86,6 +100,18 @@ function peerUid(socket) {
     }
   } catch {
     return undefined
+  }
+  return undefined
+}
+
+// macOS has no /proc: lsof lists each process (`p`, `u`) and its sockets (`n`); the peer is the one holding this connection from the other end, never just a socket on the same port.
+export function uidFromLsof(text, selfPid, pair) {
+  let pid
+  let uid
+  for (const line of String(text).split('\n')) {
+    if (line.startsWith('p')) [pid, uid] = [Number(line.slice(1)), undefined]
+    else if (/^u\d+$/.test(line)) uid = Number(line.slice(1))
+    else if (line === `n${pair}` && pid !== selfPid && uid !== undefined) return uid
   }
   return undefined
 }
@@ -134,9 +160,9 @@ function serve(port, fixture, isOpen) {
     return true
   }
   const isSessionWrite = (req, res) => isWriteAllowed(req) && isSession(req, res)
-  const isReader =(req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
-  const isSameUser = req => {
-    const uid = peerUid(req.socket)
+  const isReader = (req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
+  const isSameUser = async req => {
+    const uid = await peerUid(req.socket)
     return uid !== undefined && uid === process.getuid()
   }
   // In memory, so a plugin update that removes this folder leaves a running server whole.
@@ -176,7 +202,11 @@ function serve(port, fixture, isOpen) {
     const [path, query = ''] = (req.url ?? '/').split('?')
 
     if (req.method === 'GET') {
-      if (path === '/') return reply(res, 200, 'text/html; charset=utf-8', page)
+      if (path === '/') {
+        // Kiro Crew's own page may show this one in a tab, while its gateway runs; no other page may.
+        const frames = fixture ? [] : (kiroHost()?.origins ?? [])
+        return reply(res, 200, 'text/html; charset=utf-8', page, frames.length ? { 'content-security-policy': HEADERS['content-security-policy'].replace("frame-ancestors 'none'", `frame-ancestors ${frames.join(' ')}`) } : {})
+      }
       if (path === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, pid: process.pid, sessions: sessions.size, stamp, isLocked, boot }))
       // `ensure` proves it holds the secret and gets this run's key, with a proof that the server holds it too. The port and the run are in both proofs: one caught on another port, or from another run, is no use here.
       if (path === '/key') {
@@ -216,19 +246,23 @@ function serve(port, fixture, isOpen) {
       const code = String(req.headers['x-agentmon-code'] ?? '')
       const isInvited = tickets.get(code) > Date.now()
       tickets.delete(code)
-      if (isLocked && !isInvited && !isSameUser(req)) return forbid(res)
-      return reply(res, 200, 'application/json', JSON.stringify({ pass }))
+      const enter = () => reply(res, 200, 'application/json', JSON.stringify({ pass }))
+      if (!isLocked || isInvited) return enter()
+      return void isSameUser(req).then(ok => (ok ? enter() : forbid(res))).catch(() => res.destroy())
     }
     // A session asks what the browser must open. Where the kernel names the account behind a connection, the plain address does; elsewhere it carries a code.
-    // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if macOS or Windows machines are shared.
+    // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if Windows machines are shared.
     if (path === '/ticket' && req.method === 'POST') {
       if (!isSessionWrite(req, res)) return forbid(res)
-      if (!isLocked || isSameUser(req)) return reply(res, 200, 'application/json', '{}')
-      const now = Date.now()
-      for (const [c, until] of tickets) if (until <= now || tickets.size >= KEEP_TICKETS) tickets.delete(c)
-      const code = randomBytes(16).toString('hex')
-      tickets.set(code, now + TICKET_MS)
-      return reply(res, 200, 'application/json', JSON.stringify({ code }))
+      if (!isLocked) return reply(res, 200, 'application/json', '{}')
+      return void isSameUser(req).then(ok => {
+        if (ok) return reply(res, 200, 'application/json', '{}')
+        const now = Date.now()
+        for (const [c, until] of tickets) if (until <= now || tickets.size >= KEEP_TICKETS) tickets.delete(c)
+        const code = randomBytes(16).toString('hex')
+        tickets.set(code, now + TICKET_MS)
+        return reply(res, 200, 'application/json', JSON.stringify({ code }))
+      }).catch(() => res.destroy())
     }
 
     const asked = path.match(/^\/pane\/([\w-]{1,80})\/(open|close)$/)
@@ -236,6 +270,15 @@ function serve(port, fixture, isOpen) {
       if (!isOwnPage(req, port) || !isReader(req, query)) return forbid(res)
       if (!sessions.has(asked[1])) return reply(res, 404, 'text/plain', 'not found')
       paneRequests.set(asked[1], asked[2] === 'open')
+      return reply(res, 204)
+    }
+    // Kiro Crew's tab names the chat beside it, so an idle or closed one is listed too while the tab shows it.
+    const wants = path.match(/^\/kiro\/([\w-]{1,80})$/)
+    if (wants && req.method === 'POST') {
+      if (!isOwnPage(req, port) || !isReader(req, query)) return forbid(res)
+      wanted.delete(wants[1])
+      if (wanted.size >= KEEP_WANTED) wanted.delete(wanted.keys().next().value)
+      wanted.set(wants[1], Date.now() + KIRO_WANT_MS)
       return reply(res, 204)
     }
     const taken = path.match(/^\/pane\/([\w-]{1,80})$/)
@@ -288,8 +331,37 @@ function serve(port, fixture, isOpen) {
   setInterval(() => {
     const now = Date.now()
     for (const [id, s] of sessions) if (now - s.at > ttlMs) drop(id, true)
-    if (sessions.size === 0 && now - idleSince > idleMs) process.exit(0)
+    if (sessions.size === 0 && now - idleSince > idleMs && (fixture || !kiroHost())) process.exit(0)
   }, envMs('AGENTMON_WEB_SWEEP_MS', 5000))
+  // A chat on the Claude harness with the mod loaded posts under the same id, and its own snapshot says more: that one stays.
+  // Only behind the lock: a session chose `webToken: off` for itself, a Kiro Crew chat did not.
+  const kiroCache = new Map()
+  const wanted = new Map()
+  const slotCache = new Map()
+  const kiroIdleMs = envMs('AGENTMON_KIRO_IDLE_MS', 30 * 60_000)
+  if (isLocked) setInterval(() => {
+    const now = Date.now()
+    const live = new Map(readKiro(kiroHome(), now, kiroIdleMs, kiroCache))
+    for (const [slot, until] of wanted) {
+      if (until < now) wanted.delete(slot)
+      else if (![...live.values()].some(s => s.session.slot === slot)) {
+        const got = readKiroSlot(kiroHome(), slot, now, slotCache)
+        if (got) live.set(...got)
+      }
+    }
+    for (const [id, s] of sessions) if (s.isKiro && !live.has(id)) drop(id)
+    for (const [id, snapshot] of live) {
+      const had = sessions.get(id)
+      if (had && !had.isKiro) continue
+      // The page calls a session silent after 45 s without a snapshot, so an idle chat is still sent, but not every 2 s.
+      const mark = JSON.stringify({ ...snapshot, now: 0 })
+      const isDue = had?.mark !== mark || now - had.sentAt > KIRO_RESEND_MS
+      // A tab that connects in between gets the last one sent: as old as what the other tabs hold.
+      const json = isDue ? JSON.stringify(snapshot) : had.json
+      if (isDue) broadcast('snapshot', packed(id, json))
+      sessions.set(id, { json, at: now, isKiro: true, mark, sentAt: isDue ? now : had.sentAt })
+    }
+  }, envMs('AGENTMON_KIRO_POLL_MS', 2000))
   // A named event, not an SSE comment: the page must see it to notice a connection that hangs without closing. Empty data would not dispatch.
   setInterval(() => broadcast('ping', '1'), envMs('AGENTMON_WEB_PING_MS', 15_000))
 
@@ -297,46 +369,44 @@ function serve(port, fixture, isOpen) {
   server.listen(port, '127.0.0.1')
 }
 
+// A local JSON GET with a size cap: the port may be held by anything. `code` is why nothing answered.
 // No shared agent: a kept-alive socket to a server that just quit would read as a port someone else holds.
-function probe(port) {
+function getJson(port, path, headers = {}) {
   return new Promise(resolve => {
-    const req = get({ host: '127.0.0.1', port, path: '/health', timeout: 1000, agent: false }, res => {
+    const req = get({ host: '127.0.0.1', port, path, headers, timeout: 1000, agent: false }, res => {
       let text = ''
-      res.on('data', d => (text += d))
+      res.on('data', d => {
+        text += d
+        if (text.length > 65_536) req.destroy()
+      })
       res.on('end', () => {
         try {
-          const { name, stamp, isLocked, boot } = JSON.parse(text)
-          // A server from before the stamp cannot be told to quit: leave it to idle out, on its port.
-          resolve(name === NAME && typeof stamp === 'number' ? { state: 'ours', stamp, isLocked, boot: String(boot ?? '') } : { state: 'other' })
+          resolve({ json: JSON.parse(text) })
         } catch {
-          resolve({ state: 'other' })
+          resolve({})
         }
       })
+      res.on('close', () => resolve({}))
     })
     req.on('timeout', () => req.destroy())
-    req.on('error', e => resolve({ state: e.code === 'ECONNREFUSED' ? 'free' : 'other' }))
+    req.on('error', e => resolve({ code: e.code }))
   })
 }
 
+async function probe(port) {
+  const { json, code } = await getJson(port, '/health')
+  const { name, stamp, isLocked, boot } = json ?? {}
+  // A server from before the stamp cannot be told to quit: leave it to idle out, on its port.
+  if (name === NAME && typeof stamp === 'number') return { state: 'ours', stamp, isLocked, boot: String(boot ?? '') }
+  return { state: code === 'ECONNREFUSED' ? 'free' : 'other' }
+}
+
 // This run's key and mark, from a server that proved it holds the account's secret; undefined from any other.
-function handshake(port, boot, token) {
+async function handshake(port, boot, token) {
   const nonce = randomBytes(16).toString('hex')
-  return new Promise(resolve => {
-    const req = get({ host: '127.0.0.1', port, path: '/key', timeout: 1000, agent: false, headers: { 'x-agentmon-nonce': nonce, 'x-agentmon-proof': sign(token, `client:${port}:${boot}:${nonce}`) } }, res => {
-      let text = ''
-      res.on('data', d => (text += d))
-      res.on('end', () => {
-        try {
-          const { key, mark, proof } = JSON.parse(text)
-          resolve(TOKEN.test(key) && TOKEN.test(mark) && isSame(proof, sign(token, `server:${port}:${boot}:${nonce}:${key}:${mark}`)) ? { key, mark } : undefined)
-        } catch {
-          resolve(undefined)
-        }
-      })
-    })
-    req.on('timeout', () => req.destroy())
-    req.on('error', () => resolve(undefined))
-  })
+  const { json } = await getJson(port, '/key', { 'x-agentmon-nonce': nonce, 'x-agentmon-proof': sign(token, `client:${port}:${boot}:${nonce}`) })
+  const { key, mark, proof } = json ?? {}
+  return TOKEN.test(key) && TOKEN.test(mark) && isSame(proof, sign(token, `server:${port}:${boot}:${nonce}:${key}:${mark}`)) ? { key, mark } : undefined
 }
 
 function askToQuit(port, boot, token) {
@@ -421,9 +491,19 @@ function open(url) {
   })
 }
 
-const [mode, arg, ...flags] = process.argv.slice(2)
-const isOpen = flags.includes('--open')
-if (mode === 'serve') serve(Number(arg), flags[0] === '--fixture' ? flags[1] : undefined, isOpen)
-else if (mode === 'ensure') process.exit(await ensure(Number(arg), isOpen))
-else if (mode === 'open') process.exit(await open(arg))
-else process.exit(2)
+// Run as a program; a test imports it for `uidFromLsof` only.
+const isMain = () => {
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+}
+if (isMain()) {
+  const [mode, arg, ...flags] = process.argv.slice(2)
+  const isOpen = flags.includes('--open')
+  if (mode === 'serve') serve(Number(arg), flags[0] === '--fixture' ? flags[1] : undefined, isOpen)
+  else if (mode === 'ensure') process.exit(await ensure(Number(arg), isOpen))
+  else if (mode === 'open') process.exit(await open(arg))
+  else process.exit(2)
+}

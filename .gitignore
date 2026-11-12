@@ -24,3 +24,7 @@ Thumbs.db
 
 # Pane captures from scripts/pane-run.sh
 tests/pane-snaps/
+__pycache__/
+
+# Python bytecode (kiro/hooks.py)
+__pycache__/

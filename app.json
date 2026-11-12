@@ -1,0 +1,27 @@
+{
+  "name": "agentmon-live",
+  "version": "0.38.0",
+  "displayName": "AgentMon Live",
+  "iconPath": ".claude-plugin/icon.png",
+  "heroImage": "docs/kiro/hero.png",
+  "screenshots": ["docs/web/overview.png", "docs/web/calls.png", "docs/web/agents.png"],
+  "description": "See what every chat is doing, live: turns, tool calls, approvals, subagents, context and credits, on any harness",
+  "author": "Codenotary",
+  "license": "Apache-2.0",
+  "minKiroCrewVersion": "0.12.0",
+  "tags": ["monitoring", "observability"],
+  "platform": { "os": ["macos", "linux"] },
+  "backend": {
+    "hooks": {
+      "on_startup": "kiro.hooks:on_startup",
+      "on_shutdown": "kiro.hooks:on_shutdown"
+    }
+  },
+  "ui": {
+    "entry": "panel.mjs",
+    "pages": [{ "route": "/apps/agentmon-live", "label": "AgentMon Live", "icon": "Activity" }]
+  },
+  "contributes": {
+    "panelTabs": [{ "id": "live", "title": "AgentMon", "menuLabel": "AgentMon Live", "menuDescription": "What this machine's chats are doing now", "icon": "Activity", "entry": "panel.mjs" }]
+  }
+}

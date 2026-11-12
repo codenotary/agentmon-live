@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { applyOptions, languageFromEnv, pickOptions } from '../hooks/options'
+import { applyOptions, languageFromEnv, pickOptions, secretStrings } from '../hooks/options'
 import { cfg } from '../hooks/state'
 
 test('pickOptions merges this mod\'s entries and ignores others', () => {
@@ -52,4 +52,18 @@ test('a webPort outside the unprivileged range falls back to the default', () =>
     applyOptions({ webPort }, undefined)
     expect(cfg.webPort).toBe(47311)
   }
+})
+
+test('secretStrings finds an allow rule and an env value, masked, and fails open', () => {
+  // Fake values, joined here so the source holds nothing a secret scanner takes for a key.
+  const fake = (...parts: string[]) => parts.join('')
+  const settings = {
+    permissions: { allow: ['Bash(npm test:*)', `Bash(curl -H "Authorization: ${fake('Bea', 'rer abc123', 'def456ghi789')}" https://example.com)`] },
+    env: { MAX_THINKING_TOKENS: '31999', SERVICE_API_KEY: fake('9f8e7d6c', '5b4a3210ffee') },
+    apiKeyHelper: '/usr/local/bin/key-helper-v2-2024.sh',
+    mcpServers: { api: { headers: { 'X-API-Key': fake('0a1b2c3d', '4e5f67890abc') } } },
+  }
+  expect(secretStrings(JSON.stringify(settings))).toEqual(['Bash(curl -H "Authorization: Bearer ***" https://example.com)', 'SERVICE_API_KEY=***', 'X-API-Key=***'])
+  expect(secretStrings('not json')).toEqual([])
+  expect(secretStrings('null')).toEqual([])
 })

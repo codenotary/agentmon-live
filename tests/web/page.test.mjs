@@ -9,7 +9,7 @@ import { alertOf, keepEvents, keptEvents, kindOf, nextEvents, splitEvents } from
 import { agentNames, pathIn, blockedOf, callTime, chipsWith, kilo, countWord, editsSinceGreen, lastGreenAt, MAIN_KEY, nextRow, traceResult, whoKey, SECTION_KEYS, parseIds, pushPoint, resultOf, sessionNames, stateOf, tailOf, titleFor, toolGroup, whoOf } from '../../web/src/format.ts'
 import { fileGroups } from '../../web/src/files.ts'
 import { chipCounts, foldAgents, logRows, matchesChip, sameRow, stripOf } from '../../web/src/logrows.ts'
-import { currentOf, silentIds, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
+import { currentOf, sessionOfSlot, silentIds, withLive, withoutSessions, withSnapshot } from '../../web/src/sessions.ts'
 import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../../web/src/kpi.ts'
 import { labelsOf, lastKnown, PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, lanesIn, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
@@ -639,7 +639,7 @@ test('an event kind comes from its key, and an unknown key is other', () => {
 })
 
 test('every event key prefix the hooks make has its filter kind; Other only for the ones meant there', () => {
-  const OTHER = ['base', 'churn', 'docs', 'habit', 'model', 'pace', 'peak', 'reread', 'sink', 'size', 'switches']
+  const OTHER = ['base', 'churn', 'docs', 'habit', 'model', 'pace', 'peak', 'reread', 'secret', 'sink', 'size', 'switches']
   const hooks = readdirSync(join(ROOT, 'hooks')).filter(f => f.endsWith('.ts')).map(f => readFileSync(join(ROOT, 'hooks', f), 'utf8')).join('\n')
   const prefixes = new Set([...hooks.matchAll(/key: (?:`(\w+):|'(\w+)', score)/g)].map(m => m[1] ?? m[2]))
   assert.ok(prefixes.has('check') && prefixes.has('mcp'), 'the key search found nothing; did the hooks change shape?')
@@ -781,3 +781,14 @@ test('a plan-context or long-turn item whose number grows is the same item, not 
   assert.deepEqual(long.map(e => e.key), ['long:4'])
 })
 
+
+test('a Kiro Crew chat finds its session by slot, the one with the latest turn when it was resumed', () => {
+  const at = (id, slot, startedAt) => [id, { session: { id, cwd: '/w', slot }, turns: startedAt ? [{ startedAt }] : [] }]
+  const sessions = new Map([at('old', 'chat-1', 100), at('new', 'chat-1', 200), at('other', 'chat-2', 300), at('claude', undefined, 400)])
+  assert.equal(sessionOfSlot(sessions, 'chat-1'), 'new')
+  assert.equal(sessionOfSlot(sessions, 'chat-2'), 'other')
+  assert.equal(sessionOfSlot(sessions, 'chat-9'), undefined)
+  assert.equal(sessionOfSlot(sessions, ''), undefined)
+  // Resumed: the new session has no turn yet and is still the chat now.
+  assert.equal(sessionOfSlot(new Map([...sessions, at('resumed', 'chat-1')]), 'chat-1'), 'resumed')
+})

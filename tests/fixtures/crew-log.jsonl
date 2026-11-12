@@ -1,0 +1,16 @@
+{"type": "session", "version": 1, "id": "98c57baf-8d87-4311-b3db-02e5652916a2", "owner": "default", "task": null, "pack": null, "agent": "kirocrew", "slot": "chat-7-1794295517", "thread": null, "cwd": "/home/dev/github/demo", "remote": null, "createdAt": 1794295524547}
+{"type": "session/opened", "seq": 1, "time": 1794295524567, "src": "gateway", "data": {"agent": "kirocrew", "slot": "chat-7-1794295517", "model": "fable", "cwd": "/home/dev/github/demo", "owner": "default", "resumed": false, "depth": 0, "class": {"memory": "persistent", "workspace": "default"}}}
+{"type": "message/received", "seq": 2, "time": 1794295524651, "src": "gateway", "data": {"turn": 3, "role": "user", "source": "dashboard", "text": "how many lines of code?"}}
+{"type": "request/configured", "seq": 3, "time": 1794295524662, "src": "gateway", "data": {"turn": 3, "model": "fable", "provider": "acp", "context_window": 0}}
+{"type": "context/composed", "seq": 4, "time": 1794295524664, "src": "gateway", "data": {"turn": 3, "sources": [], "chars": 53042, "tokens": 13260, "tokens_estimated": true, "phase": "session_start"}}
+{"type": "turn/started", "seq": 5, "time": 1794295524666, "src": "gateway", "data": {"turn": 3, "actor": "user", "depth": 0}}
+{"type": "step/started", "seq": 6, "time": 1794295524667, "src": "gateway", "data": {"turn": 3, "step": 1}}
+{"type": "background/completed", "seq": 7, "time": 1794295528473, "src": "gateway", "data": {"kind": "title", "provider": "claude_code", "tokens": {"input": 2, "output": 10, "cache_read": 26500, "cache_write": 30256}, "ms": 4018}}
+{"type": "tool/called", "seq": 8, "time": 1794295529058, "src": "acp", "data": {"turn": 3, "call_id": "toolu_014mx5RXWRkSGwzJQgXdAoef", "name": "", "server": "", "kind": "execute", "call_index": 1, "step": 1}}
+{"type": "tool/completed", "seq": 9, "time": 1794295533122, "src": "acp", "data": {"turn": 3, "call_id": "toolu_014mx5RXWRkSGwzJQgXdAoef", "name": "", "server": "", "status": "completed", "call_index": 1, "step": 1, "elapsed_ms": 4064, "is_error": false, "result_hash": "ecddf8fffa410115ef587ed66a684705100651edf05538ca4a63e11e8fd8dd07", "result_bytes": 5909}}
+{"type": "step/completed", "seq": 10, "time": 1794295541855, "src": "gateway", "data": {"turn": 3, "step": 1, "ms": 17203}}
+{"type": "step/started", "seq": 11, "time": 1794295541865, "src": "gateway", "data": {"turn": 3, "step": 2}}
+{"type": "message/sent", "seq": 12, "time": 1794295541950, "src": "acp", "data": {"turn": 3, "step": 2, "text": "~645k lines of source code (tokei, comme"}}
+{"type": "step/completed", "seq": 13, "time": 1794295541954, "src": "gateway", "data": {"turn": 3, "step": 2, "ms": 104}}
+{"type": "turn/completed", "seq": 14, "time": 1794295541956, "src": "acp", "data": {"turn": 3, "depth": 0, "stop_reason": "end_turn", "duration_ms": 17292, "model": "fable", "provider": "claude_code", "tokens": {"input": 4, "output": 828, "cache_read": 126494, "cache_write": 102676}, "context": {"used": 116379, "window": 1000000}}}
+{"type": "session/closed", "seq": 15, "time": 1794299425721, "src": "gateway", "data": {"reason": "reset"}}

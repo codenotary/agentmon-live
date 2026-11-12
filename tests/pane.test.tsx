@@ -2,6 +2,7 @@ import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
 import { LANGUAGES } from '../hooks/i18n'
+import { cfg } from '../hooks/state'
 import { settingsWith, withOptions } from './options-helper'
 
 // The kit declares the hook-adding `on` without exporting its type.
@@ -197,4 +198,33 @@ test('an edited settings.json applies at the next prompt, and at once when Claud
   settings = settingsWith({ layout: 'classic' })
   await $.tool.call({ tool: 'Edit', file_path: '/home/me/.claude/settings.json', old_string: 'a', new_string: 'b' })
   expect(await showsUsage()).toBe(true)
+})
+
+test('a secret in the project settings shows on Focus: git will commit it, or git-ignored when git says so or there is no repo', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  let exit = 1
+  on('env.get', () => ({ value: undefined }))
+  on('fs.read', (_, e) => {
+    if (e.path === '/r/.claude/settings.local.json') return { value: JSON.stringify({ env: { SERVICE_API_KEY: ['9f8e7d6c', '5b4a3210ffee'].join('') } }) }
+    throw new Error('ENOENT')
+  })
+  on('process.run', (_, e) => ({ value: { exitCode: e.argv[1] === 'check-ignore' ? exit : 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  const shows = async (text: RegExp) => {
+    await clock.settle()
+    const ui = await $.ui.mount(PANE)
+    const found = await ui.find({ type: 'Text', text })
+    await ui.unmount()
+    return found !== undefined
+  }
+  await $.session.start({ cwd: '/r', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  expect(await shows(/plain-text secrets: 1 · \.claude\/settings\.local\.json · git will commit it/)).toBe(true)
+  for (const [turnId, code] of [['t2', 0], ['t3', 128]] as const) {
+    exit = code
+    await $.turn.start({ text: 'next', turnId })
+    expect(await shows(/settings\.local\.json · git-ignored/)).toBe(true)
+  }
+  cfg.leaks = []
 })

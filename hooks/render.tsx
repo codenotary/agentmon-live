@@ -9,7 +9,7 @@ import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeIn
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, needsYou, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
-import { openBrowser, openLink, setPane } from './web'
+import { openBrowser, setPane } from './web'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -192,7 +192,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Below what needs the person: what is worth a look, most important first.
   const learnedFocus = learnedItems(learnt, { percent: usage.context.percent, window: usage.context.window, model: m.model, effort: m.effort, calls: ins.turnCalls })
   const isCurrent = (n: Note) => n.at !== undefined && n.at >= (m.turnAt ?? 0)
-  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, tokens: usage.context.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited, testReview: reviewed }).filter(x => !dismissed.has(x.key))
+  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, tokens: usage.context.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited, testReview: reviewed, leaks: cfg.leaks }).filter(x => !dismissed.has(x.key))
   const insightItems: Item[] = found.slice(0, lay.isDetailed ? found.length : FOCUS_SHOWN).map(x => ({
     key: x.key,
     row: (
@@ -652,7 +652,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
 
   return (
     <Box flexDirection="column">
-      <Box gap={1}>
+      {/* Title on its own row: beside the keys it gets a narrow column and wraps word by word. */}
       <Text bold>
         AGENTMON LIVE · <Text color="#d97757">{modelName(m.model).toUpperCase()} {t.plans}</Text>
         {m.effort && <Text color="#d97757" bold={false}> ({m.effort})</Text>}
@@ -660,11 +660,12 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         {listening(adv.isOn) && <Text color="magenta"> · {t.watches}</Text>}
         {cfg.build && <Text dimColor bold={false}> {cfg.build}</Text>}
       </Text>
+      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
       <Button key="layout:switch" plain hotkey="v" onPress={() => update($, layout, l => ({ ...l, isClassic: !(l.isClassic ?? cfg.isClassic) }))}>
         {`◐ ${isClassic ? t.layoutClassic : t.layoutCalm}`}
       </Button>
       {cfg.webOn && cfg.webUrl && (
-        <Button key="web:open" plain hotkey="o" onPress={() => openBrowser($).then(async isOpen => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(await openLink($)))))}>
+        <Button key="web:open" plain hotkey="o" onPress={() => openBrowser($).then(({ isOpen, link }) => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(link))))}>
           {t.web.open}
         </Button>
       )}

@@ -16,12 +16,12 @@ import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, not
 import { brief, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
-import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, pathOf, pushDuration } from './insights'
+import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, fileOf, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawBand, drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
-import { applyOptions, loadOptions } from './options'
-import { forgetTurns, openBrowser, openLink, setPane, startWeb, stopWeb } from './web'
+import { applyOptions, loadLeaks, loadOptions } from './options'
+import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
 import type { View } from '../types'
 
 
@@ -416,7 +416,8 @@ export const register: Register = on => {
     if (arg === 'open') {
       if (!cfg.webOn) return { text: cfg.web ? t.web.nextSession : t.web.off }
       if (!cfg.webUrl) return { text: t.web.failed }
-      return { text: (await openBrowser($)) ? t.web.opened(cfg.webUrl) : t.web.noBrowser(await openLink($)) }
+      const { isOpen, link } = await openBrowser($)
+      return { text: isOpen ? t.web.opened(cfg.webUrl) : t.web.noBrowser(link) }
     }
     // What past sessions taught: `learn [dir]` reads transcripts into the store, `memory` checks the memory files.
     if (arg === 'learn' || arg.startsWith('learn ')) return { text: await learnCommand($, arg.slice(5).trim()) }
@@ -469,6 +470,7 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       await loadOptions($).catch(() => undefined)
       t = cfg.t
+      void loadLeaks($, cwd).catch(() => undefined)
     }
     pulse($)
     // A turn a Stop hook sent back (the done gate or another one) goes on as the same turn: its checks and edits still count.
@@ -488,6 +490,12 @@ export const register: Register = on => {
       isContinued = false
       // A prompt that says the last edit turn's change did not work; read before the turn's files reset.
       const isFix = turn.edited.size > 0 && isCorrection(e.text)
+      // No Stop followed the last answer, so the check it waited for runs now, on that turn's material.
+      if (isCheckQueued) {
+        isCheckQueued = false
+        const [last, answer, ref] = [{ ...turn }, lastAnswer, workRef()]
+        $.clock.after(0, () => checkNow($, last, answer, ref))
+      }
       turn.prompt = mask(e.text)
       turn.startedAt = await $.clock.now()
       resetTurn(turn, await read($, checks))
@@ -595,8 +603,7 @@ export const register: Register = on => {
     const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)
     const who = e.agentId === undefined ? t.mainSession : (caller?.type ?? e.agentId)
     const model = e.agentId === undefined ? m.model : caller?.model
-    const edit = e as { file_path?: string; notebook_path?: string }
-    const path = edit.file_path ?? edit.notebook_path
+    const path = fileOf(e)
     const id = e.agentId
     let agentFiles = 0
     if (id !== undefined) {
@@ -680,17 +687,19 @@ export const register: Register = on => {
     $.clock.after(0, async () => {
       const failed = r.deny !== undefined || r.isError
       const text = String(r.text ?? '')
-      const head = text.slice(0, ERROR_HEAD)
-      const error = failed ? mask(String(r.deny ?? text).slice(0, ERROR_HEAD)).slice(0, 2000) : undefined
+      const head = mask(text.slice(0, ERROR_HEAD))
+      const error = failed ? (r.deny === undefined ? head : mask(String(r.deny).slice(0, ERROR_HEAD))).slice(0, 2000) : undefined
       const at = await $.clock.now()
       const output = String(r.text ?? (r.result as { stdout?: string } | undefined)?.stdout ?? '')
       // A denied or aborted run says nothing about the code; a failed one with one kind of check failed at it; past a pipe the output decides.
       // That output is shared: an error from one check would mark the others, so it decides only for the last.
-      // Several kinds and an error: `&&` stops at the first failure, so only a test summary may blame the tests, and only when they ran last: a later check's output would decide it otherwise. The rest is unknown.
+      // Several kinds and an error: the command failed, which is a fact; the last kind takes it, unless a test summary there says otherwise. The rest is unknown.
+      // A run sent to the background returns before it ends: its row stays running, so it backs no claim and covers no edit.
+      const isBackground = Boolean((e as { run_in_background?: unknown }).run_in_background) || /(?<!&)&\s*$/.test(command)
       const isChain = new Set(found.map(f => f.kind)).size > 1
       const resultOf = (kind: CheckKind): Check['result'] =>
-        r.deny !== undefined ? 'unknown'
-        : r.isError ? (isChain ? (kind === 'test' && kind === lastKind && testCounts(output) ? outcomeOf(output, 'test') : 'unknown') : kind === lastKind ? 'failed' : 'unknown')
+        r.deny !== undefined || isBackground ? 'unknown'
+        : r.isError ? (kind !== lastKind ? 'unknown' : isChain && kind === 'test' && testCounts(output) ? outcomeOf(output, 'test') : 'failed')
         : hidesExit(command) ? (kind === lastKind ? outcomeOf(output, kind) : 'unknown') : 'ok'
       const sameTurn = turn.startedAt === turnAt
       const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
@@ -699,7 +708,7 @@ export const register: Register = on => {
       const counts = scopes.length > 0 ? testCounts(output) : undefined
       // A denied run never ran. A failure is the last test part's; the summary's counts belong to one part only when there is one.
       // shortcut: counts of a chained run are not split per part, so an empty part beside a full one is not caught; upgrade when agents chain such runs.
-      if (sameTurn && r.deny === undefined)
+      if (sameTurn && r.deny === undefined && !isBackground)
         for (const [i, { part, ...scope }] of scopes.entries()) {
           const isLast = i === scopes.length - 1
           turn.tests.push({ ...scope, command: mask(part).slice(0, 200), at: startedAt, result: isLast || !r.isError ? resultOf('test') : 'unknown', ...(counts && scopes.length === 1 ? { ran: counts.ran, skipped: counts.skipped } : {}) })
@@ -708,7 +717,8 @@ export const register: Register = on => {
         for (const f of found) {
           const result = resultOf(f.kind)
           if (result === 'ok') turn.before = turn.before.filter(b => b.kind !== f.kind)
-          else if (result === 'failed' && turn.codeEditAt === undefined) turn.before.push({ kind: f.kind, command: f.part, who, at, result: 'failed' })
+          // A chain's failure is blamed on its last check by guess, unless a test summary decided it; a guess must not excuse later failures.
+          else if (result === 'failed' && turn.codeEditAt === undefined && (!isChain || (f.kind === 'test' && testCounts(output)))) turn.before.push({ kind: f.kind, command: f.part, who, at, result: 'failed' })
         }
       const touched = path && !failed && (cat === 'edit' || cat === 'read') ? path : undefined
       if (touched && cat === 'edit' && sameTurn) {
@@ -725,7 +735,7 @@ export const register: Register = on => {
       if (sameTurn && r.deny === undefined && scopes.length > 0) await noteTestRun($, turn)
       // Project docs only: not memory files, files outside the project, or .txt (requirements.txt, CMakeLists.txt).
       if (touched && cat === 'read' && isDoc(touched) && !/\.txt$/i.test(touched) && !isMemoryPath(touched) && relPath(touched, cwd) !== undefined && e.agentId === undefined && sameTurn) turn.docs.add(touched)
-      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${mask(head).slice(0, 300)}` : 'ok'}`].slice(-40)
+      if (isMain) turn.trail = [...turn.trail, `${e.tool} ${brief(e)} -> ${r.isError ? `${t.failed}: ${head.slice(0, 300)}` : 'ok'}`].slice(-40)
       // Insights: how long it took, what it cost the context, where the main loop works.
       const ms = Math.max(0, at - startedAt)
       void debug($, 'tool.call', { tool: e.tool, cat, ms, agent: e.agentId !== undefined, denied: r.deny !== undefined, isError: r.isError })
@@ -735,10 +745,13 @@ export const register: Register = on => {
       const resultTokens = e.agentId === undefined && !failed ? estTokens(text) : 0
       if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), head, r.isError ? 0 : estTokens(text))
       if (touched && cat === 'edit' && isMemoryPath(touched)) queueMemoryCheck($)
-      if (touched && cat === 'edit' && touched.endsWith('/settings.json')) {
+      const isSettingsEdit = Boolean(touched) && cat === 'edit' && /\/settings(\.local)?\.json$/.test(String(touched))
+      if (isSettingsEdit) {
         await loadOptions($).catch(() => undefined)
         t = cfg.t
       }
+      // "Don't ask again" on an asked call writes the command into the project's settings.
+      if (isSettingsEdit || wasAsked) await loadLeaks($, cwd).catch(() => undefined)
       const workPath = e.agentId === undefined && sameTurn && r.deny === undefined ? pathOf(e) : undefined
       const area = workPath === undefined ? undefined : areaOf(workPath, cwd)
       // The history's calls-per-minute rate drops this call after a minute; an idle pane draws nothing on its own.
@@ -762,7 +775,7 @@ export const register: Register = on => {
         update($, flow, all => [...all, { cat, at }].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
         update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}) } : c))),
-        found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
+        found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: isBackground ? ('running' as const) : resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
         !failed && sized && recordSize($, sized),
         touched &&
@@ -934,7 +947,8 @@ export const register: Register = on => {
       // Memory files change outside Edit and Write too: Bash, an editor, a git checkout.
       queueMemoryCheck($)
     }
-    if (e.agentId === undefined && isCheckQueued) {
+    // An answer is followed by a Stop, which runs the check after the gate: both ask Fable, and only one may at a time.
+    if (e.agentId === undefined && isCheckQueued && e.reason !== 'answer') {
       isCheckQueued = false
       $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
     }
@@ -943,30 +957,41 @@ export const register: Register = on => {
 
   // The done gate: before Claude stops, what is visibly unfinished goes back to it, once per prompt.
   on('classic.Stop', async ($, e, next) => {
-    const r = await next(e)
-    // Another hook already sends it back: never stack.
-    if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
-    await noteShellEdit($, turn)
-    // A light turn has nothing to gate; while this turn's subagents still run, the work is not over yet.
-    // A background agent from an earlier turn does not hold every later turn's gate.
-    if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running' && a.startedAt >= turn.startedAt)) return r
-    // Fable looks at the continuation too, so the pane says whether the send-back was answered.
-    const found = await openGaps($, turn, e.last_assistant_message ?? '')
-    // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
-    const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
-    if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
-    if (found.judged) await addLog($, { who: t.gateLog.who, what: workRef(), result: found.lines.length === 0 ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
-    void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
-    // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
-    void saveDebugLog($)
-    if (found.lines.length === 0 && found.judged) isPassed = true
-    if (isSent) blockAt = turn.tools
-    await benchPrompt($, turn, blockAt, isPassed)
-    if (!isSent) return r
-    isGateUsed = true
-    const block = t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n'))
-    noteGaps(block)
-    return { ...r, block }
+    const isQueued = isCheckQueued
+    isCheckQueued = false
+    let isBlocked = false
+    try {
+      const r = await next(e)
+      isBlocked = Boolean(r.block)
+      // Another hook already sends it back: never stack.
+      if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
+      await noteShellEdit($, turn)
+      // A light turn has nothing to gate; while this turn's subagents still run, the work is not over yet.
+      // A background agent from an earlier turn does not hold every later turn's gate.
+      if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running' && a.startedAt >= turn.startedAt)) return r
+      // Fable looks at the continuation too, so the pane says whether the send-back was answered.
+      const found = await openGaps($, turn, e.last_assistant_message ?? '')
+      // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
+      const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
+      if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
+      if (found.judged) await addLog($, { who: t.gateLog.who, what: workRef(), result: found.lines.length === 0 ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
+      void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
+      // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
+      void saveDebugLog($)
+      if (found.lines.length === 0 && found.judged) isPassed = true
+      if (isSent) blockAt = turn.tools
+      await benchPrompt($, turn, blockAt, isPassed)
+      if (!isSent) return r
+      isGateUsed = true
+      isBlocked = true
+      const block = t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n'))
+      noteGaps(block)
+      return { ...r, block }
+    } finally {
+      // A turn sent back goes on, so the check waits for its next stop.
+      if (isQueued && isBlocked) isCheckQueued = true
+      else if (isQueued) $.clock.after(0, () => checkNow($, turn, lastAnswer, workRef()))
+    }
   }).catch(($, e, next) => failOpen($, 'classic.Stop', next.error, () => next(e)))
 
   // How this session began, when not fresh: a resume, a /clear or a fork. A compaction logs itself.
