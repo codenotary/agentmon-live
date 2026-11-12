@@ -1,7 +1,8 @@
 import { closeSync, constants, fstatSync, openSync, readdirSync, readFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 
-const MAX_FILE = 4 * 1024 * 1024
+// A snapshot at the publisher's caps is about 700 KB of characters; in Chinese or Japanese each takes three bytes.
+export const MAX_SNAPSHOT = 4 * 1024 * 1024
 const KEEP_FILES = 64
 const NAME = /^([\w-]{1,80})\.json$/
 
@@ -13,7 +14,7 @@ function readChanged(path, mark) {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
     const stat = fstatSync(fd)
-    if (!stat.isFile() || stat.size > MAX_FILE) return {}
+    if (!stat.isFile() || stat.size > MAX_SNAPSHOT) return {}
     const now = `${stat.mtimeMs}:${stat.size}`
     return now === mark ? {} : { mark: now, value: JSON.parse(readFileSync(fd, 'utf8')) }
   } finally {
@@ -25,7 +26,8 @@ function readChanged(path, mark) {
 export function readSpool(dir, now, ttlMs, cache) {
   let names
   try {
-    names = readdirSync(dir).filter(n => NAME.test(n)).slice(0, KEEP_FILES)
+    // Sorted, so the same files are read every round: the ones cut off move up as ended and silent ones are removed.
+    names = readdirSync(dir).filter(n => NAME.test(n)).sort().slice(0, KEEP_FILES)
   } catch {
     return []
   }
@@ -37,8 +39,8 @@ export function readSpool(dir, now, ttlMs, cache) {
       const { mark, value } = readChanged(path, cache.get(id)?.mark)
       // Alive is a change this server saw, not the file's time: a VM's clock may differ.
       if (value?.ended === true) cache.set(id, { mark, seenAt: -Infinity })
-      // The server says where a session runs, whatever its file claims.
-      else if (isSnapshot(value)) cache.set(id, { mark, seenAt: now, snapshot: { ...value, session: { ...value.session, place: 'sandbox' } } })
+      // The server says where a session runs, whatever its file claims. No pane state: the page's pane button has no way back to such a session.
+      else if (isSnapshot(value)) cache.set(id, { mark, seenAt: now, snapshot: { ...value, isPaneOpen: undefined, session: { ...value.session, place: 'sandbox' } } })
     } catch {
       // Half written, or gone since the listing: the last one read stands.
     }

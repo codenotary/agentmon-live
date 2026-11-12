@@ -151,6 +151,8 @@ let isLooping = false
 let endedId: string | undefined
 // A folder the host's server reads, for a session that cannot reach it: one in a VM or a container.
 let spool: string | undefined
+// The last write to the folder: the ended mark waits for it, so a snapshot under way cannot land on top.
+let written: Promise<void> = Promise.resolve()
 // Where a VM or a container has the host's folder: one mount is the whole setup, with no variable to set.
 const SPOOL_DIR = '/var/lib/agentmon-live/spool'
 const spoolFile = (id: string) => `${spool}/${id}.json`
@@ -286,8 +288,11 @@ async function publish($: EngineInterface): Promise<number> {
   const json = changeKey(snapshot)
   const dueEvery = snapshot.turns.at(-1)?.isLive ? CLOCK_MS : HEARTBEAT_MS
   if (json === lastJson && now - lastPostAt < dueEvery) return wait
-  if (spool) await $.fs.write(spoolFile(id), JSON.stringify(snapshot))
-  else {
+  if (spool) {
+    if (id === endedId) return wait
+    written = $.fs.write(spoolFile(id), JSON.stringify(snapshot))
+    await written
+  } else {
     const r = await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(id)}`, { method: 'POST', headers: jsonHeaders(), body: JSON.stringify(snapshot) })
     // Something else may hold the port now: throw, so the loop's retry looks for our server.
     if (!r.ok) throw new Error(`post answered ${r.status}`)
@@ -368,7 +373,10 @@ export async function stopWeb($: EngineInterface, sessionId: string): Promise<vo
   lastJson = ''
   ringFrom = await $.clock.now()
   // The engine has no call to remove a file: the server does, on this mark.
-  if (spool) return $.fs.write(spoolFile(sessionId), '{"ended":true}')
+  if (spool) {
+    await written.catch(() => undefined)
+    return $.fs.write(spoolFile(sessionId), '{"ended":true}')
+  }
   if (!cfg.webUrl) return
   await $.http.fetch(`${cfg.webUrl}state/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: jsonHeaders() })
 }

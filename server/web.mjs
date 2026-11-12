@@ -6,12 +6,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
-import { readSpool } from './spool.mjs'
+import { MAX_SNAPSHOT as MAX_BODY, readSpool } from './spool.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
-// A snapshot at the publisher's caps is about 700 KB of characters; in Chinese or Japanese each takes three bytes.
-const MAX_BODY = 4 * 1024 * 1024
 const KIRO_RESEND_MS = 15_000
 // How long a tab's ask for an idle Kiro chat holds; the tab asks again every minute.
 const KIRO_WANT_MS = 120_000

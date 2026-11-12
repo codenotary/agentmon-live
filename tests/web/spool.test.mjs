@@ -73,3 +73,23 @@ test('a link in the folder is not followed', { skip: process.platform === 'win32
   assert.deepEqual(readSpool(dir, 1000, TTL, new Map()), [])
   assert.equal(existsSync(outside), true)
 })
+
+test('past the cap the same files are read every round, and the rest move up as files leave', () => {
+  const dir = folder()
+  const cache = new Map()
+  const name = i => `s${String(i).padStart(3, '0')}`
+  for (let i = 0; i < 70; i += 1) writeFileSync(join(dir, `${name(i)}.json`), shot(name(i)))
+  const first = ids(readSpool(dir, 1000, TTL, cache))
+  assert.equal(first.length, 64)
+  assert.deepEqual(ids(readSpool(dir, 2000, TTL, cache)), first)
+  writeFileSync(join(dir, `${name(0)}.json`), '{"ended":true}')
+  const next = ids(readSpool(dir, 3000, TTL, cache))
+  assert.equal(next.includes(name(0)), false)
+  assert.equal(readSpool(dir, 4000, TTL, cache).length, 64)
+})
+
+test('a folder session carries no pane state, so the page offers no pane button', () => {
+  const dir = folder()
+  writeFileSync(join(dir, 'a.json'), shot('a', { isPaneOpen: true }))
+  assert.equal(JSON.parse(JSON.stringify(readSpool(dir, 1000, TTL, new Map())[0][1])).isPaneOpen, undefined)
+})

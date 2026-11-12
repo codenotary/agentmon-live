@@ -109,7 +109,7 @@ Every running session on the machine shares one server. With more than one runni
 
 **Sessions in a VM or a container.** A session that cannot reach the server on your machine writes its snapshots to a folder the server reads. The mod must be installed where the session runs.
 
-- **In the VM or container:** mount the shared folder at `/var/lib/agentmon-live/spool`. A session that finds that folder writes `<session id>.json` there and starts no server of its own. For another path, set `AGENTMON_SPOOL` in the environment Claude Code starts with. The pane's link and `/agentmon open` have no address to give there.
+- **In the VM or container:** mount the shared folder at `/var/lib/agentmon-live/spool`. A session that finds that folder writes `<session id>.json` there and starts no server of its own. For another path, set `AGENTMON_SPOOL` in the environment Claude Code starts with. The pane's link and `/agentmon open` have no address to give there, and the page shows no pane button for such a session: nothing flows back into it.
 - **On your machine:** the folder to share is `~/.claude/agentmon-live/spool`. The server reads it, or the folder in its own `AGENTMON_SPOOL`, every 2 seconds. With no Claude Code session open here, start the server yourself as above; it stays up while a session writes.
 - **In the session list** such a session reads **sandbox** before its state, so you can tell it from one on your machine.
 - **When it leaves:** when the session ends, or 90 seconds after its file last changed. The server removes the file.
