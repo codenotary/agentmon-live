@@ -24,6 +24,7 @@ export const ja: Strings = {
       dismiss: '閉じる',
       wasRunning: '実行中でした',
       wasWaiting: '待機中でした',
+      sandbox: 'サンドボックス',
       runningThen: '最終更新時に実行中',
       noSessions: '実行中のセッションはありません。Claude Code を起動すると、このページに表示されます。',
       update: 'このセッションは別のバージョンの AgentMon Live で動作しています。すべて表示するには更新してください。',

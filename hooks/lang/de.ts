@@ -24,6 +24,7 @@ export const de: Strings = {
       dismiss: 'Ausblenden',
       wasRunning: 'lief',
       wasWaiting: 'wartete',
+      sandbox: 'Sandbox',
       runningThen: 'Lief beim letzten Update',
       noSessions: 'Keine Sitzung läuft. Starte Claude Code, dann füllt sich diese Seite.',
       update: 'Diese Sitzung läuft mit einer anderen AgentMon-Live-Version. Aktualisiere sie, um hier alles zu sehen.',

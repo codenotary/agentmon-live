@@ -39,7 +39,7 @@ function StateDot({ s, p }: { s: WebSnapshot; p: Page }) {
 function detailOf(x: WebSnapshot, p: Page, st: State): string {
   if (x.v !== 1) return ''
   const urgent = x.focus.filter(f => f.isUrgent).length
-  return [stateWord(x, p, st), x.main.model, urgent ? `${p.events}: ${urgent}` : '', x.build ?? ''].filter(Boolean).join(' · ')
+  return [x.session.place === 'sandbox' ? p.sandbox : '', stateWord(x, p, st), x.main.model, urgent ? `${p.events}: ${urgent}` : '', x.build ?? ''].filter(Boolean).join(' · ')
 }
 
 // With several sessions the working directory is the switch between them.

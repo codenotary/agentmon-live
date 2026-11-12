@@ -6,7 +6,7 @@ import { LANGUAGES } from '../hooks/i18n'
 import { shapeInsights } from '../hooks/state'
 import { changeKey, pushTurn, toSnapshot, urgentItems } from '../hooks/web'
 import { SHAPE } from './fixtures/snapshot-shape'
-import { withOptions } from './options-helper'
+import { settingsWith, withOptions } from './options-helper'
 
 type On = Parameters<TestBody>[1]
 
@@ -765,4 +765,45 @@ test('the run\'s key goes with every post, a server without the mark gets no sna
   await clock.advance(2000)
   await clock.settle()
   expect(asked.filter(a => a.url.includes('/state/')).length).toBe(before)
+})
+
+test('with a snapshot folder the session writes there, starts no server, and marks its file ended', async ($, on) => {
+  on('env.get', (_, e) => ({ value: e.name === 'AGENTMON_SPOOL' ? '/spool' : undefined }))
+  on('fs.read', (_, e, next) => (e.path.endsWith('/settings.json') ? { value: settingsWith({}) } : next(e)))
+  const clock = mock.clock(on)
+  const argvs = engine(on)
+  const sent = posts(on)
+  const written: { path: string; text: string }[] = []
+  on('fs.write', (_, e) => {
+    if (e.path.startsWith('/spool/')) written.push({ path: e.path, text: e.text })
+    return { value: undefined }
+  })
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }) as never)
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(600)
+  await clock.settle()
+  expect(written[0]?.path).toBe('/spool/sess-1.json')
+  expect((JSON.parse(written[0]!.text) as WebSnapshot).session.id).toBe('sess-1')
+  expect(argvs.some(a => a.includes('ensure'))).toBe(false)
+  expect(sent.length).toBe(0)
+  await $.session.end({ reason: 'other', sessionId: 'sess-1', resume: { sessionId: 'sess-1' } } as never)
+  expect(written.at(-1)).toEqual({ path: '/spool/sess-1.json', text: '{"ended":true}' })
+})
+
+test('the folder a VM or a container mounts is the switch, with no variable set', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  const argvs = engine(on)
+  posts(on)
+  on('fs.exists', (_, e) => ({ value: e.path === '/var/lib/agentmon-live/spool' }))
+  const written: string[] = []
+  on('fs.write', (_, e) => {
+    if (e.path.endsWith('/sess-1.json')) written.push(e.path)
+    return { value: undefined }
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await clock.advance(600)
+  await clock.settle()
+  expect(written[0]).toBe('/var/lib/agentmon-live/spool/sess-1.json')
+  expect(argvs.some(a => a.includes('ensure'))).toBe(false)
 })

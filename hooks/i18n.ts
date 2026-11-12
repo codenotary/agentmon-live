@@ -31,6 +31,7 @@ const en = {
       dismiss: 'Dismiss',
       wasRunning: 'was running',
       wasWaiting: 'was waiting',
+      sandbox: 'sandbox',
       runningThen: 'Running at last update',
       noSessions: 'No session is running. Start Claude Code and this page fills in.',
       update: 'This session runs a different AgentMon Live version. Update it to see everything here.',

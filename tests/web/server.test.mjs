@@ -311,7 +311,7 @@ function olderCopy() {
   const dir = mkdtempSync(join(tmpdir(), 'agentmon-old-'))
   cpSync(dirname(WEB), dir, { recursive: true })
   const then = new Date('2020-01-01')
-  for (const f of ['web.mjs', 'kiro.mjs', 'app.html']) utimesSync(join(dir, f), then, then)
+  for (const f of ['web.mjs', 'kiro.mjs', 'spool.mjs', 'app.html']) utimesSync(join(dir, f), then, then)
   return join(dir, 'web.mjs')
 }
 const SHORT = { AGENTMON_WEB_TTL_MS: '500', AGENTMON_WEB_IDLE_MS: '500', AGENTMON_WEB_SWEEP_MS: '100' }

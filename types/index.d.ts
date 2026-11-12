@@ -259,7 +259,8 @@ export type WebFocus = { key: string; tag: string; text: string; isUrgent: boole
 export type WebSnapshot = {
   v: 1
   // `slot`: the Kiro Crew chat a Kiro session belongs to, as Kiro Crew's address names it.
-  session: { id: string; cwd: string; branch?: string; slot?: string }
+  // `place`: set by the server for a session it read from the snapshot folder, one in a VM or a container.
+  session: { id: string; cwd: string; branch?: string; slot?: string; place?: 'sandbox' }
   now: number
   lang: string
   labels: Record<string, unknown>

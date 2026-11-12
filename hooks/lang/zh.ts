@@ -24,6 +24,7 @@ export const zh: Strings = {
       dismiss: '移除',
       wasRunning: '曾在运行',
       wasWaiting: '曾在等待',
+      sandbox: '沙箱',
       runningThen: '上次更新时正在运行',
       noSessions: '没有正在运行的会话。启动 Claude Code 后此页面会显示内容。',
       update: '此会话运行的是其他版本的 AgentMon Live。请更新以查看全部内容。',

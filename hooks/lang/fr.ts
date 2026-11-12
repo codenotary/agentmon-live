@@ -24,6 +24,7 @@ export const fr: Strings = {
       dismiss: 'Retirer',
       wasRunning: 'était en cours',
       wasWaiting: 'attendait',
+      sandbox: 'bac à sable',
       runningThen: 'En cours à la dernière mise à jour',
       noSessions: 'Aucune session en cours. Lancez Claude Code et cette page se remplit.',
       update: 'Cette session utilise une autre version d\'AgentMon Live. Mettez-la à jour pour tout voir ici.',
