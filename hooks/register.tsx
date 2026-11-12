@@ -20,7 +20,7 @@ import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, fileOf,
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawBand, drawPane } from './render'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
-import { applyOptions, loadOptions } from './options'
+import { applyOptions, loadLeaks, loadOptions } from './options'
 import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
 import type { View } from '../types'
 
@@ -470,6 +470,7 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       await loadOptions($).catch(() => undefined)
       t = cfg.t
+      void loadLeaks($, cwd).catch(() => undefined)
     }
     pulse($)
     // A turn a Stop hook sent back (the done gate or another one) goes on as the same turn: its checks and edits still count.
@@ -692,11 +693,13 @@ export const register: Register = on => {
       const output = String(r.text ?? (r.result as { stdout?: string } | undefined)?.stdout ?? '')
       // A denied or aborted run says nothing about the code; a failed one with one kind of check failed at it; past a pipe the output decides.
       // That output is shared: an error from one check would mark the others, so it decides only for the last.
-      // Several kinds and an error: `&&` stops at the first failure, so only a test summary may blame the tests, and only when they ran last: a later check's output would decide it otherwise. The rest is unknown.
+      // Several kinds and an error: the command failed, which is a fact; the last kind takes it, unless a test summary there says otherwise. The rest is unknown.
+      // A run sent to the background returns before it ends: its row stays running, so it backs no claim and covers no edit.
+      const isBackground = Boolean((e as { run_in_background?: unknown }).run_in_background) || /(?<!&)&\s*$/.test(command)
       const isChain = new Set(found.map(f => f.kind)).size > 1
       const resultOf = (kind: CheckKind): Check['result'] =>
-        r.deny !== undefined ? 'unknown'
-        : r.isError ? (isChain ? (kind === 'test' && kind === lastKind && testCounts(output) ? outcomeOf(output, 'test') : 'unknown') : kind === lastKind ? 'failed' : 'unknown')
+        r.deny !== undefined || isBackground ? 'unknown'
+        : r.isError ? (kind !== lastKind ? 'unknown' : isChain && kind === 'test' && testCounts(output) ? outcomeOf(output, 'test') : 'failed')
         : hidesExit(command) ? (kind === lastKind ? outcomeOf(output, kind) : 'unknown') : 'ok'
       const sameTurn = turn.startedAt === turnAt
       const isMain = e.agentId === undefined && r.deny === undefined && sameTurn
@@ -705,7 +708,7 @@ export const register: Register = on => {
       const counts = scopes.length > 0 ? testCounts(output) : undefined
       // A denied run never ran. A failure is the last test part's; the summary's counts belong to one part only when there is one.
       // shortcut: counts of a chained run are not split per part, so an empty part beside a full one is not caught; upgrade when agents chain such runs.
-      if (sameTurn && r.deny === undefined)
+      if (sameTurn && r.deny === undefined && !isBackground)
         for (const [i, { part, ...scope }] of scopes.entries()) {
           const isLast = i === scopes.length - 1
           turn.tests.push({ ...scope, command: mask(part).slice(0, 200), at: startedAt, result: isLast || !r.isError ? resultOf('test') : 'unknown', ...(counts && scopes.length === 1 ? { ran: counts.ran, skipped: counts.skipped } : {}) })
@@ -714,7 +717,8 @@ export const register: Register = on => {
         for (const f of found) {
           const result = resultOf(f.kind)
           if (result === 'ok') turn.before = turn.before.filter(b => b.kind !== f.kind)
-          else if (result === 'failed' && turn.codeEditAt === undefined) turn.before.push({ kind: f.kind, command: f.part, who, at, result: 'failed' })
+          // A chain's failure is blamed on its last check by guess, unless a test summary decided it; a guess must not excuse later failures.
+          else if (result === 'failed' && turn.codeEditAt === undefined && (!isChain || (f.kind === 'test' && testCounts(output)))) turn.before.push({ kind: f.kind, command: f.part, who, at, result: 'failed' })
         }
       const touched = path && !failed && (cat === 'edit' || cat === 'read') ? path : undefined
       if (touched && cat === 'edit' && sameTurn) {
@@ -741,10 +745,13 @@ export const register: Register = on => {
       const resultTokens = e.agentId === undefined && !failed ? estTokens(text) : 0
       if (r.deny === undefined) await noteCall($, e.tool, Boolean(r.isError), head, r.isError ? 0 : estTokens(text))
       if (touched && cat === 'edit' && isMemoryPath(touched)) queueMemoryCheck($)
-      if (touched && cat === 'edit' && touched.endsWith('/settings.json')) {
+      const isSettingsEdit = Boolean(touched) && cat === 'edit' && /\/settings(\.local)?\.json$/.test(String(touched))
+      if (isSettingsEdit) {
         await loadOptions($).catch(() => undefined)
         t = cfg.t
       }
+      // "Don't ask again" on an asked call writes the command into the project's settings.
+      if (isSettingsEdit || wasAsked) await loadLeaks($, cwd).catch(() => undefined)
       const workPath = e.agentId === undefined && sameTurn && r.deny === undefined ? pathOf(e) : undefined
       const area = workPath === undefined ? undefined : areaOf(workPath, cwd)
       // The history's calls-per-minute rate drops this call after a minute; an idle pane draws nothing on its own.
@@ -768,7 +775,7 @@ export const register: Register = on => {
         update($, flow, all => [...all, { cat, at }].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
         update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}) } : c))),
-        found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
+        found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: isBackground ? ('running' as const) : resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
         !failed && sized && recordSize($, sized),
         touched &&

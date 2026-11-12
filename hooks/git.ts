@@ -31,6 +31,12 @@ async function git($: EngineInterface, args: string[]): Promise<string | undefin
   return r.exitCode === 0 ? r.stdout.trim() : undefined
 }
 
+// Exit 1 says not ignored (a tracked file too); no repo or a timeout counts as ignored, since no commit can take the file.
+export async function isIgnored($: EngineInterface, cwd: string, path: string): Promise<boolean> {
+  const r = await $.process.run(['git', 'check-ignore', '-q', path], { cwd, timeoutMs: 3000 }).catch(() => undefined)
+  return r?.exitCode !== 1
+}
+
 // The base is the remote's default branch, else origin/main; no repo or no remote gives undefined.
 // `fetch` first updates the base's remote-tracking ref; without it the last fetch, by hand or otherwise, counts.
 export async function readBase($: EngineInterface, cwd: string, fetch: boolean): Promise<BaseDrift | undefined> {

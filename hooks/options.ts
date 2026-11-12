@@ -1,5 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
+import type { Leak } from '../types'
+import { hasSecret, mask } from './format'
+import { isIgnored } from './git'
 import { LANGUAGES } from './i18n'
 import { configDir } from './learning'
 import { configureSize } from './sizeguard'
@@ -16,6 +19,32 @@ export function pickOptions(settings: string): Options {
   } catch {
     return {}
   }
+}
+
+// Every string value; one under a name (`env`, `headers`) carries it, since the name is what marks it a secret.
+function strings(v: unknown, out: string[] = []): string[] {
+  if (typeof v === 'string') out.push(v)
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) strings(typeof x === 'string' && !Array.isArray(v) ? `${k}=${x}` : x, out)
+  return out
+}
+
+// The values in a settings.json that hold a literal secret, masked; none when it does not parse.
+export function secretStrings(settings: string): string[] {
+  try {
+    return strings(JSON.parse(settings)).filter(hasSecret).map(mask)
+  } catch {
+    return []
+  }
+}
+
+// The project's settings files: "don't ask again" saves a command there whole, token and all.
+export async function loadLeaks($: EngineInterface, cwd: string): Promise<void> {
+  const leaks: Leak[] = []
+  for (const file of ['.claude/settings.local.json', '.claude/settings.json']) {
+    const found = secretStrings(await $.fs.read(`${cwd}/${file}`).catch(() => ''))
+    if (found.length > 0) leaks.push({ file, count: found.length, isIgnored: await isIgnored($, cwd, file), sample: found[0]!.slice(0, 60) })
+  }
+  cfg.leaks = leaks
 }
 
 // `de_CH.UTF-8` is `de`. Undefined for `C`, `POSIX` or a language the mod lacks.

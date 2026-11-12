@@ -102,7 +102,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     isPaneOpen: p.isPaneOpen,
     build: p.build,
     testReview: { files: p.testReview.files, dropped: droppedLines(t, p.testReview), isGreen: p.testReview.isGreen },
-    focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: false }))],
+    focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: x.key.startsWith('secret:') && x.color === 'red' }))],
     usage: {
       ctxPct: p.usage.context.percent,
       ctxTokens: p.usage.context.tokens,
@@ -250,7 +250,7 @@ async function publish($: EngineInterface): Promise<number> {
   const cards = list.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const c = usage.context
   const learnedFocus = learnedItems(learnt, { percent: c.percent, window: c.window, model: m.model, effort: m.effort, calls: ins.turnCalls })
-  const focus = focusList({ ins, doing, agents: cards, percent: c.percent, window: c.window, tokens: c.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited, testReview: reviewed })
+  const focus = focusList({ ins, doing, agents: cards, percent: c.percent, window: c.window, tokens: c.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited, testReview: reviewed, leaks: cfg.leaks })
   const snapshot = toSnapshot({
     session: { id, cwd, branch },
     now,

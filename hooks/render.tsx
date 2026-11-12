@@ -192,7 +192,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Below what needs the person: what is worth a look, most important first.
   const learnedFocus = learnedItems(learnt, { percent: usage.context.percent, window: usage.context.window, model: m.model, effort: m.effort, calls: ins.turnCalls })
   const isCurrent = (n: Note) => n.at !== undefined && n.at >= (m.turnAt ?? 0)
-  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, tokens: usage.context.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited, testReview: reviewed }).filter(x => !dismissed.has(x.key))
+  const found = focusList({ ins, doing, agents: list, percent: usage.context.percent, window: usage.context.window, tokens: usage.context.tokens, now, learned: learnedFocus, base: cfg.base, edited: touched.edited, testReview: reviewed, leaks: cfg.leaks }).filter(x => !dismissed.has(x.key))
   const insightItems: Item[] = found.slice(0, lay.isDetailed ? found.length : FOCUS_SHOWN).map(x => ({
     key: x.key,
     row: (

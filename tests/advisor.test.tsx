@@ -229,6 +229,20 @@ test('a test that failed this turn before the first code edit is not blamed when
   expect((await $.classic.Stop({ ...STOP })).block).toBe(undefined)
 })
 
+test('a failing chain before the first code edit excuses no later failure: its blame was a guess', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  fable(on, [])
+  await start($)
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint -- fail && npm run build' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm run build -- fail' })
+  await clock.settle()
+  expect((await $.classic.Stop({ ...STOP })).block).toContain('build failed')
+})
+
 test('a check that ran before the last code edit is stale; a doc edit after it is not', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
@@ -246,6 +260,19 @@ test('a check that ran before the last code edit is stale; a doc edit after it i
   await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'b', new_string: 'c' })
   await clock.settle()
   expect((await $.classic.Stop({ ...STOP })).block).toContain('test ran before the last edit: npm test')
+})
+
+test('a test run in the background backs no "tests pass"', async ($, on) => {
+  withOptions(on, { advisorMode: 'gate' })
+  const clock = mock.clock(on)
+  engine(on)
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.advance(1000)
+  await $.tool.call({ tool: 'Bash', command: 'npm test', run_in_background: true })
+  await clock.settle()
+  const r = await $.classic.Stop({ ...STOP, last_assistant_message: 'Fixed the parser. All tests pass.' })
+  expect(r.block).toContain('the answer says "All tests pass", but no test ran after the last code edit')
 })
 
 test('an answer that says the tests pass with no check after the last edit is sent back', async ($, on) => {

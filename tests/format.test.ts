@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { brief, describe, failLine, findCheck, findChecks, isNewer, mask, outcomeOf, percent, testsOf } from '../hooks/format'
+import { bump } from '../hooks/insights'
 
 test('findCheck on a 200 KB command of unterminated heredocs stays fast', () => {
   const command = 'npm test\n' + '<<A\n'.repeat(50_000)
@@ -107,3 +108,34 @@ test('outcomeOf counts errors as failures', () => {
   expect(outcomeOf('0 errors, 3 passed', 'test')).toBe('ok')
 })
 
+
+test('outcomeOf does not take jest\'s snapshot line for the tests', () => {
+  const jest = 'Test Suites: 1 failed, 1 total\nTests:       2 failed, 5 passed, 7 total\nSnapshots:   3 passed, 3 total\nTime:        1.2 s\nRan all test suites.'
+  expect(outcomeOf(jest, 'test')).toBe('failed')
+  expect(outcomeOf(jest.replace('2 failed, 5 passed', '7 passed'), 'test')).toBe('ok')
+})
+
+test('more runners and wrappers count as a test run', () => {
+  for (const command of ["node --test 'tests/web/*.test.mjs'", 'deno test', 'npx playwright test', 'python -m unittest', './gradlew test', 'mvn test', 'dotnet test', 'timeout 60 npm test', 'env CI=1 FOO=2 npm test', 'pnpm -r test', 'npm t']) {
+    expect([command, findCheck(command)?.kind]).toEqual([command, 'test'])
+  }
+  expect(findCheck('node server.js --test')?.kind).toBeUndefined()
+  expect(findCheck('env')?.kind).toBeUndefined()
+  expect(findCheck('npm run t-shirt-sizes')?.kind).toBeUndefined()
+  expect(findCheck('npm run test:unit')?.kind).toBe('test')
+})
+
+test('mask hides a docker login password and a token-only URL', () => {
+  expect(mask(`docker login -u me -p ${['S3cret', 'Passw0rd'].join('')} registry.io`)).toBe('docker login -u me -p *** registry.io')
+  expect(mask(`git clone https://${['abcdef01', '23456789abcd'].join('')}@github.com/o/r.git`)).toBe('git clone https://***@github.com/o/r.git')
+  expect(mask('git clone https://git@github.com/o/r.git')).toBe('git clone https://git@github.com/o/r.git')
+  expect(mask('docker run -p 8080:80 nginx')).toBe('docker run -p 8080:80 nginx')
+})
+
+test('a key that arrives after the count map is full can still grow', () => {
+  let counts: Record<string, number> = {}
+  for (let i = 0; i < 200; i += 1) counts = bump(bump(counts, `old${i}`), `old${i}`)
+  for (let i = 0; i < 5; i += 1) counts = bump(counts, 'new')
+  expect(counts.new).toBe(5)
+  expect(Object.keys(counts).length).toBe(200)
+})

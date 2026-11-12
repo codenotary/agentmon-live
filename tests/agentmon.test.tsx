@@ -1021,7 +1021,7 @@ test('two Skill calls at once each name their own caller', async ($, on) => {
   await ui.unmount()
 })
 
-test('a compound command gets a row per check; a failure blames the tests only when their summary says so', async ($, on) => {
+test('a compound command gets a row per check; a failure goes to the last check, unless a test summary there says otherwise', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   let fails = false
@@ -1037,9 +1037,9 @@ test('a compound command gets a row per check; a failure blames the tests only w
   fails = true
   await $.tool.call({ tool: 'Bash', command: 'npm run lint && npm test' })
   await clock.settle()
-  // `&&` stopped at the lint: nothing says the tests ran, let alone failed.
+  // The command failed: the last kind takes it, the lint before it stays unknown.
   expect(await ui.find({ type: 'Text', text: /^lint\s+unknown npm run lint/ })).toBeTruthy()
-  expect(await ui.find({ type: 'Text', text: /^test\s+unknown npm test/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /FAILED\s+test npm test/ })).toBeTruthy()
   text = 'Tests:       1 failed, 2 passed, 3 total'
   await $.tool.call({ tool: 'Bash', command: 'npm run lint && npm test' })
   await clock.settle()
@@ -1049,6 +1049,23 @@ test('a compound command gets a row per check; a failure blames the tests only w
   await $.tool.call({ tool: 'Bash', command: 'npm test && npm run lint' })
   await clock.settle()
   expect(await ui.find({ type: 'Text', text: /FAILED\s+test npm test/ })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('a test sent to the background stays running, not OK', async ($, on) => {
+  withOptions(on, { layout: 'classic' })
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'npm test', run_in_background: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^test\s+ OK\s+npm test/ })).toBeFalsy()
+  expect(await ui.find({ type: 'Text', text: /^test\s+RUNNING\s+npm test/ })).toBeTruthy()
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint &' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /^lint\s+RUNNING\s+npm run lint/ })).toBeTruthy()
   await ui.unmount()
 })
 

@@ -89,6 +89,7 @@ The [guide](docs/guide.md#web-view) has the rest, including a registry install f
 - **See it happen.** Every agent, tool call and handoff, live in your browser, in the [agent flow](#overview).
 - **Don't run out.** Cost, context and quota limits at a glance, and when `/clear` or `/compact` would save you money.
 - **Know when to step in.** It raises a waiting approval, a stuck subagent or a failure loop. Press `i` and it drafts the follow-up question for you.
+- **Keep keys off GitHub.** Clicked "don't ask again" on a `curl` with your API token? It now sits in plain text in `.claude/settings.local.json`. AgentMon says so, in red when git would commit the file.
 - **Trust "done".** Claude says all tests pass? AgentMon checks, and sends it back if they don't.
 - **It learns your project.** It remembers flaky tools and recurring errors across sessions, and spots drift in your CLAUDE.md.
 - **Measure it.** `/agentmon bench` compares your sessions with and without AgentMon.

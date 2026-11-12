@@ -639,7 +639,7 @@ test('an event kind comes from its key, and an unknown key is other', () => {
 })
 
 test('every event key prefix the hooks make has its filter kind; Other only for the ones meant there', () => {
-  const OTHER = ['base', 'churn', 'docs', 'habit', 'model', 'pace', 'peak', 'reread', 'sink', 'size', 'switches']
+  const OTHER = ['base', 'churn', 'docs', 'habit', 'model', 'pace', 'peak', 'reread', 'secret', 'sink', 'size', 'switches']
   const hooks = readdirSync(join(ROOT, 'hooks')).filter(f => f.endsWith('.ts')).map(f => readFileSync(join(ROOT, 'hooks', f), 'utf8')).join('\n')
   const prefixes = new Set([...hooks.matchAll(/key: (?:`(\w+):|'(\w+)', score)/g)].map(m => m[1] ?? m[2]))
   assert.ok(prefixes.has('check') && prefixes.has('mcp'), 'the key search found nothing; did the hooks change shape?')
