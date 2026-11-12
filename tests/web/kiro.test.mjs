@@ -318,6 +318,59 @@ test("a subagent whose folder is not written yet when it ends is read again on t
   assert.deepEqual(readKiro(crew, NOW, 60_000, cache)[0][1].files.edited, ['/w/ui.js'])
 })
 
+test('a chat\'s test, lint, typecheck and build commands fill Verification', () => {
+  const text = new Map([['t1', { what: 'npm test' }], ['t2', { what: 'timeout 60 npm test' }], ['t3', { what: 'npm test | tail -5' }], ['c1', { what: 'npm run lint && npx tsc --noEmit' }], ['l1', { what: 'ls tests' }]])
+  const call = (id, time, extra = {}) => [{ type: 'tool/called', time, data: { call_id: id, name: '', kind: 'execute' } }, { type: 'tool/completed', time: time + 1, data: { call_id: id, elapsed_ms: 1, ...extra } }]
+  const checks = log => foldCrewLog([entries[0], { type: 'turn/started', time: NOW - 100, data: {} }, ...log], NOW, text).snapshot.checks
+  assert.deepEqual(checks([...call('l1', NOW - 90), ...call('t1', NOW - 80)]), [{ kind: 'test', command: 'npm test', who: 'main session', at: NOW - 80, result: 'ok' }])
+  // A failed run keeps when the tests last passed, for "edited since the last passing run".
+  assert.deepEqual(checks([...call('t1', NOW - 80), ...call('t2', NOW - 70, { is_error: true })]), [{ kind: 'test', command: 'timeout 60 npm test', who: 'main session', at: NOW - 70, result: 'failed', greenAt: NOW - 80 }])
+  assert.deepEqual(checks(call('t3', NOW - 60)).map(c => c.result), ['unknown'])
+  assert.deepEqual(checks(call('c1', NOW - 50, { status: 'failed' })).map(c => [c.kind, c.result, c.command]), [['lint', 'unknown', 'npm run lint'], ['typecheck', 'failed', 'npx tsc --noEmit']])
+  assert.deepEqual(checks(call('l1', NOW - 40)), [])
+})
+
+test('a call whose approval was rejected ran nothing: no check, no edit', () => {
+  const text = new Map([['t1', { what: 'npm test' }], ['e1', { what: '/w/a.py', path: '/w/a.py' }]])
+  const asked = (id, kind, time, decision) => [
+    { type: 'tool/called', time, data: { call_id: id, name: '', kind } },
+    { type: 'approval/requested', time: time + 1, data: { approval_id: `a-${id}`, reason: 'Running' } },
+    { type: 'approval/decided', time: time + 2, data: { approval_id: `a-${id}`, decision } },
+    { type: 'tool/completed', time: time + 3, data: { call_id: id, status: 'completed' } },
+  ]
+  const fold = decision => foldCrewLog([entries[0], { type: 'turn/started', time: NOW - 100, data: {} }, ...asked('t1', 'execute', NOW - 90, decision), ...asked('e1', 'edit', NOW - 80, decision)], NOW, text).snapshot
+  assert.deepEqual([fold('rejected').checks, fold('rejected').files.edited], [[], []])
+  assert.deepEqual([fold('approved').checks.map(c => c.result), fold('approved').files.edited], [['ok'], ['/w/a.py']])
+})
+
+test('the check patterns are the pane\'s, in hooks/format.ts', () => {
+  const patterns = file => readFileSync(join(HERE, file), 'utf8').split('\n').filter(l => /^const RUN = |^  \['(?:typecheck|lint|test|build)', new RegExp\(/.test(l))
+  assert.equal(patterns('../../server/kiro.mjs').length, 5)
+  assert.deepEqual(patterns('../../server/kiro.mjs'), patterns('../../hooks/format.ts'))
+  const wrappers = /^const WRAPPERS = \/\^(.+)\/$/m.exec(readFileSync(join(HERE, '../../server/kiro.mjs'), 'utf8'))?.[1]
+  assert.ok(wrappers && readFileSync(join(HERE, '../../hooks/format.ts'), 'utf8').includes(wrappers), 'the wrappers skipped before a command differ from hooks/format.ts')
+})
+
+test("a chat's text is masked as the pane's, with the patterns of hooks/format.ts", () => {
+  const lines = file => {
+    const src = readFileSync(join(HERE, file), 'utf8').split('\n')
+    const start = src.findIndex(l => /^export function mask\(/.test(l))
+    return [...src.filter(l => /^const (?:SECRET_NAME|PREFIXED_SECRET|URL_CREDENTIALS|URL_TOKEN|SECRET_SHAPE|FLAG_SECRET|BARE_BEARER|PRIVATE_KEY) = \//.test(l)), ...src.slice(start + 1, src.indexOf('}', start))]
+  }
+  assert.equal(lines('../../server/kiro.mjs').length, 17)
+  assert.deepEqual(lines('../../server/kiro.mjs'), lines('../../hooks/format.ts'))
+  // Fake values, joined here so the source holds nothing a secret scanner takes for a key.
+  const bearer = ['Bea', 'rer abc123', 'def456ghi789'].join('')
+  const dir = home()
+  mkdirSync(join(dir, 'sessions'))
+  writeFileSync(join(dir, 'sessions/dashboard_chat-m.jsonl'), `${JSON.stringify({ role: 'tool', content: 'x', meta: { tool_call_id: 't1', input: JSON.stringify({ command: `curl -H "Authorization: ${bearer}" https://example.com && npm test` }) } })}\n`)
+  const text = toolText(dir, 'chat-m')
+  const log = [entries[0], { type: 'turn/started', time: NOW - 100, data: {} }, { type: 'tool/called', time: NOW - 90, data: { call_id: 't1', name: '', kind: 'execute' } }, { type: 'tool/completed', time: NOW - 89, data: { call_id: 't1' } }]
+  const s = foldCrewLog(log, NOW, text).snapshot
+  assert.equal(s.trace[0].what, 'curl -H "Authorization: Bearer ***" https://example.com && npm test')
+  assert.deepEqual(s.checks.map(c => [c.kind, c.command]), [['test', 'npm test']])
+})
+
 test("a chat's thresholds are the pane's, in hooks/insights.ts", () => {
   const src = readFileSync(join(HERE, '../../hooks/insights.ts'), 'utf8')
   for (const name of ['LONG_CALL_MS', 'BIG_RESULT_TOKENS', 'WAIT_MIN_MS', 'WAIT_SHARE']) assert.equal(kiro[name], Number(new RegExp(`export const ${name} = ([\\d_.]+)`).exec(src)?.[1].replaceAll('_', '')), name)

@@ -77,7 +77,8 @@ Then turn it on in Kiro Crew:
    <img src="docs/kiro/tab.png" alt="AgentMon Live in a Kiro Crew tab beside the chat" width="720">
 
 - **What you see:** turns with their time split, tool calls with duration and result, waiting approvals and time blocked on you, subagents and the files they wrote, events and insights, the task list, the context gauge, prompts and answers. kiro-cli reports credits, so the cost tile reads **Credits** and tokens stay empty.
-- **What stays empty:** the done gate, Focus, verification and learning. Those come from the plugin inside a Claude Code session.
+- **Verification:** the last test, lint, typecheck and build command of the chat, each ok, failed or unknown. Kiro Crew's log holds no output, so there are no test counts.
+- **What stays empty:** the done gate, Focus and learning. Those come from the plugin inside a Claude Code session.
 - **To remove it:** `kirocrew app uninstall agentmon-live`.
 
 The [guide](docs/guide.md#web-view) has the rest, including a registry install from Kiro Crew's settings.

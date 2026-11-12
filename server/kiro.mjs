@@ -29,6 +29,46 @@ export const LONG_CALL_MS = 60_000
 export const BIG_RESULT_TOKENS = 10_000
 export const WAIT_MIN_MS = 30_000
 export const WAIT_SHARE = 0.3
+// As in hooks/format.ts; a test holds the patterns equal.
+const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:(?:--filter|-F|--prefix|-C|--dir|-w|--workspace)(?:=|\s+)\S+\s+|(?:-r|--recursive)\s+|workspace\s+\S+\s+)*(?:run\s+)?`
+const CHECKS = [
+  ['typecheck', new RegExp(String.raw`^(?:tsc|${RUN}(?:typecheck|type-check)|mypy|pyright|cargo check)\b`)],
+  ['lint', new RegExp(String.raw`^(?:${RUN}lint|eslint|ruff|clippy|golangci-lint|flake8|biome (?:check|lint)|(?:claude )?plugin validate)\b`)],
+  ['test', new RegExp(String.raw`^(?:${RUN}(?:test\b|t(?![\w:-]))|go test|cargo test|pytest|unittest|jest|vitest|mocha|node --test|deno test|playwright test|gradlew? test|mvn test|dotnet test|(?:claude )?plugin test|make test)\b`)],
+  ['build', new RegExp(String.raw`^(?:${RUN}build|cargo build|go build|make(?!\s+(?:clean|distclean|install|help)\b)|webpack|esbuild|vite build)\b`)],
+]
+const WRAPPERS = /^(?:\w+=\S*\s+)*(?:(?:npx(?:\s+(?:(?:-p|--package)(?:=|\s+)\S+|-y|--yes))*|bunx|sudo|time|timeout\s+\S+|env(?:\s+\w+=\S*)*|uv run|poetry run|python3? -m)\s+)*(?:\S*\/)?/
+
+// The checks a shell command runs, one per kind, in the order their last part comes: the last one takes a failure.
+// shortcut: quoted text and heredocs are not blanked as in hooks/format.ts, so `echo 'x; npm test'` reads as a test; upgrade when Kiro chats show such rows.
+export function checksOf(command) {
+  const found = new Map()
+  for (const part of String(command).split(/&&|\|\||;|\||\n/)) {
+    const kind = CHECKS.find(([, re]) => re.test(part.trim().replace(WRAPPERS, '')))?.[0]
+    if (!kind) continue
+    found.delete(kind)
+    found.set(kind, part.trim())
+  }
+  return [...found].map(([kind, part]) => ({ kind, part }))
+}
+
+// A pipe, `||`, or a command after `;` or a newline hides the check's own exit status.
+function hidesExit(command) {
+  if (/\|\|/.test(command) || (/[^|]\|[^|]/.test(command) && !/pipefail/.test(command))) return true
+  const lines = command.split(/[;\n]/)
+  return lines.slice(lines.findIndex(l => checksOf(l).length > 0) + 1).some(l => l.trim())
+}
+
+// The crew log gives a call's command and whether it failed, not its output: no counts, and a hidden exit status stays unknown.
+function recordChecks(snap, call) {
+  const found = checksOf(call.what)
+  for (const [i, { kind, part }] of found.entries()) {
+    const old = snap.checks.find(c => c.kind === kind)
+    const result = call.isFailed ? (i === found.length - 1 ? 'failed' : 'unknown') : hidesExit(call.what) ? 'unknown' : 'ok'
+    const greenAt = old?.result === 'ok' ? old.at : old?.greenAt
+    snap.checks = [...snap.checks.filter(c => c !== old), { kind, command: part, who: WHO, at: call.at, result, ...(greenAt === undefined ? {} : { greenAt }) }]
+  }
+}
 const pad = n => String(n).padStart(2, '0')
 // As `dur` in hooks/insights.ts, which the pane prints.
 const dur = ms => {
@@ -52,7 +92,28 @@ function settle(ask, at, turn) {
 }
 // The crew log times tool calls only; the rest of a turn's wall time is the model's.
 const modelMs = t => Math.max(0, t.wallMs - Object.entries(t.buckets).reduce((a, [k, ms]) => a + (k === 'model' ? 0 : ms), 0))
-const cut = text => String(text ?? '').slice(0, CUT)
+// Secret patterns and `mask` as in hooks/format.ts, where each is explained; a test holds them equal.
+const SECRET_NAME = /((?<![a-z])(?:(?:api[_-]?key|token|secret|key|password|passwd|pwd|bearer|authorization)[\w-]{0,40}|sig(?:nature)?(?![a-z])))(["']?\s*[=:]\s*|\s+(?=["']|(?:bearer|basic|token)\s|[^\s"']*\d|[^\s"']{16}))(?:(["'])((?:bearer|basic|token)\s+)?[^"'\n]{1,200}\3|((?:bearer|basic|token)\s+)?[^\s"'&]+)/gi
+const PREFIXED_SECRET = /\b([a-z_]{0,40}(?:password|passwd|pass(?:phrase)?|secret|token|api_?key|credentials?|private_?key))(?![a-z])(["']?\s*[=:]\s*)(?:(["'])[^"'\n]{1,200}\3|[^\s"',;]+)/gi
+const URL_CREDENTIALS = /:\/\/([^\s:@/]+):[^\s@/]+@/g
+const URL_TOKEN = /:\/\/[^\s:@/]{16,}@/g
+const SECRET_SHAPE = /\b(?:sk-[\w-]{16,}|[sr]k_(?:live|test)_\w{16,}|gh[pousr]_\w{20,}|hf_\w{20,}|whsec_\w{20,}|ya29\.[\w-]{20,}|xapp-[\w-]{10,}|hooks\.slack\.com\/services\/[\w/]+|github_pat_\w{20,}|glpat-[\w-]{20,}|xox[abprs]-[\w-]{10,}|AKIA[0-9A-Z]{16}|AIza[\w-]{35}|npm_\w{36}|eyJ[\w-]{10,}\.eyJ[\w-]{10,}\.[\w-]+)/g
+const FLAG_SECRET = /(\s(?:-u\s*|--user[=\s]\s*)[^\s:"']+:)[^\s"']+|(\b(?:mysql|mysqldump|mariadb)\b[^|;&\n]{0,200}?\s-p)[^\s"']+|(\bsshpass\s+-p\s*|\bdocker\s+login\b[^|;&\n]{0,200}?\s-p\s+|\bredis-cli\b[^|;&\n]{0,200}?\s-a\s+|--password[=\s]\s*)[^\s"']+|(\b(?:set-)?cookie\s*:\s*)[^\n"']+/gi
+const BARE_BEARER = /\b(Bearer)\s+[\w.~+/-]{8,}=*/gi
+const PRIVATE_KEY = /(-----BEGIN [A-Z ]{0,40}PRIVATE KEY-----)[\s\S]*?(?:-----END[^\n]*|$)/g
+export function mask(s) {
+  return s
+    .replace(PRIVATE_KEY, '$1***')
+    .replace(URL_CREDENTIALS, '://$1:***@')
+    .replace(URL_TOKEN, '://***@')
+    .replace(FLAG_SECRET, (_, user, mysql, flag, cookie) => `${user ?? mysql ?? flag ?? cookie}***`)
+    .replace(SECRET_NAME, (_, name, sep, quote, quotedScheme, scheme) => (quote ? `${name}${sep}${quote}${quotedScheme ?? ''}***${quote}` : `${name}${sep}${scheme ?? ''}***`))
+    .replace(PREFIXED_SECRET, (_, name, sep, quote = '') => `${name}${sep}${quote}***${quote}`)
+    .replace(SECRET_SHAPE, '***')
+    .replace(BARE_BEARER, '$1 ***')
+}
+// Log text goes to the page masked; the first cut keeps the scan cheap on a large input.
+const cut = text => mask(String(text ?? '').slice(0, 2000)).slice(0, CUT)
 const lines = text => text.split('\n').flatMap(line => {
   // The last line may be half written, and the crew log's own rule is to skip a line that does not parse.
   try {
@@ -91,6 +152,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
   }
   const open = new Map()
   const asking = new Map()
+  const rejected = new Set()
   const agents = new Map()
   const reads = new Set()
   let credits = 0
@@ -111,7 +173,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
       if (turn && !turn.prompt) turn.prompt = cut(d.text)
       else prompt = cut(d.text)
     } else if (e.type === 'message/sent') {
-      if (turn && d.text) turn.answer = String(d.text).slice(0, ANSWER_CUT)
+      if (turn && d.text) turn.answer = mask(String(d.text).slice(0, ANSWER_CUT))
     } else if (e.type === 'turn/started') {
       // A turn that never reported its end is over once the next one starts.
       if (turn) {
@@ -152,7 +214,10 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
       open.delete(call.id)
       call.ms = Number(d.elapsed_ms) || at - call.at
       if (d.is_error || d.status === 'failed') call.isFailed = true
-      const path = text.get(call.id)?.path
+      // A call whose approval was rejected still ends as `completed` in the log: it never ran.
+      const isRejected = rejected.delete(call.id)
+      if (call.kind === 'execute' && !isRejected) recordChecks(snap, call)
+      const path = isRejected ? undefined : text.get(call.id)?.path
       if (path && !call.isFailed && call.kind === 'edit') recordEdit(snap, path, at)
       else if (path && !call.isFailed && call.kind === 'read') {
         reads.add(path)
@@ -179,6 +244,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
     } else if (e.type === 'approval/decided') {
       const ask = asking.get(String(d.approval_id))
       asking.delete(String(d.approval_id))
+      if (ask?.call && d.decision === 'rejected') rejected.add(ask.call.id)
       if (ask) settle(ask, at, turn)
     }
     else if (e.type === 'subagent/spawned') {
