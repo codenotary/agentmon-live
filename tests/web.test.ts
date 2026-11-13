@@ -253,21 +253,20 @@ test('approvals over the session, edit times and the done gate reach the page', 
   expect(body.gate).toMatchObject({ ok: expect.any(Boolean), isSent: expect.any(Boolean) })
 })
 
-test('a full session stays under the size the server takes', () => {
-  const text = 'x'.repeat(300)
-  const snap = toSnapshot({
+const TEXT = 'x'.repeat(300)
+const FULL = {
     session: { id: 's', cwd: '/w' },
     now: 1,
     main: { model: 'm', effort: '' },
     usage: { startedAt: 0, context: { window: 100 }, cost: { usd: 0 }, rateLimits: [] },
     ins: shapeInsights({}),
-    turnRing: Array.from({ length: 50 }, (_, i) => ({ startedAt: i, wallMs: 1, buckets: { model: 1 }, prompt: text.slice(0, 120) })),
+    turnRing: Array.from({ length: 50 }, (_, i) => ({ startedAt: i, wallMs: 1, buckets: { model: 1 }, prompt: TEXT.slice(0, 120) })),
     doing: [],
-    calls: Array.from({ length: 60 }, (_, i) => ({ id: `c${i}`, at: i, who: 'general-purpose', view: 'shell' as const, what: text, result: 'failed', error: 'e'.repeat(2000), agentId: 'a' })),
-    agents: Array.from({ length: 60 }, (_, i) => ({ id: `a${i}`, type: 'general-purpose', model: 'm', effort: 'high', task: text.slice(0, 100), status: 'done' as const, files: 1, tools: 1, input: 1, output: 1, startedAt: 0, callId: 'toolu_01234567890123456789', prompt: 'p'.repeat(500), usd: 1, cached: 1, errors: 1 })),
+    calls: Array.from({ length: 60 }, (_, i) => ({ id: `c${i}`, at: i, who: 'general-purpose', view: 'shell' as const, what: TEXT, result: 'failed', error: 'e'.repeat(2000), agentId: 'a' })),
+    agents: Array.from({ length: 60 }, (_, i) => ({ id: `a${i}`, type: 'general-purpose', model: 'm', effort: 'high', task: TEXT.slice(0, 100), status: 'done' as const, files: 1, tools: 1, input: 1, output: 1, startedAt: 0, callId: 'toolu_01234567890123456789', prompt: 'p'.repeat(500), usd: 1, cached: 1, errors: 1 })),
     checks: [],
     files: { read: [], edited: [], editedAt: 0 },
-    log: Array.from({ length: 50 }, (_, i) => ({ at: i, who: 'general-purpose', what: text, result: 'done', agentId: 'a' })),
+    log: Array.from({ length: 50 }, (_, i) => ({ at: i, who: 'general-purpose', what: TEXT, result: 'done', agentId: 'a' })),
     tasks: [],
     streak: 0,
     dismissed: [],
@@ -278,10 +277,19 @@ test('a full session stays under the size the server takes', () => {
     isPaneOpen: true,
     build: 'x',
     testReview: { files: [], dropped: [], isGreen: false },
-    trace: Array.from({ length: 500 }, (_, i) => ({ id: `toolu_${i}`, at: i, who: 'general-purpose', tool: 'Bash', what: text, ms: 1, isFailed: true, error: text, agentId: 'agent-1234' })),
+    trace: Array.from({ length: 500 }, (_, i) => ({ id: `toolu_${i}`, at: i, who: 'general-purpose', tool: 'Bash', what: TEXT, ms: 1, isFailed: true, error: TEXT, agentId: 'agent-1234' })),
     steps: [],
-  })
-  expect(JSON.stringify(snap).length).toBeLessThan(1024 * 1024)
+}
+
+test('a full session stays under the size the server takes', () => {
+  expect(JSON.stringify(toSnapshot(FULL)).length).toBeLessThan(1024 * 1024)
+})
+
+test('the page gets the newest 50 step rows and is told when the turn has more', () => {
+  const turn = (n: number) => toSnapshot({ ...FULL, ins: shapeInsights({ turn: { startedAt: 0, wallMs: 0, buckets: {}, steps: 0 } }), trace: Array.from({ length: n }, (_, i) => ({ id: `m${i}`, at: i, who: 'main', tool: 'Bash', what: `run ${i}`, ms: 1 })) })
+  expect(turn(51).steps?.length).toBe(50)
+  expect(turn(51).isStepsCut).toBe(true)
+  expect(turn(50).isStepsCut).toBe(false)
 })
 
 test('a dismissed item stays away from the page as from the pane', () => {
