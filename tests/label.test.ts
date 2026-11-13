@@ -15,6 +15,8 @@ test('a shell call is named by its description, else by the program it runs firs
   expect(of('Bash', { command: "python3 - <<'EOF'\nprint(1)\nEOF" })).toBe('python3')
   expect(of('PowerShell', { command: '$r = & "C:\\Program Files\\Tools\\x.exe" -v' })).toBe('x')
   expect(of('PowerShell', { command: 'Get-PhysicalDisk | Select-Object DeviceId' })).toBe('Get-PhysicalDisk')
+  expect(of('Bash', { command: '(cd web && npm run build)' })).toBe('npm run')
+  expect(of('Bash', { command: '! grep -q x f' })).toBe('grep')
   expect(of('Bash', { command: ' ' })).toBe('shell')
 })
 

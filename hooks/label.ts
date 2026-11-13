@@ -19,7 +19,8 @@ const hostOf = (url: string) => url.replace(/^[a-z][\w+.-]*:\/\//i, '').replace(
 // The program a shell line runs first: `cd x && sudo env A=1 npm test -- a` -> `npm test`.
 function commandName(command: string): string | undefined {
   for (const part of command.split(/&&|\|\||[;|\n]/)) {
-    const words = (part.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(w => w.replace(/^["']|["']$/g, ''))
+    // `(cd web && npm test)`, `{ npm test; }`, `! grep x`: the bracket or bang is not part of the program's name.
+    const words = (part.replace(/^[\s({!]+/, '').match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(w => w.replace(/^["']|["']$/g, ''))
     // PowerShell: `$r = & "C:\Tools\x.exe"`.
     if (words[0]?.startsWith('$') && words[1] === '=') words.splice(0, 2)
     for (;;) {
