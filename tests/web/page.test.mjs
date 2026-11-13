@@ -762,6 +762,10 @@ test('events kept in the browser come back per session, malformed ones left out,
   let raw = keepEvents(null, 's1', [ev, { ...ev, key: 'check:x', clearedAt: 9 }], 10)
   assert.deepEqual(keptEvents(raw, 's1'), [ev, { ...ev, key: 'check:x', clearedAt: 9 }])
   assert.deepEqual(keptEvents(raw, 's2'), [])
+  // A cleared machine-wide event lives only here, so its word must survive a reload.
+  const wide = { ...ev, key: 'mcp', clearedAt: 9, scope: 'Environment' }
+  assert.deepEqual(keptEvents(keepEvents(null, 's3', [wide], 10), 's3'), [wide])
+  assert.deepEqual(keptEvents('{"s3":[{"key":"k","tag":"t","text":"x","at":1,"scope":7}]}', 's3'), [])
   assert.deepEqual(keptEvents('{"s1":[{"key":1},null]}', 's1'), [])
   assert.deepEqual(keptEvents('not json', 's1'), [])
   for (let i = 2; i <= 12; i += 1) raw = keepEvents(raw, `s${i}`, [ev], 10)

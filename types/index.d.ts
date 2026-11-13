@@ -253,7 +253,8 @@ export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: n
 // One turn on the web view's clock; `isLive` while it still runs.
 export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean; prompt?: string; answer?: string }
 
-export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean }
+// `scope`: the word for a finding about the machine or account, not this session; absent on a session finding.
+export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean; scope?: string }
 
 // What a session posts to the web view's server. The page draws from this alone; change `v` when a field changes meaning.
 export type WebSnapshot = {
