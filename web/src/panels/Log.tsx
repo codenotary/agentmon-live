@@ -71,7 +71,7 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const all = useMemo(() => logRows(s, p.you, names, p.claude), [s.log, s.trace, s.turns, s.active, names, p.you, p.claude])
   const counts = useMemo(() => chipCounts(all), [all])
-  const flat = useMemo(() => all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text} ${x.answer ?? ''}`.toLowerCase().includes(q))), [all, chip, q, l])
+  const flat = useMemo(() => all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.call?.label ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text} ${x.answer ?? ''}`.toLowerCase().includes(q))), [all, chip, q, l])
   // A search or the failures chip lists the calls themselves; otherwise a subagent run is one row.
   const rows = useMemo(() => (q || chip === 'failures' ? flat : foldAgents(flat, openRuns)), [flat, q, chip, openRuns])
   const toggleRun = (id: string) => setOpenRuns(open => {

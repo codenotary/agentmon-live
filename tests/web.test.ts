@@ -813,3 +813,18 @@ test('the folder a VM or a container mounts is the switch, with no variable set'
   expect(written[0]).toBe('/var/lib/agentmon-live/spool/sess-1.json')
   expect(argvs.some(a => a.includes('ensure'))).toBe(false)
 })
+
+test('a refused call is a blocked step in the snapshot', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ deny: 'not allowed here' }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'git push --force', tool_use_id: 'b1' })
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).steps).toMatchObject([{ id: 'b1', kind: 'call', state: 'blocked', label: 'git push' }])
+})

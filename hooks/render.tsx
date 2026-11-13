@@ -43,6 +43,8 @@ const MAX_CARDS = 4
 const MAX_CARDS_CLASSIC = 6
 // Sections calm leaves out unless they need the person; `v` (classic) shows them all.
 const CALM_HIDDEN = ['insights', 'skills', 'usage']
+// Room for the widest actor name in any language (`エージェント`, 12 cells) and a gap.
+const ACTOR_COLS = 13
 const STEP_GLYPH = { running: '', asking: '⏸', ok: '✓', failed: '✗', blocked: '⊘' }
 const STEP_COLOR = { running: 'cyan', asking: 'yellow', ok: undefined, failed: 'red', blocked: 'red' }
 
@@ -348,9 +350,9 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       {stepList.slice(0, lay.isDetailed ? 30 : isClassic ? 10 : 5).map(r => (
         <Text wrap={rowWrap}>
           <Text color={STEP_COLOR[r.state]} dimColor={r.state === 'ok'}>{r.state === 'running' ? spin(now) : STEP_GLYPH[r.state]} </Text>
-          <Text dimColor>{fit(t.actor[r.actor], 9)}</Text>
+          <Text dimColor>{fit(t.actor[r.actor], ACTOR_COLS)}</Text>
           {fit(cut(r.label, whatRoom), whatRoom + 1)}
-          <Text dimColor>{r.count > 1 ? `×${r.count} ` : ''}{r.ms === 0 && r.state !== 'ok' ? secs(r.at) : dur(r.ms)}</Text>
+          <Text dimColor>{r.count > 1 ? `×${r.count} ` : ''}{r.state === 'running' || r.state === 'asking' ? secs(r.at) : dur(r.ms)}</Text>
         </Text>
       ))}
     </Box>

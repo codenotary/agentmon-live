@@ -260,3 +260,20 @@ test('hiddenSections hides the turn steps', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /TURN STEPS/ })).toBe(undefined)
   await ui.unmount()
 })
+
+test('a refused call keeps its own time in the step list', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ deny: 'not allowed here' }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'git push --force', tool_use_id: 'b1' })
+  // Long after: a finished row must not count on like a running one.
+  await clock.advance(60_000)
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  const row = await ui.find({ type: 'Text', text: /⊘ .*git push/ })
+  expect(row?.text).toMatch(/git push\s+0\.0s$/)
+  await ui.unmount()
+})
