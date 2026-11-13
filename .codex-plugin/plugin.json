@@ -1,0 +1,23 @@
+{
+  "name": "agentmon-live",
+  "version": "0.43.0",
+  "description": "AgentMon Live: see what every Codex chat is doing, live in your browser: turns, tool calls, checks, files, context and limits",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Codenotary",
+    "url": "https://github.com/codenotary"
+  },
+  "homepage": "https://github.com/codenotary/agentmon-live",
+  "repository": "https://github.com/codenotary/agentmon-live",
+  "keywords": ["agents", "observability", "dashboard", "monitoring"],
+  "hooks": "./codex/hooks.json",
+  "interface": {
+    "displayName": "AgentMon Live",
+    "shortDescription": "See what every chat is doing, live",
+    "longDescription": "Starts AgentMon Live's web view with each Codex session. The page at http://127.0.0.1:47311/ lists every Codex chat on this machine: turns with their time split, tool calls, test and build results, files, context and limits.",
+    "developerName": "Codenotary",
+    "category": "Developer Tools",
+    "capabilities": ["Read"],
+    "websiteURL": "https://github.com/codenotary/agentmon-live"
+  }
+}

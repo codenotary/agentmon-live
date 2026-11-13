@@ -61,7 +61,6 @@ const BIG_MIN_TOKENS = 2000
 const KEEP_AREAS = 50
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
-let statusQueued = false
 let rateQueued = false
 let isTicking = false
 let isPulsing = false
@@ -112,13 +111,6 @@ async function addLog($: EngineInterface, line: Omit<LogLine, 'at'>) {
   await update($, log, list => [...list, { ...line, at }].slice(-50))
 }
 
-async function refreshStatus($: EngineInterface) {
-  const [m, counts, list, adv] = await Promise.all([read($, main), read($, tools), read($, agents), read($, advisor)])
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
-  const running = list.filter(isLive).length
-  $.ui.status(cfg.t.statusLine(m.effort || '?', running, list.length, listening(adv.isOn), total, counts.git ?? 0))
-}
-
 // The spinner and elapsed seconds under Running now move on their own: redraw while a call or a subagent runs, twice a second in classic, where the seconds show.
 function tick($: EngineInterface) {
   if (isTicking) return
@@ -153,16 +145,6 @@ function pulse($: EngineInterface) {
       if (doing.length > 0 || list.some(a => a.status === 'running')) pulse($)
     }),
   )
-}
-
-// Tool calls come in bursts; redraw the status line at most twice a second.
-function queueStatus($: EngineInterface) {
-  if (statusQueued) return
-  statusQueued = true
-  $.clock.after(500, async () => {
-    statusQueued = false
-    await refreshStatus($)
-  })
 }
 
 // The session's task list as its own calls change it; `deleted` removes a task.
@@ -350,10 +332,9 @@ export const register: Register = on => {
       update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
     if (!(await read($, layout)).isPaneHidden) void $.ui.open({ id: PANE, title: 'AgentMon Live' })
-    // Reading the build and the status line need not hold up the session.
+    // Reading the build need not hold up the session.
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
-      await refreshStatus($)
       // The network need not hold up learning.
       void checkRelease($).catch(() => undefined)
       if (cfg.baseMinutes > 0 && !isBaseWatched) {
@@ -402,7 +383,6 @@ export const register: Register = on => {
     const arg = e.args.trim()
     if (arg === t.argAdvisor) {
       const a = await update($, advisor, v => ({ ...v, isOn: !v.isOn }))
-      await refreshStatus($)
       return { text: t.advisorToggled(a.isOn) }
     }
     if (arg === t.argCheck || arg === 'check') {
@@ -458,7 +438,6 @@ export const register: Register = on => {
       resetTurn(turn, [])
       await update($, testReview, () => INIT.testReview)
       await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const }))
-      await refreshStatus($)
       return { text: t.cleared }
     }
     await setPane($, true)
@@ -541,7 +520,6 @@ export const register: Register = on => {
           list.map(a => (a.id === id ? { ...a, model: e.model, effort: effort || a.effort } : a)),
         )
       }
-      await refreshStatus($)
     }
     const isMain = e.agentId === undefined
     const agentId = e.agentId
@@ -651,7 +629,6 @@ export const register: Register = on => {
           ...found.map(f => ({ ...greenOf(all, f.kind), kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const, ...(f.kind === 'test' && scopeDir ? { dir: scopeDir } : {}) })),
         ]),
     ]).catch(error => void debug($, 'hook.fail', { event: 'tool.call', message: mask(String(error)) }))
-    queueStatus($)
 
     // The file-size guide needs the size before the first edit of a file.
     const sized = EDIT_TOOLS.has(e.tool) && watched(pathOf(e), cwd) !== undefined ? pathOf(e) : undefined
@@ -895,7 +872,6 @@ export const register: Register = on => {
     tick($)
     pulse($)
     await addLog($, { who: e.subagentType, what: card.task, result: t.started, agentId: r.agentId })
-    await refreshStatus($)
     return r
   }).catch(($, e, next) => failOpen($, 'agent.spawn', next.error, () => next(e)))
 
@@ -929,7 +905,6 @@ export const register: Register = on => {
         }
         await addLog($, { who: card.type, what: t.doneAfter(took(e.durationMs)), result: t.filesTools(card.files, card.tools), agentId: id })
       }
-      await refreshStatus($)
     } else {
       // Docs read and code changed: the docs-vs-code hint in Focus; a refactor changes the code on purpose.
       const isRefactor = /refactor|refaktor|重构|重構|リファクタ/i.test(turn.prompt)

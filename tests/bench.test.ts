@@ -118,7 +118,6 @@ test('a live session records its bench row and /agentmon bench reports it', asyn
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('ui.status', () => ({ value: undefined }))
   on('env.get', () => ({ value: '/h' }))
   on('fs.list', () => ({ value: [] }))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
