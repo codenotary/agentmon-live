@@ -298,15 +298,18 @@ test('feedback is anonymous until the person names it; the install ID is the mod
   on('ui.toast', () => ({ value: undefined }))
   const store = new Map<string, unknown>()
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  let isStoreBroken = false
   on('store.set', (_, e) => {
+    if (isStoreBroken) throw new Error('disk full')
     store.set(e.key, e.value)
     return { value: undefined }
   })
   const calls: { method: string; url: string; body: string; install?: string }[] = []
   on('http.fetch', (_, e) => {
     calls.push({ method: e.init?.method ?? 'GET', url: e.url, body: String(e.init?.body ?? ''), install: (e.init?.headers as Record<string, string> | undefined)?.['x-install'] })
-    return { value: { status: 200, ok: true, headers: {}, text: e.init?.method === 'DELETE' ? '{"deleted":1}' : '{}' } }
+    return { value: { status: 200, ok: true, headers: {}, text: e.init?.method === 'DELETE' ? deleteAnswer : '{}' } }
   })
+  let deleteAnswer = '{"deleted":1}'
   const sent = () => calls.filter(c => c.method === 'POST').map(c => JSON.parse(c.body) as { install?: string; identity?: string })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -325,6 +328,12 @@ test('feedback is anonymous until the person names it; the install ID is the mod
   expect(store.get('feedbackInstall')).toBe(undefined)
 
   await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Two.' })
+  // An ID that cannot be kept sends nothing, and the draft stays.
+  isStoreBroken = true
+  await ui.press({ key: 'feedback:send' })
+  expect(sent().length).toBe(1)
+  expect(await ui.find({ type: 'Text', text: /^Two\.$/ })).toBeTruthy()
+  isStoreBroken = false
   await ui.press({ key: 'feedback:send' })
   const id = String(store.get('feedbackInstall'))
   expect(id).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/)
@@ -332,6 +341,13 @@ test('feedback is anonymous until the person names it; the install ID is the mod
 
   expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('Deleted 1')
   expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: 'https://agentmon-live-feedback.dolbik.workers.dev/feedback', install: id })
+  expect(store.get('feedbackInstall')).toBe('')
+
+  // An answer that is not JSON still counts as deleted, and the ID still goes.
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Three.' })
+  await ui.press({ key: 'feedback:send' })
+  deleteAnswer = 'ok'
+  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('Deleted 0')
   expect(store.get('feedbackInstall')).toBe('')
   await ui.unmount()
 })

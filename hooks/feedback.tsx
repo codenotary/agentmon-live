@@ -65,16 +65,27 @@ export function sender(): string {
   return [cfg.feedbackIdentity, cfg.feedbackInstall ? `ID ${cfg.feedbackInstall.slice(0, 8)}…` : cfg.t.feedbackNewId].filter(Boolean).join(' · ')
 }
 
+const why = (e: unknown) => String((e as { message?: unknown })?.message ?? e)
+
+// One request to the feedback service: what went wrong, or '' and the answer's text.
+async function call($: EngineInterface, init: { method: string; headers: Record<string, string>; body?: string }): Promise<{ failure: string; text: string }> {
+  return $.http.fetch(cfg.feedbackUrl, init).then(
+    r => ({ failure: r.ok ? '' : `${r.status} ${r.text.trim().slice(0, 200)}`, text: r.text }),
+    e => ({ failure: why(e), text: '' }),
+  )
+}
+
 // Deletes what this install sent under its ID, then forgets the ID; anonymous posts carry none and stay.
 export async function deleteSent($: EngineInterface): Promise<string> {
   const t = cfg.t
   if (!cfg.feedbackInstall) return t.feedbackNothing
   if (!cfg.feedbackUrl) return t.feedbackFailed('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
-  const r = await $.http.fetch(cfg.feedbackUrl, { method: 'DELETE', headers: { 'x-install': cfg.feedbackInstall } }).catch(e => String((e as { message?: unknown })?.message ?? e))
-  if (typeof r === 'string' || !r.ok) return t.feedbackFailed(typeof r === 'string' ? r : `${r.status} ${r.text.trim().slice(0, 200)}`)
+  const { failure, text } = await call($, { method: 'DELETE', headers: { 'x-install': cfg.feedbackInstall } })
+  if (failure) return t.feedbackFailed(failure)
+  const deleted = Number(text.match(/"deleted":\s*(\d+)/)?.[1] ?? 0)
   cfg.feedbackInstall = ''
   await $.store.set(INSTALL_KEY, '').catch(() => undefined)
-  return t.feedbackDeleted(Number((JSON.parse(r.text) as { deleted?: unknown }).deleted ?? 0))
+  return t.feedbackDeleted(deleted)
 }
 
 export function dropDraft($: EngineInterface): void {
@@ -84,20 +95,25 @@ export function dropDraft($: EngineInterface): void {
 
 let isSending = false
 
+async function post($: EngineInterface, draft: Draft): Promise<string> {
+  // The install ID is made here, on the first send the person chose to put a name to, and never read from Claude Code or the machine.
+  if (cfg.isFeedbackNamed && !cfg.feedbackInstall) {
+    const id = crypto.randomUUID()
+    // An ID that is not kept could never delete its rows again, so nothing goes out under it.
+    const unsaved = await $.store.set(INSTALL_KEY, id).then(() => '', why)
+    if (unsaved) return unsaved
+    cfg.feedbackInstall = id
+  }
+  const who = cfg.isFeedbackNamed ? { install: cfg.feedbackInstall, ...(cfg.feedbackIdentity ? { identity: cfg.feedbackIdentity } : {}) } : {}
+  const body = { ...draft, app: 'agentmon-live', version: cfg.version, claude_code: cfg.claudeCode, language: cfg.lang, ...who }
+  return (await call($, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).failure
+}
+
 export async function sendDraft($: EngineInterface): Promise<void> {
   const draft = cfg.feedbackDraft
   if (!draft || !cfg.feedbackUrl || isSending) return
   isSending = true
-  // The install ID is made here, on the first send the person chose to put a name to, and never read from Claude Code or the machine.
-  if (cfg.isFeedbackNamed && !cfg.feedbackInstall) {
-    cfg.feedbackInstall = crypto.randomUUID()
-    await $.store.set(INSTALL_KEY, cfg.feedbackInstall).catch(() => undefined)
-  }
-  const who = cfg.isFeedbackNamed ? { install: cfg.feedbackInstall, ...(cfg.feedbackIdentity ? { identity: cfg.feedbackIdentity } : {}) } : {}
-  const body = { ...draft, app: 'agentmon-live', version: cfg.version, claude_code: cfg.claudeCode, language: cfg.lang, ...who }
-  const failure = await $.http
-    .fetch(cfg.feedbackUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-    .then(r => (r.ok ? '' : `${r.status} ${r.text.trim().slice(0, 200)}`), e => String((e as { message?: unknown })?.message ?? e))
+  const failure = await post($, draft)
   isSending = false
   // A draft that did not go stays, so the person can try again or open it as an issue.
   if (failure) return void $.ui.toast(cfg.t.feedbackFailed(failure))
