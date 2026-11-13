@@ -5,7 +5,7 @@ import { mask } from './format'
 import { isQuiet } from './release'
 import { cfg } from './state'
 
-export const FEEDBACK_URL = 'https://agentmon-live-feedback.dolbik.workers.dev/feedback'
+export const FEEDBACK_URL = 'https://feedback.codenotary.com/feedback'
 export const FEEDBACK_TOOL = 'mcp__agentmon-live__feedback'
 const ISSUES = 'https://github.com/codenotary/agentmon-live/issues/new'
 const INSTALL_KEY = 'feedbackInstall'

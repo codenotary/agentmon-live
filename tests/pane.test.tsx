@@ -340,7 +340,7 @@ test('feedback is anonymous until the person names it; the install ID is the mod
   expect(sent()[1]).toMatchObject({ install: id, identity: 'ada@example.com' })
 
   expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('Deleted 1')
-  expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: 'https://agentmon-live-feedback.dolbik.workers.dev/feedback', install: id })
+  expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: 'https://feedback.codenotary.com/feedback', install: id })
   expect(store.get('feedbackInstall')).toBe('')
 
   // An answer that is not JSON still counts as deleted, and the ID still goes.
