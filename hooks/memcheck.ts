@@ -18,6 +18,8 @@ export const EMPHASIS_LINES = 5
 const EMPHASIS = /\b(IMPORTANT|CRITICAL|MUST|NEVER|ALWAYS|MANDATORY|ABSOLUTE)\b/
 
 const base = (p: string) => p.slice(p.lastIndexOf('/') + 1)
+// A file's frontmatter block, with either line ending, also when it is empty.
+const metaOf = (text: string) => text.match(/^---\r?\n(?:[\s\S]*?\r?\n)?---/)?.[0]
 
 // Backticked paths a file names: absolute, home (expanded), or relative with a file extension; globs and placeholders left out.
 // A lone `/src` or `/docs` is a project folder convention, not an absolute path, so `/` needs two segments.
@@ -34,7 +36,8 @@ export function refsOf(files: readonly MemFile[], home: string, roots: readonly 
       const ref = m[1]!.replace(/(?::\d+)+$|#[^/]*$/, '')
       // shortcut: a relative path counts only with a file extension, so a named folder is not checked; widen when folders go stale unseen.
       const isRelative = !/^[~/]/.test(ref)
-      if (/[*<>${}]/.test(ref) || SYSTEM.test(ref) || (isRelative && !(isLocal && /^[^:]+\.\w+$/.test(ref))) || n >= MAX_REFS) continue
+      // `../other/file.ts` points out of the project, where the check has no business.
+      if (/[*<>${}]/.test(ref) || SYSTEM.test(ref) || /(^|\/)\.\.\//.test(ref) || (isRelative && !(isLocal && /^[^:]+\.\w+$/.test(ref))) || n >= MAX_REFS) continue
       n++
       out.set(ref.startsWith('~/') ? `${home}${ref.slice(1)}` : ref, f.path)
     }
@@ -50,7 +53,7 @@ export function memRules(files: readonly MemFile[], dir: readonly string[], miss
   const byName = new Map<string, string[]>()
   for (const f of mem) {
     // Only the frontmatter's name; a `name: CI` in a quoted snippet is not one.
-    const name = f.text.match(/^---\n[\s\S]*?\n---/)?.[0].match(/^name:\s*(.+)$/m)?.[1]?.trim()
+    const name = metaOf(f.text)?.match(/^name:\s*(.+)$/m)?.[1]?.trim()
     if (name) byName.set(name, [...(byName.get(name) ?? []), base(f.path)])
   }
   for (const [name, list] of byName) if (list.length > 1) out.push({ kind: 'dupName', file: list[0]!, detail: `${name} (${list.join(', ')})` })
@@ -58,7 +61,7 @@ export function memRules(files: readonly MemFile[], dir: readonly string[], miss
   for (const f of mem) {
     if (base(f.path) === 'MEMORY.md') continue
     // A plain note with no frontmatter at all is an older or hand-written one, not a broken one.
-    const meta = f.text.match(/^---\n[\s\S]*?\n---/)?.[0]
+    const meta = metaOf(f.text)
     if (!meta) continue
     const gone = ['name', 'description'].filter(k => !new RegExp(`^${k}:[ \\t]*\\S`, 'm').test(meta))
     if (gone.length > 0) out.push({ kind: 'noMeta', file: f.path, detail: `${base(f.path)} (${gone.join(', ')})` })
