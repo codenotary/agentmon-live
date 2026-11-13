@@ -70,7 +70,7 @@ function logLineRows(log: readonly LogLine[], agents: Input['agents'], names: Re
   })
 }
 
-const canMerge = (a: LogRow | undefined, b: LogRow): a is LogRow => a !== undefined && a.tool !== undefined && !a.isFailed && !a.isRunning && !b.isFailed && !b.isRunning && a.who === b.who && a.tool === b.tool && a.what === b.what
+const canMerge = (a: LogRow | undefined, b: LogRow): a is LogRow => a !== undefined && a.tool !== undefined && !a.isFailed && !a.isRunning && !b.isFailed && !b.isRunning && a.who === b.who && a.tool === b.tool && a.what === b.what && a.call?.label === b.call?.label
 
 export function logRows({ log, trace = [], turns, agents, active }: Input, you: string, names: ReadonlyMap<string, AgentName>, claude = 'Claude'): LogRow[] {
   const running = new Set(active.map(a => a.id))

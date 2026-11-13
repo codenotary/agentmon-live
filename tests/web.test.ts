@@ -86,8 +86,8 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   // The finished turn, then the one under way with the time not yet booked.
   expect(snap.turns).toEqual([{ startedAt: 1, wallMs: 9, buckets: { model: 9 } }, { startedAt: 900, wallMs: 100, buckets: { model: 40, shell: 50 }, isLive: true }])
   // What needs the person comes first, then the insights.
-  // The approval names the call by its label; the raw command stays in the call itself.
-  expect(snap.focus[0]?.text).toBe('Bash Remove the old file')
+  // An approval shows the label and the command it stands for: the person approves the command, not its description.
+  expect(snap.focus[0]?.text).toBe('Bash Remove the old file · rm x')
   expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false], ['mcp', false]])
   // Only a finding about the machine or account carries the word for it.
   expect(snap.focus.map(f => f.scope)).toEqual([undefined, undefined, undefined, t.ins.environment])

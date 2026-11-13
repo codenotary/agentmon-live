@@ -91,6 +91,9 @@ export function hasSecret(s: string): boolean {
     || [SECRET_NAME, PREFIXED_SECRET, FLAG_SECRET, BARE_BEARER].some(re => hits(re).some(m => isLiteral(m) && !isPath(m) && looksRandom(m)))
 }
 
+// What a row shows for a call: its short name, else its raw text.
+export const callText = (c: { what: string; label?: string }) => c.label ?? c.what
+
 // What a call shows in the detail tabs and under Running now: `git push`, `npm test`, `sentry search_issues crash`.
 export function describe(tool: string, call: object): string {
   const git = tool === 'Bash' ? gitCommand(String((call as { command?: unknown }).command ?? '')) : undefined

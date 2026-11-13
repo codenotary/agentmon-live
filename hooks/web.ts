@@ -72,7 +72,7 @@ export function urgentItems(p: SnapshotParts): WebFocus[] {
   const { t } = p
   const items = needsYou({ doing: p.doing, streak: p.streak, checks: p.checks, agents: p.agents, turnAt: p.main.turnAt }).map((u): WebFocus => {
     const base = { key: u.key, isUrgent: true }
-    if (u.kind === 'ask') return { ...base, tag: t.approval, text: `${u.call.tool} ${u.call.label ?? u.call.what}` }
+    if (u.kind === 'ask') return { ...base, tag: t.approval, text: `${u.call.tool} ${u.call.label ? `${u.call.label} · ` : ''}${u.call.what}` }
     if (u.kind === 'streak') return { ...base, tag: t.status.error, text: t.errorsInRow(u.n) }
     if (u.kind === 'check') return { ...base, tag: t.failed, text: `${t.check[u.check.kind]} ${u.check.command}` }
     if (u.kind === 'agent') return { ...base, tag: u.agent.tests === 'FAIL' ? 'FAIL' : t.status.error, text: `${u.agent.type} ${u.agent.testsWhy ?? u.agent.task}` }

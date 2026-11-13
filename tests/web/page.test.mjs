@@ -800,3 +800,10 @@ test('a Kiro Crew chat finds its session by slot, the one with the latest turn w
   // Resumed: the new session has no turn yet and is still the chat now.
   assert.equal(sessionOfSlot(new Map([...sessions, at('resumed', 'chat-1')]), 'chat-1'), 'resumed')
 })
+
+test('the label-or-raw text of a call comes from callText, not from a copy of the fallback', () => {
+  // A search string joins the label and the raw text (`label ?? ''`): that is no fallback.
+  const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? (e.name === 'node_modules' ? [] : walk(join(dir, e.name))) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : []))
+  const copies = [join(ROOT, 'hooks'), join(ROOT, 'web', 'src')].flatMap(walk).flatMap(f => readFileSync(f, 'utf8').split('\n').flatMap((line, i) => (/label \?\? (?!'')[^\n]{0,24}what/.test(line) && !line.includes('export const callText') ? [`${f.slice(ROOT.length + 1)}:${i + 1}`] : [])))
+  assert.deepEqual(copies, [])
+})

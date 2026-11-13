@@ -2,7 +2,7 @@ import NumberFlow from '@number-flow/react'
 import { useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { blockedOf, dur, kilo, levelOf, type Tone } from '../format.ts'
+import { blockedOf, dur, kilo, levelOf, type Tone, callText } from '../format.ts'
 import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../kpi.ts'
 import type { Page } from '../labels.ts'
 import { useStore, type Trend } from '../store.ts'
@@ -98,7 +98,7 @@ export function Instruments({ s, p, trend }: { s: WebSnapshot; p: Page; trend: T
           {s.insights.big.length ? (
             <>
               <span className="eyebrow mt-3 block">{p.big}</span>
-              <ul className="mt-1 flex flex-col gap-0.5">{s.insights.big.slice(0, 5).map(c => <li key={`${c.at}:${c.what}`} className="flex justify-between gap-3"><span className="min-w-0 truncate font-mono" title={c.what}>{c.tool} {c.label ?? c.what}</span><span className="font-mono text-ink-2 tabular-nums">{kilo(c.tokens)}</span></li>)}</ul>
+              <ul className="mt-1 flex flex-col gap-0.5">{s.insights.big.slice(0, 5).map(c => <li key={`${c.at}:${c.what}`} className="flex justify-between gap-3"><span className="min-w-0 truncate font-mono" title={c.what}>{c.tool} {callText(c)}</span><span className="font-mono text-ink-2 tabular-nums">{kilo(c.tokens)}</span></li>)}</ul>
             </>
           ) : null}
         </div>

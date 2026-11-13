@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, Terminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, chipsWith, firstLine, MAIN_KEY, resultOf, time, toolGroup, whoKey, whoOf } from '../format.ts'
+import { agentNames, chipsWith, firstLine, MAIN_KEY, resultOf, time, toolGroup, whoKey, whoOf, callText } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { set, useStore } from '../store.ts'
 import { Choice } from '../ui/Choice.tsx'
@@ -93,7 +93,7 @@ export function Calls({ s, l }: { s: WebSnapshot; l: Labels }) {
                   <tr key={c.id ?? `${c.at}:${c.who}:${c.what}`} className="row-in cursor-pointer border-t border-line-soft hover:bg-surface-1" tabIndex={0} aria-label={`${p.details}: ${c.what}`} onClick={open} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open() } }}>
                     <td className={CELL}><span className="whitespace-nowrap text-ink-3 tabular-nums">{time(c.at)}</span></td>
                     <td className={`${CELL} max-sm:hidden`}><span className="whitespace-nowrap" title={c.agentId === undefined ? undefined : names.get(c.agentId)?.full}>{whoOf(c, names)}</span></td>
-                    <td className={CELL}><span className="font-mono text-xs [overflow-wrap:anywhere]"><span className="text-ink-3">{c.view} </span>{c.label ?? c.what}</span>{c.label ? <div className="mt-0.5 font-mono text-[11px] text-ink-3 [overflow-wrap:anywhere]">{c.what}</div> : null}{c.result === 'failed' && c.error ? <div className="mt-0.5 font-mono text-[11px] break-words text-bad">{firstLine(c.error)}</div> : null}</td>
+                    <td className={CELL}><span className="font-mono text-xs [overflow-wrap:anywhere]"><span className="text-ink-3">{c.view} </span>{callText(c)}</span>{c.label ? <div className="mt-0.5 font-mono text-[11px] text-ink-3 [overflow-wrap:anywhere]">{c.what}</div> : null}{c.result === 'failed' && c.error ? <div className="mt-0.5 font-mono text-[11px] break-words text-bad">{firstLine(c.error)}</div> : null}</td>
                     <td className={CELL}><Pill text={r.text} tone={r.tone} /></td>
                   </tr>
                 )

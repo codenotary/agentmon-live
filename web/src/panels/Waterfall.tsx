@@ -2,7 +2,7 @@ import { ChartNoAxesGantt } from 'lucide-react'
 import { useEffect, useRef, type CSSProperties } from 'react'
 
 import type { TraceCall, WebSnapshot } from '../../../types/index'
-import { callTime, countWord, dur, resultOf, stateOf, traceResult } from '../format.ts'
+import { callTime, countWord, dur, resultOf, stateOf, traceResult, callText } from '../format.ts'
 import { windowOf } from '../flow.ts'
 import type { Labels } from '../labels.ts'
 import { set, useClock, useStore } from '../store.ts'
@@ -25,7 +25,7 @@ function Name({ row, status }: { row: Row; status: string | undefined }) {
     <span className="wf-name" style={{ paddingLeft: `${row.depth * 14}px` }}>
       <b className={row.isAgent ? 'min-w-0 truncate text-signal' : row.state === 'failed' ? 'text-bad' : 'text-ink-2'} title={row.full}>{row.name}</b>
       {status ? <span className="text-warn">{status}</span> : null}
-      <span className="truncate text-ink-3" title={row.what}>{row.call?.label ?? row.what}</span>
+      <span className="truncate text-ink-3" title={row.what}>{row.call ? callText(row.call) : row.what}</span>
     </span>
   )
 }
