@@ -28,7 +28,6 @@ function engine(on: On, percent = 1, breakdown?: object) {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: percent * 10000, percent, breakdown }, rateLimits: [] } }) as never)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))

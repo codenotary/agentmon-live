@@ -27,9 +27,8 @@ const PANE = {
   },
 } as const
 
-// The engine answers every test needs; a test adds its own hooks after. Returns the last status line set.
+// The engine answers every test needs; a test adds its own hooks after.
 function engine(on: On, draft = '', onOpen = () => {}) {
-  let status = ''
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => {
     onOpen()
@@ -40,11 +39,6 @@ function engine(on: On, draft = '', onOpen = () => {}) {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   // The prompt box holds `draft`; investigate reads it before it drafts.
   on('prompt.read', () => ({ value: { text: draft, cursor: draft.length } }))
-  on('ui.status', (_, e) => {
-    status = e.text ?? ''
-    return { value: undefined }
-  })
-  return () => status
 }
 
 const SPAWN = {
@@ -86,7 +80,6 @@ test('pane counts tool calls and shows a spawned subagent', async ($, on) => {
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 330000, percent: 33 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('tool.call', () => ({ result: {} }))
-  on('ui.status', () => ({ value: undefined }))
   on('clock.now', () => ({ value: 0 }))
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
 
@@ -138,7 +131,6 @@ test('pane counts failed calls and compactions', async ($, on) => {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
   on('session.compact', () => ({ messages: [{ role: 'user', text: 'Zusammenfassung', toolUses: [] }] }))
 
@@ -162,7 +154,6 @@ test('german option localizes the pane', async ($, on) => {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {}, text: 'boom', isError: true }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -183,7 +174,6 @@ test('git commands get their own row and no log line', async ($, on) => {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -207,7 +197,6 @@ test('the done gate box shows what it does until it first runs', async ($, on) =
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   on('clock.now', () => ({ value: 0 }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -226,7 +215,6 @@ test('mcp calls get a row and their own detail tab', async ($, on) => {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   on('tool.call', () => ({ result: {} }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
@@ -263,8 +251,17 @@ test('a resumed agent runs again', async ($, on) => {
 })
 
 test('running agents are never trimmed', async ($, on) => {
-  const status = engine(on)
-  on('clock.now', () => ({ value: 0 }))
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  // The agent list is read from the snapshot the web view gets: the pane shows only the last few finished agents.
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '{"port":47311}\n', stderr: '' } as never }))
+  on('session.id', () => ({ value: 'sess-1' }))
+  let body = ''
+  on('http.fetch', (_, e) => {
+    if (e.init?.method === 'POST' && e.url.includes('/state/')) body = String(e.init.body)
+    return { value: { status: 204, ok: true, headers: {}, text: '' } }
+  })
   let n = 0
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${n++}` }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
@@ -274,12 +271,15 @@ test('running agents are never trimmed', async ($, on) => {
     await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}` })
     if (i > 0) await $.turn.complete({ ...DONE, agentId: `a${i}` })
   }
-  expect(status()).toMatch(/subagents \[1\/61\]/)
+  await clock.advance(600)
+  await clock.settle()
+  const list = (JSON.parse(body) as { agents: { id: string; status: string }[] }).agents
+  expect([list.filter(a => a.status === 'running').map(a => a.id), list.length]).toEqual([['a0'], 61])
 })
 
 test('clear keeps running agents and drops history', async ($, on) => {
   mock.clock(on)
-  const status = engine(on)
+  engine(on)
   on('tool.call', () => ({ result: {} }))
   let n = 0
   on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${n++}` }))
@@ -292,7 +292,11 @@ test('clear keeps running agents and drops history', async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: 'ls' })
   await $.command.run({ ...TYPED, command: 'agentmon', args: 'clear' })
 
-  expect(status()).toMatch(/subagents \[1\/1\].*tools \[0\]/)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^⟳ / })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^0 \/ 0 · 0 files/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /^total 0$/ })).toBeTruthy()
+  await ui.unmount()
 })
 
 test('an advisor answer that arrives after a clear is dropped', async ($, on) => {
@@ -534,7 +538,6 @@ test('usage says unavailable rather than zero, and shows rate limits', async ($,
     value: { startedAt: 0, context: { window: 1000000 }, rateLimits: [{ kind: '5h', percentUsed: 42, resetsAt: '2026-10-26T14:00:00Z' }], cost: { usd: 1.5 } },
   }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(PANE)
@@ -736,7 +739,6 @@ for (const language of ['fr', 'es', 'zh', 'ja'] as const) {
     on('session.model', () => ({ value: 'claude-opus-5-5' }))
     on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 1000, percent: 1 }, rateLimits: [] } }))
     on('session.start', (_, e) => ({ cwd: e.cwd }))
-    on('ui.status', () => ({ value: undefined }))
     on('clock.now', () => ({ value: 0 }))
     on('tool.call', () => ({ result: {} }))
 
