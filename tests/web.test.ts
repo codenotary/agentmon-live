@@ -828,3 +828,20 @@ test('a refused call is a blocked step in the snapshot', async ($, on) => {
   await clock.settle()
   expect(lastSnapshot(sent).steps).toMatchObject([{ id: 'b1', kind: 'call', state: 'blocked', label: 'git push' }])
 })
+
+test('a model request that fails leaves no step behind', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.step', async function* () {
+    throw new Error('overloaded')
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await (async () => { for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1 })) void _ })().catch(() => {})
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).steps).toEqual([])
+})

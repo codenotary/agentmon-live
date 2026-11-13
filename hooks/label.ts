@@ -1,7 +1,7 @@
 import type { Actor } from '../types'
 import { EDIT_TOOLS } from './bench'
-import { mask, shortPath } from './format'
-import type { Strings } from './i18n'
+import { gitCommand, mask, shortPath } from './format'
+import type { Category, Strings } from './i18n'
 
 export const LABEL_TEXT = 80
 
@@ -9,18 +9,31 @@ const WRAPPERS = /^(sudo|env|time|nohup|command|exec)$/
 const HAS_SUBCOMMAND = /^(git|npm|pnpm|yarn|bun|cargo|go|docker|gh|kubectl)$/
 const FILE_TOOLS = /^(Read|Write|Edit|MultiEdit|NotebookEdit|NotebookRead)$/
 
+// Which kind of work a call is, for the tool counts and the turn clock.
+export function category(tool: string, call: object): Category {
+  if (tool === 'Bash' && gitCommand(String((call as { command?: unknown }).command ?? ''))) return 'git'
+  if (/^(Read|NotebookRead)$/.test(tool)) return 'read'
+  if (/^(Grep|Glob|LSP|ToolSearch)$/.test(tool)) return 'search'
+  if (/^Web(Fetch|Search)$|fetch_and_index/.test(tool)) return 'web'
+  if (/^(Bash|PowerShell|Monitor|TaskStop)$/.test(tool)) return 'shell'
+  if (EDIT_TOOLS.has(tool)) return 'edit'
+  if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
+  if (/^Skill$/.test(tool)) return 'skills'
+  if (/playwright|browser|chrome/i.test(tool)) return 'browser'
+  if (/computer/i.test(tool)) return 'computer'
+  if (/^mcp__/.test(tool)) return 'mcp'
+  return 'other'
+}
+
+const ACTOR_OF: Record<Category, Actor> = { git: 'shell', shell: 'shell', read: 'files', search: 'files', edit: 'files', web: 'web', agents: 'agents', skills: 'skills', browser: 'browser', computer: 'browser', mcp: 'mcp', other: 'model' }
+
 // Who acts in a call, by the tool's name alone: the person, the shell, the files, another agent.
 export function actorOf(tool: string): Actor {
   if (/^(AskUserQuestion|SendUserFile)$|^mcp__(ccd_|visualize)/.test(tool)) return 'you'
-  if (/playwright|browser|chrome|computer/i.test(tool)) return 'browser'
   if (/^mcp__terminal/.test(tool)) return 'shell'
   if (/^mcp__plugin-authoring/.test(tool)) return 'skills'
-  if (tool.startsWith('mcp__')) return 'mcp'
-  if (/^(Bash|PowerShell|Monitor|TaskStop)$/.test(tool)) return 'shell'
-  if (/^(Read|NotebookRead|Grep|Glob|LSP)$/.test(tool) || EDIT_TOOLS.has(tool)) return 'files'
-  if (/^Web(Fetch|Search)$/.test(tool)) return 'web'
-  if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
-  return tool === 'Skill' ? 'skills' : 'model'
+  // Loading tool definitions is the model's own doing, not work on files.
+  return tool === 'ToolSearch' ? 'model' : ACTOR_OF[category(tool, {})]
 }
 
 // Control and bidi characters to spaces, so a label cannot reorder or break the row it sits in.
@@ -66,7 +79,7 @@ export function labelOf(tool: string, call: object, t: Pick<Strings, 'label'>): 
     : tool === 'WebFetch' ? hostOf(text('url') ?? '') || tool
     : tool === 'WebSearch' ? t.label.webSearch
     : tool === 'Agent' ? text('description') ?? t.label.subagent
-    : tool === 'SendMessage' ? `${t.label.message} → ${text('to') ?? ''}`
+    : tool === 'SendMessage' ? [t.label.message, text('to')].filter(Boolean).join(' → ')
     : /^(Workflow|ListAgents|TaskStop|Monitor)$/.test(tool) ? text('description') ?? tool
     : tool === 'Skill' ? text('skill') ?? tool
     : tool === 'ToolSearch' ? t.label.loadingTools

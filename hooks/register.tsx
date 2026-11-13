@@ -11,10 +11,10 @@ import { isTestPath, NOTHING, weakeningOf } from './testreview'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { build, checkRelease, refreshBase, watchBase } from './release'
-import { labelOf } from './label'
+import { category, labelOf } from './label'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
-import { brief, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
+import { brief, describe, failLine, findChecks, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, fileOf, pathOf, pushDuration } from './insights'
@@ -84,21 +84,6 @@ function editedFiles(f: Files, path: string, at: number): Files {
   const edited = [...f.edited.filter(p => p !== path), path].slice(-200)
   const times = { ...f.editedTimes, [path]: at }
   return { ...f, edited, editedAt: at, editedTimes: Object.fromEntries(edited.flatMap(p => (times[p] === undefined ? [] : [[p, times[p]]]))) }
-}
-
-function category(tool: string, call: object): Category {
-  if (tool === 'Bash' && gitCommand(String((call as { command?: unknown }).command ?? ''))) return 'git'
-  if (/^(Read|NotebookRead)$/.test(tool)) return 'read'
-  if (/^(Grep|Glob|LSP|ToolSearch)$/.test(tool)) return 'search'
-  if (/^Web(Fetch|Search)$|fetch_and_index/.test(tool)) return 'web'
-  if (/^(Bash|PowerShell|Monitor|TaskStop)$/.test(tool)) return 'shell'
-  if (EDIT_TOOLS.has(tool)) return 'edit'
-  if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
-  if (/^Skill$/.test(tool)) return 'skills'
-  if (/playwright|browser|chrome/i.test(tool)) return 'browser'
-  if (/computer/i.test(tool)) return 'computer'
-  if (/^mcp__/.test(tool)) return 'mcp'
-  return 'other'
 }
 
 // Which detail tab lists a call, if any. MCP wins over the category, so a browser MCP tool shows there too.
@@ -539,14 +524,17 @@ export const register: Register = on => {
       await update($, agents, list => list.map(a => (a.id === agentId ? { ...a, lastAt: stepAt } : a)))
     }
     let r: Awaited<ReturnType<typeof next>['result']> | undefined
+    let isAnswered = false
     try {
       r = yield* next(e)
+      isAnswered = true
     } finally {
       if (isMain) {
         const end = await $.clock.now()
         book(clk, end)
         clk.stepping = false
-        $.clock.after(0, () => update($, steps, all => all.map(s => (s.id === stepId ? { ...s, ms: end - stepAt } : s))))
+        // A request that failed or was cut off is no step of the turn: it leaves the list.
+        $.clock.after(0, () => update($, steps, all => (isAnswered ? all.map(s => (s.id === stepId ? { ...s, ms: end - stepAt } : s)) : all.filter(s => s.id !== stepId))))
       }
     }
     // What the request was answered over is the context as it stands.

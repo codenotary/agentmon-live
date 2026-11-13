@@ -29,6 +29,7 @@ test('other calls get a name and never their content', async () => {
   expect(of('Agent', { description: 'Read the mod', prompt: 'long' })).toBe('Read the mod')
   expect(of('Agent')).toBe(t.label.subagent)
   expect(of('SendMessage', { to: 'tester', message: 'hi' })).toBe(`${t.label.message} → tester`)
+  expect(of('SendMessage', { message: 'hi' })).toBe(t.label.message)
   expect(of('Skill', { skill: 'run' })).toBe('run')
   expect(of('ToolSearch', { query: 'x' })).toBe(t.label.loadingTools)
   expect(of('AskUserQuestion')).toBe(t.label.question)
@@ -48,6 +49,6 @@ test('a label is masked, cleaned of control and bidi characters, and capped', as
 })
 
 test('who acts in a call follows from the tool alone', async () => {
-  const actors = ['AskUserQuestion', 'mcp__ccd_session__mark_chapter', 'Bash', 'PowerShell', 'Edit', 'Grep', 'WebSearch', 'Agent', 'Skill', 'mcp__playwright__browser_click', 'mcp__sentry__search_issues', 'TodoWrite'].map(actorOf)
-  expect(actors).toEqual(['you', 'you', 'shell', 'shell', 'files', 'files', 'web', 'agents', 'skills', 'browser', 'mcp', 'model'])
+  const actors = ['AskUserQuestion', 'mcp__ccd_session__mark_chapter', 'Bash', 'PowerShell', 'Edit', 'Grep', 'WebSearch', 'Agent', 'Skill', 'mcp__playwright__browser_click', 'mcp__sentry__search_issues', 'TodoWrite', 'ToolSearch', 'Monitor', 'mcp__terminal__run'].map(actorOf)
+  expect(actors).toEqual(['you', 'you', 'shell', 'shell', 'files', 'files', 'web', 'agents', 'skills', 'browser', 'mcp', 'model', 'model', 'shell', 'shell'])
 })
