@@ -291,6 +291,7 @@ export const ja: Strings = {
     focus: 'フォーカス',
     title: 'インサイト',
     allClear: '対応不要',
+    environment: '環境',
     bucket: { model: 'モデル', you: 'あなた', idle: 'アイドル' },
     thisTurn: d => `このターン ${d}`,
     lastTurn: d => `前のターン ${d}`,

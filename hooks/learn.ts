@@ -281,5 +281,5 @@ export function learnedItems(learned: Learned, live: Live): Insight[] {
 function memItem(f: MemFinding): Insight {
   const t = lt()
   const text = t.mem[f.kind](f.detail)
-  return { key: `mem:${f.kind}:${f.file}:${f.detail}`, score: f.kind === 'missingIndex' || f.kind === 'staleRef' ? 32 : 22, tag: t.tag.memory, color: 'yellow', text, prompt: t.promptMemory(f.file, text) }
+  return { key: `mem:${f.kind}:${f.file}:${f.detail}`, score: f.kind === 'missingIndex' || f.kind === 'staleRef' ? 32 : 22, isGlobal: true, tag: t.tag.memory, color: 'yellow', text, prompt: t.promptMemory(f.file, text) }
 }

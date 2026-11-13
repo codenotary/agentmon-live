@@ -290,6 +290,7 @@ export const zh: Strings = {
     focus: '焦点',
     title: '洞察',
     allClear: '无需处理',
+    environment: '环境',
     bucket: { model: '模型', you: '你', idle: '空闲' },
     thisTurn: d => `本轮 ${d}`,
     lastTurn: d => `上一轮 ${d}`,

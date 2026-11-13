@@ -291,6 +291,7 @@ export const de: Strings = {
     focus: 'Fokus',
     title: 'Einblicke',
     allClear: 'nichts braucht dich',
+    environment: 'Umgebung',
     bucket: { model: 'Modell', you: 'du', idle: 'Leerlauf' },
     thisTurn: d => `dieser Zug ${d}`,
     lastTurn: d => `letzter Zug ${d}`,

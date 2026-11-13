@@ -291,6 +291,7 @@ export const es: Strings = {
     focus: 'foco',
     title: 'análisis',
     allClear: 'nada te necesita',
+    environment: 'Entorno',
     bucket: { model: 'modelo', you: 'tú', idle: 'inactivo' },
     thisTurn: d => `este turno ${d}`,
     lastTurn: d => `último turno ${d}`,

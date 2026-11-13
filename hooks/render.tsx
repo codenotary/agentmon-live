@@ -155,7 +155,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const checkLabel = (c: Check) => (c.result === 'running' ? t.status.running : c.result === 'unknown' ? t.unknown : c.result === 'ok' ? t.ok : t.failed)
 
   // Each item: its row, a key to put it away by (none: it cannot be dismissed), and a prompt to look into it.
-  type Item = { key?: string; row: RenderChildren; prompt?: string }
+  type Item = { key?: string; row: RenderChildren; prompt?: string; isGlobal?: boolean }
   const errorOf = (c: Check) => recent.find(x => x.at === c.at && x.error)?.error
   // Approvals and waiting subagents cannot be put away here: they leave when answered.
   const items: Item[] = needsYou({ doing, streak: st.streak ?? 0, checks: checked, agents: list, turnAt: m.turnAt }).map((u): Item => {
@@ -201,6 +201,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
     ),
     prompt: x.prompt,
+    isGlobal: x.isGlobal,
   }))
   const moreInsights = found.length - insightItems.length
   const shownItems = [...urgent, ...insightItems]
@@ -213,7 +214,9 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
     const box = await $.prompt.read()
     await (box.text.trim() ? $.prompt.fill({ text: `\n\n${prompt}`, mode: 'append' }) : $.prompt.fill({ text: prompt, mode: 'replace' }))
   }
-  const attention = shownItems.map((x, i) => (
+  const firstGlobal = shownItems.findIndex(x => x.isGlobal)
+  const attention = shownItems.flatMap((x, i) => [
+    ...(i === firstGlobal ? [<Text dimColor>{t.ins.environment}</Text>] : []),
     <Box gap={1}>
       {x.row}
       {x.prompt && (
@@ -221,8 +224,8 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           {t.investigate}
         </Button>
       )}
-    </Box>
-  ))
+    </Box>,
+  ])
 
   // A subagent card is 30 columns and six rows, so three sit side by side in a narrow pane.
   const CARD = 30

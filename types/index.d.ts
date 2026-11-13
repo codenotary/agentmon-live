@@ -114,7 +114,7 @@ export type PromptBench = { edit: boolean; verified: boolean; churn: boolean; ms
 export type BenchRow = Bench & { id: string; at: number; turns: number; calls: number; errors: number; compactions: number }
 
 // A memory-file problem found by the local rules.
-export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine' | 'longFile' | 'emphasis'; file: string; detail: string }
+export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine' | 'longFile' | 'emphasis' | 'noMeta' | 'cutMeta'; file: string; detail: string }
 
 // The project's sessions as the store keeps them, last 30; `current` is this session's id.
 export type Learned = { current: string; sessions: SessionRecord[]; mem: MemFinding[]; bench: BenchRow[] }
