@@ -227,7 +227,6 @@ function engine(on: On, store: Map<string, unknown>, toasts: string[], transcrip
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('ui.status', () => ({ value: undefined }))
   on('ui.toast', (_, e) => {
     toasts.push(String(e.text))
     return { value: undefined }
@@ -475,7 +474,6 @@ test('a turn without a usage breakdown is still saved and keeps the MCP figures'
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('ui.status', () => ({ value: undefined }))
   on('env.get', () => ({ value: '/h' }))
   on('fs.list', () => ({ value: [] }))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))

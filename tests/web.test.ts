@@ -38,7 +38,6 @@ function engine(on: On, ensure: () => unknown = () => ({ exitCode: 0, stdout: '{
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 290000, percent: 29 }, cost: { usd: 1.5 }, rateLimits: [{ kind: 'seven_day', percentUsed: 77 }] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   return argvs
 }
 
@@ -126,6 +125,25 @@ const AGENT_USAGE = (input: number) => ({ input_tokens: input, output_tokens: 10
 const agentStep = async ($: Parameters<TestBody>[0], index: number) => {
   for await (const _ of $.turn.step({ turnId: 'a', index, model: 'claude-haiku-5-5', messageCount: 1, agentId: 'a1' } as never)) void _
 }
+
+test('the hooks trim finished agents to the last 60 and keep the running one', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  let n = 0
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${n++}` }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  for (let i = 0; i < 65; i++) {
+    await $.agent.spawn({ prompt: 'p', description: 'd', subagentType: 'general-purpose', tool_use_id: `t${i}` } as never)
+    if (i > 0) await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: `m${i}`, reason: 'answer', agentId: `a${i}` } as never)
+  }
+  await clock.advance(600)
+  await clock.settle()
+  const { agents } = lastSnapshot(sent)
+  expect([agents.filter(a => a.status === 'running').map(a => a.id), agents.length]).toEqual([['a0'], 61])
+})
 
 test('a resumed subagent runs again from where it was: no old end, its numbers add up', async ($, on) => {
   withOptions(on, {})

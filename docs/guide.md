@@ -18,7 +18,7 @@ Top to bottom, in the order you need it:
 - **Details** (`d`) shows cut-off tasks, commands and error texts whole. It brings back no section; `v` (classic) does.
 - **Layout** (`v`, or the `◐ calm` / `◐ classic` switch in the header) switches between calm and classic. Calm (the default) leaves out Insights and Skills, and Usage unless it needs you (context or a rate limit running high), keeps the other sections in the order above (only one that needs you, such as a failed check or a gap the done gate found, moves to the top), shows a breathing dot instead of the spinner, and moves running times in 5 s steps (`<5 s` at first). Classic shows every section, moves sections active in the last two minutes up, newest first, and shows up to six subagent cards before listing them one line each.
 
-Subagent test results are *reported* from the agent's final answer (a failure wins over a pass). Running and waiting subagents are always kept; the last 60 finished ones stay. The status line counts git commands as `git [n]`.
+Subagent test results are *reported* from the agent's final answer (a failure wins over a pass). Running and waiting subagents are always kept; the last 60 finished ones stay.
 
 Languages: English (default), German, French, Spanish, Chinese and Japanese.
 
