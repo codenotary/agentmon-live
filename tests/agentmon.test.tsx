@@ -1517,3 +1517,21 @@ test('one card per agent: a copy goes, the first place holds and the last copy w
   const list = trimAgents([card('a', 1), card('b', 1), card('a', 5)])
   expect(list.map(a => [a.id, a.tools])).toEqual([['a', 5], ['b', 1]])
 })
+
+test('a shell call shows its description, and the raw command with details', async ($, on) => {
+  mock.clock(on)
+  engine(on)
+  // The call never reports back, so it stays under Running now.
+  on('tool.call', () => new Promise(() => {}))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  // Abandoned on purpose: the kit rejects it once the test is over.
+  $.tool.call({ tool: 'PowerShell', command: 'Get-PhysicalDisk | Select-Object DeviceId', description: 'List the physical disks', tool_use_id: 'u1' } as never).catch(() => {})
+
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /List the physical disks/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Get-PhysicalDisk/ })).toBe(undefined)
+  await ui.press({ key: 'details' })
+  expect(await ui.find({ type: 'Text', text: /Get-PhysicalDisk/ })).toBeTruthy()
+  await ui.unmount()
+})

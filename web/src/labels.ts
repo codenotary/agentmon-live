@@ -128,6 +128,7 @@ export const PAGE_EN = {
   "copy": "Copy",
   "copied": "Copied",
   "details": "Call details",
+  "rawCall": "Raw call",
   "error": "Error",
   "noMatch": "No match.",
   "verification": "Verification",

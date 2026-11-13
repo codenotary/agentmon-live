@@ -165,7 +165,7 @@ The agent flow shows who started whom, when each subagent handed back, the messa
 
 ![Agent flow: the main session starts six subagents, one reports failing tests, and two still run](docs/web/flow.png)
 
-The waterfall shows every call in that time, nested under the agent that made it. Beside it are what needs you, with buttons for failures, waiting, context and memory, and what runs now, and below it where each turn's time went.
+The waterfall shows every call in that time, nested under the agent that made it. A call goes by a short name, such as the description Claude gave a shell command or a file's last two path parts; the raw command is in the tooltip and the call's details. Beside it are what needs you, with buttons for failures, waiting, context and memory, and what runs now, and below it where each turn's time went.
 
 ![Turn waterfall, Events, Running now and where each turn went](docs/web/overview.png)
 

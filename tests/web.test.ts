@@ -61,7 +61,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     usage: { startedAt: 5, context: { window: 100, tokens: 19, percent: 19 }, cost: { usd: 2 }, rateLimits: [{ kind: 'seven_day', percentUsed: 77 }, { kind: 'five_hour', percentUsed: 5, resetsAt: '2026-11-06T00:00:00Z' }, { kind: 'other', percentUsed: 1, resetsAt: 'soon' }] },
     ins: shapeInsights({ turns: 3, turn: { startedAt: 900, wallMs: 0, buckets: { model: 40 }, steps: 1, mode: 'shell', since: 950 } }),
     turnRing: [{ startedAt: 1, wallMs: 9, buckets: { model: 9 } }],
-    doing: [{ id: 'a', who: 'main', tool: 'Bash', what: 'rm x', startedAt: 990, isAsking: true }],
+    doing: [{ id: 'a', who: 'main', tool: 'Bash', what: 'rm x', label: 'Remove the old file', startedAt: 990, isAsking: true }],
     calls: [],
     agents: [],
     checks: [{ kind: 'test', command: 'npm test', who: 'main', at: 2, result: 'failed' }],
@@ -87,6 +87,8 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   expect(snap.turns).toEqual([{ startedAt: 1, wallMs: 9, buckets: { model: 9 } }, { startedAt: 900, wallMs: 100, buckets: { model: 40, shell: 50 }, isLive: true }])
   // What needs the person comes first, then the insights.
   expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false]])
+  // The approval names the call by its label; the raw command stays in the call itself.
+  expect(snap.focus[0]?.text).toBe('Bash Remove the old file')
   expect(snap.lang).toBe('de')
   expect(snap.build).toBe('1.2.3 · abc1234')
   expect((snap.labels.page as Record<string, string>).events).toBe(t.web.page.events)

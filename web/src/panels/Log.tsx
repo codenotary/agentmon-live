@@ -30,7 +30,7 @@ const Row = memo(function Row({ row, q, now, l, title, isOpen, onToggle }: RowPr
       <span className={`truncate ${row.isYou ? 'font-bold text-heading' : 'text-signal'}`} title={title}><Marked text={row.who} q={q} /></span>
       <span className={`max-sm:col-start-2 [overflow-wrap:anywhere] ${row.isYou ? 'font-bold text-heading' : ''}`}>
         {row.tool === undefined ? null : <span className="text-ink-3"><Marked text={row.tool} q={q} /> </span>}
-        <Marked text={row.what} q={q} />
+        <Marked text={row.call?.label ?? row.what} q={q} />
         {row.count > 1 ? <span className="ml-1.5 text-ink-2">×{row.count}</span> : null}
         {row.run ? <span className="ml-1.5 text-ink-2">{row.what ? '· ' : ''}{countWord(row.run.calls, l.page)}{row.run.failed ? <span className="text-bad"> · {row.run.failed} {l.result.failed}</span> : null} {isOpen ? '▾' : '▸'}</span> : null}
       </span>

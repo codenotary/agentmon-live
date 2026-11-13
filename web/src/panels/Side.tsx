@@ -20,7 +20,7 @@ export function Running({ s, p }: { s: WebSnapshot; p: Page }) {
             <li key={a.id} className="fade-in flex min-w-0 items-baseline justify-between gap-2.5">
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 <i className="rec mr-2 inline-block size-1.5 rounded-full bg-signal-bright align-middle" aria-hidden />
-                <b className="font-semibold">{whoOf(a, names)}</b> <span className="font-mono text-xs">{a.tool} {a.what}</span>
+                <b className="font-semibold">{whoOf(a, names)}</b> <span className="font-mono text-xs" title={a.what}>{a.tool} {a.label ?? a.what}</span>
               </span>
               <span className="whitespace-nowrap text-ink-3 tabular-nums">{dur(now - a.startedAt)}</span>
             </li>
@@ -144,8 +144,8 @@ export function Insights({ s, p }: { s: WebSnapshot; p: Page }) {
     <Panel id="insights" title={p.insights} help={p.helpInsights} icon={Gauge}>
       {isEmpty ? <Empty text={p.none} /> : (
         <div className="flex flex-col gap-3">
-          <Bars label={p.slow} rows={slow.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.what}`, value: c.ms, shown: dur(c.ms) }))} />
-          <Bars label={p.big} rows={big.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.what}`, value: c.tokens, shown: kilo(c.tokens) }))} />
+          <Bars label={p.slow} rows={slow.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.label ?? c.what}`, value: c.ms, shown: dur(c.ms) }))} />
+          <Bars label={p.big} rows={big.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.label ?? c.what}`, value: c.tokens, shown: kilo(c.tokens) }))} />
           <Bars label={p.repeatedApprovals} rows={asked.map(([what, n]) => ({ key: what, text: what, value: n, shown: `×${n}` }))} />
         </div>
       )}
