@@ -258,7 +258,7 @@ export type Actor = 'you' | 'model' | 'shell' | 'files' | 'web' | 'browser' | 'a
 // One model request of the main loop; `ms` is set once its answer is in.
 export type Step = { id: string; at: number; ms?: number; model: string }
 export type StepState = 'running' | 'asking' | 'ok' | 'failed' | 'blocked'
-// A row of the turn's step list: a call or a model request, `id` the call's or the step's. `count` is above 1 for folded repeats, `ms` then their sum; a running row has `ms` 0.
+// A row of the turn's step list: a call or a model request, `id` the call's or the step's. `count` is above 1 for folded repeats, `at` and `ms` then span them all; a running row has `ms` 0.
 export type StepRow = { id: string; kind: 'call' | 'step'; state: StepState; actor: Actor; label: string; what?: string; at: number; ms: number; count: number }
 // The row as the page gets it, with the actor's name in the session's language.
 export type WebStep = Omit<StepRow, 'actor'> & { actor: string }

@@ -24,7 +24,7 @@ test('a shell line is never named past an option: its value could be taken for t
   // The program is known, the subcommand is not.
   for (const [command, name] of [['git -C repo push origin', 'git'], ['npm --prefix web test', 'npm'], ['kubectl -n prod get pods', 'kubectl'], ['git -c user.name=x commit', 'git']] as const) expect(of('Bash', { command })).toBe(name)
   // Nothing is known: the row shows the raw command.
-  for (const command of ['sudo -u deploy systemctl restart x', 'env -u VAR make', 'timeout -s KILL 5 npm test', 'timeout -k 5 30 npm test', 'npx -p typescript tsc --noEmit', 'for f in *.ts; do npm test; done', 'if [ -f x ]; then make; fi', '[ -f x ] && make', ' ']) expect(of('Bash', { command })).toBe('')
+  for (const command of ['cd "a && b"', 'FOO=$(date) npm test', '>out make', "echo 'it", 'sudo -u deploy systemctl restart x', 'env -u VAR make', 'timeout -s KILL 5 npm test', 'timeout -k 5 30 npm test', 'npx -p typescript tsc --noEmit', 'for f in *.ts; do npm test; done', 'if [ -f x ]; then make; fi', '[ -f x ] && make', ' ']) expect(of('Bash', { command })).toBe('')
 })
 
 test('other calls get a name and never their content', async () => {

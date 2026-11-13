@@ -287,15 +287,16 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const lastText = last ? callText(last) : ''
   const runningNow = (
     <Box flexDirection="column">
-      {doing.slice(-3).map(a => (
+      {doing.slice(-3).flatMap(a => [
         <Text wrap={rowWrap}>
           <Text color="cyan">{spin(now)} </Text>
           <Text bold>{fit(a.tool, 10)}</Text>
           {fit(cut(callText(a), whatRoom), whatRoom + 1)}
-          {lay.isDetailed && a.label ? <Text dimColor>{a.what} </Text> : null}
           <Text dimColor>{a.who.slice(0, 16)}{a.model ? ` · ${modelName(a.model)}` : ''} · {secs(a.startedAt)}</Text>
-        </Text>
-      ))}
+        </Text>,
+        // On its own row: beside the label a long command pushed who runs it and for how long off the row.
+        ...(lay.isDetailed && a.label ? [<Text dimColor wrap={rowWrap}>{'  '}{a.what}</Text>] : []),
+      ])}
       {doing.length === 0 && last && (
         <Text dimColor wrap={rowWrap}>
           {t.lastCall} · {last.tool}{lastText ? ` ${cut(lastText, whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}

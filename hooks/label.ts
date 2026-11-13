@@ -51,6 +51,8 @@ const hostOf = (url: string) => url.replace(/^[a-z][\w+.-]*:\/\//i, '').split(/[
 // that opens with a shell keyword have no name, and `git -C repo push` is `git`. The row then shows the raw command.
 function commandName(command: string): string | undefined {
   for (const part of command.split(/&&|\|\||[;|\n]/)) {
+    // The split knows no quoting: a part that opens with a redirect, or holds half a quote or a substitution, is not a command to name.
+    if (/^\s*[<>]|\$\(|`/.test(part) || [/"/g, /'/g].some(q => (part.match(q)?.length ?? 0) % 2)) return undefined
     // `(cd web && npm test)`, `{ npm test; }`, `! grep x`: the bracket or bang is not part of the program's name. `A="b c"` is one word.
     const words = part.replace(/^[\s({!]+/, '').match(/(?:[A-Za-z_]\w*=)?(?:"[^"]*"|'[^']*')\S*|\S+/g) ?? []
     // PowerShell: `$r = & "C:\Tools\x.exe"`.

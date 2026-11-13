@@ -41,6 +41,8 @@ test('a row says whether it runs, waits for the person, failed or was refused', 
     ['ask', 'asking', 'shell', 0],
     ['run', 'running', 'shell', 0],
   ])
+  // Once the turn is over nothing runs: a step a reload left without an end is gone, like such a call.
+  expect(stepRows({ trace: [], steps, active: [] }, { from: 100, to: 200 })).toEqual([])
   // A call still running from before the turn began stays listed.
   expect(keys([call('long', 20, { ms: undefined })], [], [{ id: 'long', who: 'main', tool: 'Bash', what: 'x', startedAt: 20 }])).toEqual(['long'])
 })
@@ -54,6 +56,9 @@ test('quiet repeats fold into the newest of them; a failure keeps its own row', 
     ['4', 1, 10, 'failed'],
     ['3', 3, 30, 'ok'],
   ])
+  // Three calls that ran side by side took as long as the longest of them, not three times that.
+  const side = stepRows({ trace: [read('a', 110, { ms: 40 }), read('b', 111, { ms: 20 }), read('c', 112, { ms: 30 })], steps: [], active: [] }, { from: 100 })
+  expect(side.map(r => [r.id, r.count, r.at, r.ms])).toEqual([['c', 3, 110, 40]])
 })
 
 test('the list covers the turn under way, else the last one', async () => {
