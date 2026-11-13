@@ -71,7 +71,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     streak: 0,
     dismissed: [],
     learned: { current: 's', sessions: [], mem: [], bench: [] },
-    focus: [{ key: 'k', score: 1, tag: 'tip', color: 'blue', text: 'look', prompt: 'p' }],
+    focus: [{ key: 'k', score: 1, tag: 'tip', color: 'blue', text: 'look', prompt: 'p' }, { key: 'mcp', score: 1, tag: 'mcp', color: 'blue', text: 'big', isGlobal: true }],
     t,
     lang: 'de',
     isPaneOpen: true,
@@ -86,7 +86,9 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   // The finished turn, then the one under way with the time not yet booked.
   expect(snap.turns).toEqual([{ startedAt: 1, wallMs: 9, buckets: { model: 9 } }, { startedAt: 900, wallMs: 100, buckets: { model: 40, shell: 50 }, isLive: true }])
   // What needs the person comes first, then the insights.
-  expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false]])
+  expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false], ['mcp', false]])
+  // Only a finding about the machine or account carries the word for it.
+  expect(snap.focus.map(f => f.scope)).toEqual([undefined, undefined, undefined, t.ins.environment])
   expect(snap.lang).toBe('de')
   expect(snap.build).toBe('1.2.3 · abc1234')
   expect((snap.labels.page as Record<string, string>).events).toBe(t.web.page.events)
