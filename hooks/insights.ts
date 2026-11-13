@@ -1,7 +1,7 @@
 import type { Active, Card, Check, Insights, Leak, TurnTime, TestReview } from '../types'
 import { needsReview, reviewLines, reviewText } from './testreview'
 import { fenced } from './lang/fenced'
-import { clockTime, decimal, isHigh, kilo, limitName, modelName, pad, shortPath } from './format'
+import { clockTime, decimal, isHigh, kilo, limitName, modelName, pad, shortPath, callText } from './format'
 import type { BaseDrift } from './git'
 import { overlap } from './git'
 import { isOversized, sizeCfg } from './sizeguard'
@@ -244,7 +244,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
         score: 90,
         tag: t.tag.slow,
         color: 'yellow',
-        text: t.slow(a.tool, a.what, dur(ran), usual === undefined ? undefined : dur(usual)),
+        text: t.slow(a.tool, callText(a), dur(ran), usual === undefined ? undefined : dur(usual)),
         prompt: t.promptSlow(a.tool, a.what, dur(ran)),
       })
     }
@@ -277,7 +277,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
       score: 85,
       tag: t.tag.context,
       color: 'red',
-      text: t.contextHigh(percent, biggest ? `${biggest.tool} ${biggest.what} ≈${kilo(biggest.tokens)}` : undefined),
+      text: t.contextHigh(percent, biggest ? `${biggest.tool} ${callText(biggest)} ≈${kilo(biggest.tokens)}` : undefined),
       prompt: t.promptContext(percent),
     })
   }
@@ -289,7 +289,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
 
   for (const b of ins.big) {
     if (b.tokens >= BIG_RESULT_TOKENS && now - b.at < BIG_RECENT_MS) {
-      out.push({ key: `big:${b.at}`, score: 55, tag: t.tag.big, color: 'yellow', text: t.big(b.tool, b.what, kilo(b.tokens)) })
+      out.push({ key: `big:${b.at}`, score: 55, tag: t.tag.big, color: 'yellow', text: t.big(b.tool, callText(b), kilo(b.tokens)) })
     }
   }
 

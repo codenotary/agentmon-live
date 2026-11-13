@@ -56,10 +56,11 @@ export type TurnTime = {
   isNewTask?: boolean
 }
 
-export type SlowCall = { tool: string; what: string; who: string; ms: number; at: number }
+// `label`: the call's short name (`labelOf`), shown before `what`; absent when it says the same, and on records from older versions.
+export type SlowCall = { tool: string; what: string; label?: string; who: string; ms: number; at: number }
 
 // A tool result the main loop read, by its estimated tokens (characters / 4).
-export type BigResult = { tool: string; what: string; tokens: number; at: number }
+export type BigResult = { tool: string; what: string; label?: string; tokens: number; at: number }
 
 // One tool's calls in one session; `big` counts results of 10k+ tokens, `lastErr` the last error text.
 export type ToolTally = { calls: number; errors: number; big: number; lastErr?: string }
@@ -184,11 +185,11 @@ export type Note = { kind: 'done' | 'check'; ok?: boolean; text: string; fix?: s
 export type View = 'git' | 'shell' | 'mcp'
 
 // `result` is `running` from the moment the call starts until it reports back; `error` holds its error text.
-export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string; agentId?: string }
+export type Call = { id?: string; at: number; who: string; view: View; what: string; label?: string; result: string; error?: string; agentId?: string }
 
 // Every tool call of the session, for the web view's waterfall; `ms` once it reported back.
 // `to` is a SendMessage's recipient, as the call names it.
-export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; ms?: number; isFailed?: boolean; error?: string; agentId?: string; to?: string }
+export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; label?: string; ms?: number; isFailed?: boolean; isDenied?: boolean; error?: string; agentId?: string; to?: string }
 
 export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
@@ -201,7 +202,7 @@ export type Check = { kind: CheckKind; command: string; who: string; at: number;
 export type Files = { read: string[]; edited: string[]; editedAt: number; editedTimes?: Record<string, number> }
 
 // `model` is the one the caller ran on, when known.
-export type LastCall = { tool: string; what: string; who: string; model?: string; at: number }
+export type LastCall = { tool: string; what: string; label?: string; who: string; model?: string; at: number }
 
 // What the pane shows folded or in full.
 // `dismissed` holds the keys of Needs attention items the person put away.
@@ -233,7 +234,7 @@ export type Advisor = {
 }
 
 // A tool call that has started and not yet finished; `isAsking` while it waits for the person's approval.
-export type Active = { id: string; who: string; model?: string; tool: string; what: string; startedAt: number; isAsking?: boolean; agentId?: string }
+export type Active = { id: string; who: string; model?: string; tool: string; what: string; label?: string; startedAt: number; isAsking?: boolean; agentId?: string }
 
 // The session's own task list (TaskCreate/TaskUpdate or TodoWrite), as the calls left it.
 // `at` is when a call last changed it.

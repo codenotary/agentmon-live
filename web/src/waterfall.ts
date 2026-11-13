@@ -25,6 +25,7 @@ export function tableRows(d: { trace?: TraceCall[]; calls: readonly (Omit<Detail
       who: c.who,
       view: c.tool,
       what: c.what,
+      ...(c.label === undefined ? {} : { label: c.label }),
       result: traceResult(c, running.has(c.id)),
       ...(c.ms === undefined ? {} : { ms: c.ms }),
       ...(error ? { error } : {}),

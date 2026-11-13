@@ -36,7 +36,8 @@ export function CallDetail({ l, s }: { l: Labels | undefined; s: WebSnapshot | u
             <span className="text-ink-3">{l.cat[call.view] ?? call.view}</span>
             {ms === undefined ? null : <span className="text-ink-3 tabular-nums">{callTime(ms)}</span>}
           </div>
-          <span className="eyebrow">{p.what}</span>
+          {call.label ? <p className="mb-3 text-[13px] font-semibold [overflow-wrap:anywhere]" data-testid="call-label">{call.label}</p> : null}
+          <span className="eyebrow">{call.label ? p.rawCall : p.what}</span>
           <pre className="mt-1 mb-3 rounded-lg bg-surface-1 p-3 font-mono text-xs break-words whitespace-pre-wrap">{call.what}</pre>
           {error ? (
             <>

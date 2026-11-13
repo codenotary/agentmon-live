@@ -11,6 +11,7 @@ import { isTestPath, NOTHING, weakeningOf } from './testreview'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { build, checkRelease, refreshBase, watchBase } from './release'
+import { labelOf } from './label'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
 import { brief, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
@@ -88,7 +89,7 @@ function category(tool: string, call: object): Category {
   if (/^(Read|NotebookRead)$/.test(tool)) return 'read'
   if (/^(Grep|Glob|LSP|ToolSearch)$/.test(tool)) return 'search'
   if (/^Web(Fetch|Search)$|fetch_and_index/.test(tool)) return 'web'
-  if (/^(Bash|Monitor|TaskStop)$/.test(tool)) return 'shell'
+  if (/^(Bash|PowerShell|Monitor|TaskStop)$/.test(tool)) return 'shell'
   if (EDIT_TOOLS.has(tool)) return 'edit'
   if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
   if (/^Skill$/.test(tool)) return 'skills'
@@ -576,6 +577,9 @@ export const register: Register = on => {
     const rawTo = e.tool === 'SendMessage' ? (e as { to?: unknown }).to : undefined
     const to = typeof rawTo === 'string' && rawTo ? mask(rawTo).slice(0, NAME_TEXT) : undefined
     const what = to === undefined ? describe(e.tool, e) : `→ ${to}`
+    const name = labelOf(e.tool, e, t)
+    // Only when it says something, and something else: a record without a label shows `what`.
+    const label = name && name !== what ? { label: name } : {}
     const callId = e.tool_use_id ?? `call-${++callCount}`
     const [list, m, startedAt] = await Promise.all([read($, agents), read($, main), $.clock.now()])
     const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)
@@ -614,15 +618,15 @@ export const register: Register = on => {
     const scopeDir = scopes.at(-1) && relPath(scopes.at(-1)!.dir, cwd)
     if (cat === 'git') isGitRun = true
     // Listed as running before it starts: an approval asked at once must find its row.
-    await update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt, ...(id === undefined ? {} : { agentId: id }) }])
+    await update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, ...label, startedAt, ...(id === undefined ? {} : { agentId: id }) }])
     tick($)
     pulse($)
     // The other rows are written as it starts, so the detail tabs and the checks show it while it is under way; the call does not wait for them.
     const recorded = Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
-      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
-      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
+      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, ...label, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
+      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...label, ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
@@ -748,10 +752,10 @@ export const register: Register = on => {
             streak: isMain ? (r.isError ? (v.streak ?? 0) + 1 : 0) : v.streak,
           })),
         failed && e.agentId !== undefined && update($, agents, all => all.map(a => (a.id === e.agentId ? { ...a, errors: (a.errors ?? 0) + 1 } : a))),
-        update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
+        update($, lastCall, () => ({ tool: e.tool, what, ...label, who, model, at })),
         update($, flow, all => [...all, { cat, at }].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
-        update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}) } : c))),
+        update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}), ...(r.deny === undefined ? {} : { isDenied: true }) } : c))),
         found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: isBackground ? ('running' as const) : resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
         !failed && sized && recordSize($, sized),
@@ -775,8 +779,8 @@ export const register: Register = on => {
             slow:
               wasAsked || r.deny !== undefined || ms < SLOW_MIN_MS
                 ? v.slow
-                : [...v.slow, { tool: e.tool, what, who, ms, at }].sort((a, b) => b.ms - a.ms).slice(0, 8),
-            big: resultTokens < BIG_MIN_TOKENS ? v.big : [...v.big, { tool: e.tool, what, tokens: resultTokens, at }].sort((a, b) => b.tokens - a.tokens).slice(0, 6),
+                : [...v.slow, { tool: e.tool, what, ...label, who, ms, at }].sort((a, b) => b.ms - a.ms).slice(0, 8),
+            big: resultTokens < BIG_MIN_TOKENS ? v.big : [...v.big, { tool: e.tool, what, ...label, tokens: resultTokens, at }].sort((a, b) => b.tokens - a.tokens).slice(0, 6),
             reads: touched && cat === 'read' && e.agentId === undefined ? bump(v.reads, touched) : v.reads,
             edits: touched && cat === 'edit' ? bump(v.edits, touched) : v.edits,
             fails,

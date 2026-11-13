@@ -158,7 +158,8 @@
       "ofGuide": "{pct}% of {v} guide",
       "messaged": "message",
       "claude": "Claude",
-      "lastMinutes": "{n} min"
+      "lastMinutes": "{n} min",
+      "rawCall": "Raw call"
     },
     "status": {
       "running": "running",
@@ -321,7 +322,8 @@
       "who": "main session",
       "tool": "Bash",
       "what": "npm test",
-      "startedAt": 1793802990000
+      "startedAt": 1793802990000,
+      "label": "Run the unit tests"
     }
   ],
   "calls": [
@@ -437,7 +439,8 @@
       "view": "shell",
       "what": "npm test -- --watch=false",
       "result": "failed",
-      "error": "1 failing: the page puts no tool text through HTML"
+      "error": "1 failing: the page puts no tool text through HTML",
+      "label": "Run the unit tests"
     },
     {
       "at": 1793802910000,
@@ -1007,7 +1010,8 @@
       "ms": 3300,
       "isFailed": true,
       "error": "exit 1",
-      "agentId": "r3"
+      "agentId": "r3",
+      "label": "Run the unit tests"
     },
     {
       "id": "t1",
@@ -1049,7 +1053,8 @@
       "what": "npm test",
       "ms": 6200,
       "isFailed": true,
-      "error": "1 failing: the post loop retries"
+      "error": "1 failing: the post loop retries",
+      "label": "Run the unit tests"
     },
     {
       "id": "t6",
@@ -1100,7 +1105,8 @@
       "at": 1793802990000,
       "who": "main session",
       "tool": "Bash",
-      "what": "npm test"
+      "what": "npm test",
+      "label": "Run the unit tests"
     }
   ],
   "gate": {

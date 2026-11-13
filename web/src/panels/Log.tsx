@@ -2,7 +2,7 @@ import { ScrollText } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, callTime, countWord, resultOf, time, tone } from '../format.ts'
+import { agentNames, callTime, countWord, resultOf, time, tone, callText } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { chipCounts, foldAgents, logRows, matchesChip, sameRow, stripOf, type LogChip, type LogRow } from '../logrows.ts'
 import { useClock } from '../store.ts'
@@ -30,7 +30,7 @@ const Row = memo(function Row({ row, q, now, l, title, isOpen, onToggle }: RowPr
       <span className={`truncate ${row.isYou ? 'font-bold text-heading' : 'text-signal'}`} title={title}><Marked text={row.who} q={q} /></span>
       <span className={`max-sm:col-start-2 [overflow-wrap:anywhere] ${row.isYou ? 'font-bold text-heading' : ''}`}>
         {row.tool === undefined ? null : <span className="text-ink-3"><Marked text={row.tool} q={q} /> </span>}
-        <Marked text={row.what} q={q} />
+        <span title={row.call?.label ? row.what : undefined}><Marked text={row.call ? callText(row.call) : row.what} q={q} /></span>
         {row.count > 1 ? <span className="ml-1.5 text-ink-2">×{row.count}</span> : null}
         {row.run ? <span className="ml-1.5 text-ink-2">{row.what ? '· ' : ''}{countWord(row.run.calls, l.page)}{row.run.failed ? <span className="text-bad"> · {row.run.failed} {l.result.failed}</span> : null} {isOpen ? '▾' : '▸'}</span> : null}
       </span>
@@ -71,7 +71,7 @@ export function Log({ s, l }: { s: WebSnapshot; l: Labels }) {
   const names = useMemo(() => agentNames(s.agents), [s.agents])
   const all = useMemo(() => logRows(s, p.you, names, p.claude), [s.log, s.trace, s.turns, s.active, names, p.you, p.claude])
   const counts = useMemo(() => chipCounts(all), [all])
-  const flat = useMemo(() => all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text} ${x.answer ?? ''}`.toLowerCase().includes(q))), [all, chip, q, l])
+  const flat = useMemo(() => all.filter(x => matchesChip(x, chip) && (!q || `${x.who} ${x.tool ?? ''} ${x.call?.label ?? ''} ${x.what} ${x.tool === undefined ? x.result : resultOf(x.result, l).text} ${x.answer ?? ''}`.toLowerCase().includes(q))), [all, chip, q, l])
   // A search or the failures chip lists the calls themselves; otherwise a subagent run is one row.
   const rows = useMemo(() => (q || chip === 'failures' ? flat : foldAgents(flat, openRuns)), [flat, q, chip, openRuns])
   const toggleRun = (id: string) => setOpenRuns(open => {

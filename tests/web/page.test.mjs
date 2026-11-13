@@ -320,6 +320,10 @@ test('the calls table lists every tool, so an agent that only read still has row
   assert.equal(rows[1].error, 'the longer text')
   const old = [{ id: 'g', at: 1, who: MAIN, view: 'git', what: 'git status', result: 'ok' }]
   assert.deepEqual(tableRows({ calls: old, active: [] }), old)
+  // A call's short name travels with it; one without has no such field.
+  const named = tableRows({ trace: [{ id: 'l', at: 1, who: 'm', tool: 'Bash', what: 'ls -la', label: 'List files', ms: 1 }, { id: 'p', at: 2, who: 'm', tool: 'Bash', what: 'ls', ms: 1 }], calls: [], active: [] })
+  assert.deepEqual(named.map(r => r.label), ['List files', undefined])
+  assert.equal('label' in named[1], false)
 })
 
 test('the calls table sorts numbers as numbers and words as words, and either way round', () => {
@@ -795,4 +799,11 @@ test('a Kiro Crew chat finds its session by slot, the one with the latest turn w
   assert.equal(sessionOfSlot(sessions, ''), undefined)
   // Resumed: the new session has no turn yet and is still the chat now.
   assert.equal(sessionOfSlot(new Map([...sessions, at('resumed', 'chat-1')]), 'chat-1'), 'resumed')
+})
+
+test('the label-or-raw text of a call comes from callText, not from a copy of the fallback', () => {
+  // A search string joins the label and the raw text (`label ?? ''`): that is no fallback.
+  const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? (e.name === 'node_modules' ? [] : walk(join(dir, e.name))) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : []))
+  const copies = [join(ROOT, 'hooks'), join(ROOT, 'web', 'src')].flatMap(walk).flatMap(f => readFileSync(f, 'utf8').split('\n').flatMap((line, i) => (/label \?\? (?!'')[^\n]{0,24}what/.test(line) && !line.includes('export const callText') ? [`${f.slice(ROOT.length + 1)}:${i + 1}`] : [])))
+  assert.deepEqual(copies, [])
 })

@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 
 import type { TraceCall, WebSnapshot } from '../../../types/index'
 import { isRunning } from '../agents.ts'
-import { agentNames, callTime, firstLine, MAIN_KEY, prefixOf, stateOf, time } from '../format.ts'
+import { agentNames, callTime, firstLine, MAIN_KEY, prefixOf, stateOf, time, callText } from '../format.ts'
 import { clampView, DEFAULT_VIEW, dragMode, flowOf, lanesIn, mergeDots, MAIN_LANE, wholeOf, windowOf, type Arc, type FlowView, type Lane, type Mark, type Span } from '../flow.ts'
 import { fill } from '../kpi.ts'
 import type { Labels } from '../labels.ts'
@@ -211,7 +211,7 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
     const first = m.dots[0]
     if (!first) return
     const c = first.call
-    const line = firstLine(c.what)
+    const line = firstLine(callText(c))
     placeTip(e, m.count > 1 ? `${m.count} ${p.calls} · ${time(m.at)}–${time(m.to)}` : `${time(c.at)} · ${c.tool} ${line}${c.ms === undefined ? '' : ` · ${callTime(c.ms)}`}${c.isFailed ? ` · ${l.result.failed}` : ''}`)
   }
   const arcTip = (e: { clientX: number; clientY: number }, a: Arc) => {
@@ -330,7 +330,7 @@ export function Flow({ s: live, l }: { s: WebSnapshot; l: Labels }) {
           <div ref={listBox} className="pop flow-list absolute" style={{ left: Math.min(list.x, Math.max(0, width - 320)), top: list.y }} data-testid="flow-list">
             {list.calls.map((c, i) => (
               <button key={c.id} type="button" className="flow-call" autoFocus={i === 0} onClick={() => { setList(null); openTrace(c) }}>
-                <span className="text-ink-3">{time(c.at)}</span> <span className={c.isFailed ? 'text-bad' : ''}>{c.tool}</span> {firstLine(c.what)}{c.ms === undefined ? '' : ` · ${callTime(c.ms)}`}
+                <span className="text-ink-3">{time(c.at)}</span> <span className={c.isFailed ? 'text-bad' : ''}>{c.tool}</span> {firstLine(callText(c))}{c.ms === undefined ? '' : ` · ${callTime(c.ms)}`}
               </button>
             ))}
           </div>
