@@ -293,6 +293,7 @@ export const fr: Strings = {
     focus: 'focus',
     title: 'analyses',
     allClear: 'rien ne vous attend',
+    environment: 'Environnement',
     bucket: { model: 'modèle', you: 'vous', idle: 'inactif' },
     thisTurn: d => `ce tour ${d}`,
     lastTurn: d => `dernier tour ${d}`,
