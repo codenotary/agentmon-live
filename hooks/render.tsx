@@ -124,6 +124,8 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Only categories the session used; a column of zeros says nothing.
   const rows = [...CATEGORIES, 'other' as const].map(c => [c, counts[c] ?? 0] as const).filter(([, n]) => n > 0)
   const whatRoom = Math.max(10, Math.min(40, cols - 50))
+  // An approval with a label shows the command beside it: the two share the room one of them had.
+  const halfRoom = Math.floor(whatRoom / 2)
   const shown = recent.filter(c => c.view === tab).slice(-5)
   const perMin = (cat: string) => flows.filter(f => f.cat === cat && now - f.at < 60_000).length
   // The person's switch (`v`) beats the `layout` option.
@@ -159,7 +161,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const errorOf = (c: Check) => recent.find(x => x.at === c.at && x.error)?.error
   // Approvals and waiting subagents cannot be put away here: they leave when answered.
   const items: Item[] = needsYou({ doing, streak: st.streak ?? 0, checks: checked, agents: list, turnAt: m.turnAt }).map((u): Item => {
-    if (u.kind === 'ask') return { row: <Text>{chip(t.approval, 'yellow')} <Text bold>{u.call.tool}</Text> {cut(callText(u.call), whatRoom)}{u.call.label ? <Text dimColor> {cut(u.call.what, whatRoom)}</Text> : null}</Text> }
+    if (u.kind === 'ask') return { row: <Text>{chip(t.approval, 'yellow')} <Text bold>{u.call.tool}</Text> {cut(callText(u.call), u.call.label ? halfRoom : whatRoom)}{u.call.label ? <Text dimColor> {cut(u.call.what, whatRoom - halfRoom)}</Text> : null}</Text> }
     if (u.kind === 'streak') return { key: u.key, row: <Text>{chip(t.status.error, 'red')} {t.errorsInRow(u.n)}</Text>, prompt: t.investigateErrors(u.n) }
     if (u.kind === 'check') {
       const c = u.check
@@ -273,6 +275,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Calm: Running now always keeps three rows, so the sections below do not jump with each call or turn.
   const padRows = isClassic ? 0 : Math.max(0, 3 - callRows)
 
+  const lastText = last ? callText(last) : ''
   const runningNow = (
     <Box flexDirection="column">
       {doing.slice(-3).map(a => (
@@ -286,7 +289,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       ))}
       {doing.length === 0 && last && (
         <Text dimColor wrap={rowWrap}>
-          {t.lastCall} · {last.tool}{callText(last) ? ` ${cut(callText(last), whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
+          {t.lastCall} · {last.tool}{lastText ? ` ${cut(lastText, whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
         </Text>
       )}
       {Array.from({ length: padRows }, () => (

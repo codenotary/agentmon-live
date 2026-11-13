@@ -1535,3 +1535,31 @@ test('a shell call shows its description, and the raw command with details', asy
   expect(await ui.find({ type: 'Text', text: /Get-PhysicalDisk/ })).toBeTruthy()
   await ui.unmount()
 })
+
+test('an approval with a label shows the command too, within the room one text had', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  // Only the check this test raises asks; a test has no person to answer a dialog.
+  let asking = false
+  on('tool.check', () => ({ decision: asking ? 'ask' : 'allow' }))
+  on('tool.call', async () => {
+    await clock.sleep(1000)
+    return { result: {} }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const input = { command: `rm -rf ${'build/output/'.repeat(8)}`, description: `Remove ${'the old build output '.repeat(6)}` }
+  const call = $.tool.call({ tool: 'Bash', ...input, tool_use_id: 'u1' })
+  await clock.settle()
+  asking = true
+  await $.tool.check({ tool: 'Bash', input, tool_use_id: 'u1' })
+
+  const ui = await $.ui.mount(PANE)
+  const row = await ui.find({ type: 'Text', text: /^ APPROVAL  Bash Remove the.* rm -rf build/ })
+  expect(row).toBeTruthy()
+  // Label and command together get the room one text had (40 cells at most) and the space between them.
+  expect(row!.text.replace(/^ APPROVAL  Bash /, '').length).toBeLessThanOrEqual(41)
+  await clock.advance(1000)
+  await call
+  await ui.unmount()
+})
