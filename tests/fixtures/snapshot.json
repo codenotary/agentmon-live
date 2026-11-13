@@ -159,7 +159,9 @@
       "messaged": "message",
       "claude": "Claude",
       "lastMinutes": "{n} min",
-      "rawCall": "Raw call"
+      "rawCall": "Raw call",
+      "steps": "Turn steps",
+      "helpSteps": "The current turn step by step, newest first: each model request and each call of the main session, with who acted and how long it took. Quiet repeats fold into one row with a count. Click a call for its details."
     },
     "status": {
       "running": "running",
@@ -1114,5 +1116,80 @@
     "text": "tests failed: npm test",
     "isSent": true,
     "at": 1793802970000
-  }
+  },
+  "steps": [
+    {
+      "id": "a1",
+      "kind": "call",
+      "state": "running",
+      "actor": "Shell",
+      "label": "Run the unit tests",
+      "what": "npm test",
+      "at": 1793802990000,
+      "ms": 0,
+      "count": 1
+    },
+    {
+      "id": "t9:6",
+      "kind": "step",
+      "state": "ok",
+      "actor": "Model",
+      "label": "Opus 5.5",
+      "at": 1793802986000,
+      "ms": 3800,
+      "count": 1
+    },
+    {
+      "id": "s1",
+      "kind": "call",
+      "state": "ok",
+      "actor": "Agents",
+      "label": "Message → tester",
+      "at": 1793802970000,
+      "ms": 40,
+      "count": 1
+    },
+    {
+      "id": "e9",
+      "kind": "call",
+      "state": "ok",
+      "actor": "Files",
+      "label": "hooks/web.ts",
+      "at": 1793802948000,
+      "ms": 930,
+      "count": 3
+    },
+    {
+      "id": "t5",
+      "kind": "call",
+      "state": "failed",
+      "actor": "Shell",
+      "label": "Run the unit tests",
+      "what": "npm test",
+      "at": 1793802938000,
+      "ms": 6000,
+      "count": 1
+    },
+    {
+      "id": "b2",
+      "kind": "call",
+      "state": "blocked",
+      "actor": "Hooks",
+      "label": "git push",
+      "what": "git push --force",
+      "at": 1793802930000,
+      "ms": 12,
+      "count": 1
+    },
+    {
+      "id": "t9:5",
+      "kind": "step",
+      "state": "ok",
+      "actor": "Model",
+      "label": "Opus 5.5",
+      "at": 1793802910000,
+      "ms": 11000,
+      "count": 2
+    }
+  ]
 }

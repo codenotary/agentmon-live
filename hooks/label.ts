@@ -1,5 +1,7 @@
-import { mask, shortPath } from './format'
-import type { Strings } from './i18n'
+import type { Actor } from '../types'
+import { EDIT_TOOLS } from './bench'
+import { gitCommand, mask, shortPath } from './format'
+import type { Category, Strings } from './i18n'
 
 export const LABEL_TEXT = 80
 
@@ -7,6 +9,33 @@ const WRAPPERS = /^(sudo|env|time|nohup|command|exec|timeout|npx)$/
 const KEYWORDS = /^(if|then|else|elif|fi|for|while|until|do|done|case|esac|function|select|\[\[?)$/
 const HAS_SUBCOMMAND = /^(git|npm|pnpm|yarn|bun|cargo|go|docker|gh|kubectl)$/
 const FILE_TOOLS = /^(Read|Write|Edit|MultiEdit|NotebookEdit|NotebookRead)$/
+
+// Which kind of work a call is, for the tool counts and the turn clock.
+export function category(tool: string, call: object): Category {
+  if (tool === 'Bash' && gitCommand(String((call as { command?: unknown }).command ?? ''))) return 'git'
+  if (/^(Read|NotebookRead)$/.test(tool)) return 'read'
+  if (/^(Grep|Glob|LSP|ToolSearch)$/.test(tool)) return 'search'
+  if (/^Web(Fetch|Search)$|fetch_and_index/.test(tool)) return 'web'
+  if (/^(Bash|PowerShell|Monitor|TaskStop)$/.test(tool)) return 'shell'
+  if (EDIT_TOOLS.has(tool)) return 'edit'
+  if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
+  if (/^Skill$/.test(tool)) return 'skills'
+  if (/playwright|browser|chrome/i.test(tool)) return 'browser'
+  if (/computer/i.test(tool)) return 'computer'
+  if (/^mcp__/.test(tool)) return 'mcp'
+  return 'other'
+}
+
+const ACTOR_OF: Record<Category, Actor> = { git: 'shell', shell: 'shell', read: 'files', search: 'files', edit: 'files', web: 'web', agents: 'agents', skills: 'skills', browser: 'browser', computer: 'browser', mcp: 'mcp', other: 'model' }
+
+// Who acts in a call, by the tool's name alone: the person, the shell, the files, another agent.
+export function actorOf(tool: string): Actor {
+  if (/^(AskUserQuestion|SendUserFile)$|^mcp__(ccd_|visualize)/.test(tool)) return 'you'
+  if (/^mcp__terminal/.test(tool)) return 'shell'
+  if (/^mcp__plugin-authoring/.test(tool)) return 'skills'
+  // Loading tool definitions is the model's own doing, not work on files.
+  return tool === 'ToolSearch' ? 'model' : ACTOR_OF[category(tool, {})]
+}
 
 // Control and bidi characters to spaces, so a label cannot reorder or break the row it sits in.
 export function clean(s: string, max = LABEL_TEXT): string {
@@ -22,6 +51,8 @@ const hostOf = (url: string) => url.replace(/^[a-z][\w+.-]*:\/\//i, '').split(/[
 // that opens with a shell keyword have no name, and `git -C repo push` is `git`. The row then shows the raw command.
 function commandName(command: string): string | undefined {
   for (const part of command.split(/&&|\|\||[;|\n]/)) {
+    // The split knows no quoting: a part that opens with a redirect, or holds half a quote or a substitution, is not a command to name.
+    if (/^\s*[<>]|\$\(|`/.test(part) || [/"/g, /'/g].some(q => (part.match(q)?.length ?? 0) % 2)) return undefined
     // `(cd web && npm test)`, `{ npm test; }`, `! grep x`: the bracket or bang is not part of the program's name. `A="b c"` is one word.
     const words = part.replace(/^[\s({!]+/, '').match(/(?:[A-Za-z_]\w*=)?(?:"[^"]*"|'[^']*')\S*|\S+/g) ?? []
     // PowerShell: `$r = & "C:\Tools\x.exe"`.
@@ -52,7 +83,7 @@ export function labelOf(tool: string, call: object, t: Pick<Strings, 'label'>): 
     : tool === 'WebFetch' ? hostOf(text('url') ?? '') || tool
     : tool === 'WebSearch' ? t.label.webSearch
     : tool === 'Agent' ? text('description') ?? t.label.subagent
-    : tool === 'SendMessage' ? `${t.label.message} → ${text('to') ?? ''}`
+    : tool === 'SendMessage' ? [t.label.message, text('to')].filter(Boolean).join(' → ')
     : /^(Workflow|ListAgents|TaskStop|Monitor)$/.test(tool) ? text('description') ?? tool
     : tool === 'Skill' ? text('skill') ?? tool
     : tool === 'ToolSearch' ? t.label.loadingTools

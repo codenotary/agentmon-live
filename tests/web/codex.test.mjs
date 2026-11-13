@@ -16,7 +16,7 @@ const NOW = Date.parse('2026-11-10T10:01:30Z')
 
 test('a rollout folds into a snapshot with every required key', () => {
   const { snapshot: s, isLive } = foldRollout(entries, NOW)
-  const optional = new Set(['isPaneOpen', 'testReview', 'gate'])
+  const optional = new Set(['isPaneOpen', 'testReview', 'gate', 'steps'])
   assert.deepEqual(SHAPE.top.filter(k => !(k in s) && !optional.has(k)), [])
   assert.deepEqual(Object.keys(s).filter(k => !SHAPE.top.includes(k)), [])
   assert.deepEqual([s.session.id, s.session.cwd, s.build, s.main.model, s.main.effort], [SID, '/home/dev/github/demo', 'Codex · 0.166.0', 'gpt-6.1-sol', 'medium'])

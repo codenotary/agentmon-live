@@ -53,6 +53,7 @@ export const INIT = {
   calls: [],
   testReview: { files: [], dropped: [], isGreen: false },
   trace: [],
+  steps: [],
   view: 'git' as View,
   active: [],
   checks: [],

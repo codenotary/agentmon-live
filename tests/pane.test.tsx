@@ -227,3 +227,53 @@ test('a secret in the project settings shows on Focus: git will commit it, or gi
   }
   cfg.leaks = []
 })
+
+// A turn with one model step and three reads of one file.
+async function turnWithReads($: Parameters<TestBody>[0], on: On) {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {} }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.step', async function* () {
+    return { turnId: 't1', index: 0, answer: '', toolUses: [], stopReason: 'end_turn' } as never
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1 })) void _
+  for (const id of ['r1', 'r2', 'r3']) await $.tool.call({ tool: 'Read', file_path: '/repo/hooks/state.ts', tool_use_id: id })
+  await clock.settle()
+}
+
+test('the turn shows step by step, quiet repeats folded', async ($, on) => {
+  await turnWithReads($, on)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /TURN STEPS/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Files\s+hooks\/state\.ts\s+×3/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Model\s+Opus 5\.5/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('hiddenSections hides the turn steps', async ($, on) => {
+  withOptions(on, { hiddenSections: 'steps' })
+  await turnWithReads($, on)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /TURN STEPS/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('a refused call keeps its own time in the step list', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ deny: 'not allowed here' }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'git push --force', tool_use_id: 'b1' })
+  // Long after: a finished row must not count on like a running one.
+  await clock.advance(60_000)
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  const row = await ui.find({ type: 'Text', text: /⊘ .*git push/ })
+  expect(row?.text).toMatch(/git push\s+0\.0s$/)
+  await ui.unmount()
+})

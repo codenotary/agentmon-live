@@ -78,6 +78,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     build: '1.2.3 · abc1234',
     testReview: { files: [{ path: '/r/a.test.ts', removed: 0, skips: 0, at: 1, changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] }], dropped: [], isGreen: true },
     trace: [],
+    steps: [{ id: 't:0', at: 950, ms: 20, model: 'claude-opus-5-5' }],
   })
   expect(snap.testReview?.files[0]).toMatchObject({ changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] })
   expect(snap.v).toBe(1)
@@ -91,6 +92,8 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false], ['mcp', false]])
   // Only a finding about the machine or account carries the word for it.
   expect(snap.focus.map(f => f.scope)).toEqual([undefined, undefined, undefined, t.ins.environment])
+  // The turn's steps go out as finished rows, the actor in the session's language.
+  expect(snap.steps).toEqual([{ id: 't:0', kind: 'step', state: 'ok', actor: t.actor.model, label: 'Opus 5.5', at: 950, ms: 20, count: 1 }])
   expect(snap.lang).toBe('de')
   expect(snap.build).toBe('1.2.3 · abc1234')
   expect((snap.labels.page as Record<string, string>).events).toBe(t.web.page.events)
@@ -275,6 +278,7 @@ test('a full session stays under the size the server takes', () => {
     build: 'x',
     testReview: { files: [], dropped: [], isGreen: false },
     trace: Array.from({ length: 500 }, (_, i) => ({ id: `toolu_${i}`, at: i, who: 'general-purpose', tool: 'Bash', what: text, ms: 1, isFailed: true, error: text, agentId: 'agent-1234' })),
+    steps: [],
   })
   expect(JSON.stringify(snap).length).toBeLessThan(1024 * 1024)
 })
@@ -304,6 +308,7 @@ test('a dismissed item stays away from the page as from the pane', () => {
     build: '1.2.3 · abc1234',
     testReview: { files: [], dropped: [], isGreen: false },
     trace: [],
+    steps: [],
   })
   expect(snap.focus).toEqual([])
 })
@@ -809,4 +814,36 @@ test('the folder a VM or a container mounts is the switch, with no variable set'
   await clock.settle()
   expect(written[0]).toBe('/var/lib/agentmon-live/spool/sess-1.json')
   expect(argvs.some(a => a.includes('ensure'))).toBe(false)
+})
+
+test('a refused call is a blocked step in the snapshot', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ deny: 'not allowed here' }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'git push --force', tool_use_id: 'b1' })
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).steps).toMatchObject([{ id: 'b1', kind: 'call', state: 'blocked', label: 'git push' }])
+})
+
+test('a model request that fails leaves no step behind', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.step', async function* () {
+    throw new Error('overloaded')
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await (async () => { for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1 })) void _ })().catch(() => {})
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).steps).toEqual([])
 })
