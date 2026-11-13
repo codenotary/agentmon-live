@@ -10,6 +10,7 @@ import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, noteShellEdit, noteTes
 import { isTestPath, NOTHING, weakeningOf } from './testreview'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
+import { FEEDBACK_TOOL, holdDraft, loadFeedback, registerFeedback } from './feedback'
 import { build, checkRelease, refreshBase, watchBase } from './release'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
@@ -353,6 +354,8 @@ export const register: Register = on => {
     // Reading the build and the status line need not hold up the session.
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
+      await loadFeedback($)
+      await registerFeedback($).catch(() => undefined)
       await refreshStatus($)
       // The network need not hold up learning.
       void checkRelease($).catch(() => undefined)
@@ -589,6 +592,8 @@ export const register: Register = on => {
     logFailure($, 'turn.step', next.error)
     return yield* next(e)
   })
+
+  on('tool.call', { tool: FEEDBACK_TOOL }, ($, e) => ({ result: holdDraft($, e) }))
 
   on('tool.call', async ($, e, next) => {
     if (e.tool === 'Agent' && e.effort && e.tool_use_id) effortByCall.set(e.tool_use_id, e.effort)

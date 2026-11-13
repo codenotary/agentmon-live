@@ -267,6 +267,13 @@ export const ja: Strings = {
   investigate: '調査',
   update: '更新',
   changelog: '変更履歴',
+  feedback: 'フィードバック',
+  promptFeedback: `このセッションで見つかった所見または問題を 1 つ取り上げて、AgentMon Live の作者へのフィードバックを書いてください。どれのことか明らかでなければ、先に私に聞いてください。\n\n種類を選びます: problem、idea、thanks、other のいずれか。\`text\` は 2000 文字まで、\`details\` は任意で 2000 文字までです。コード、ファイルパス、プロンプトの文章、名前、秘密情報は入れないでください。それぞれの主張を、このセッションでわかることと照らして確かめてください。\n\nそのあと、下書きをツール \`mcp__agentmon-live__feedback\` に渡してください。自分では送らないでください。私が AgentMon Live のペインで読み、そこで送信または取り消しします。`,
+  feedbackSend: '送信',
+  feedbackCancel: '取り消し',
+  feedbackIssue: 'GitHub の issue として開く',
+  feedbackSent: 'フィードバックを送信しました。ありがとうございます。',
+  feedbackFailed: why => `フィードバックを送信できませんでした: ${why}`,
   promptUpdate: (from, to) =>
     `AgentMon Live を ${from} から ${to} に更新して: \`claude plugin marketplace update agentmon-live\` を実行し、次に \`claude plugin update agentmon-live\` を実行してから、/reload-plugins を実行するよう私に伝えて。`,
   costWord: 'コスト',

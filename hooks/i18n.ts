@@ -274,6 +274,13 @@ const en = {
   investigate: 'investigate',
   update: 'update',
   changelog: 'changelog',
+  feedback: 'feedback',
+  promptFeedback: `Write feedback for the makers of AgentMon Live about one finding or issue from this session. If it is not clear which one, ask me first.\n\nChoose the type: problem, idea, thanks or other. \`text\` takes at most 2000 characters; \`details\` is optional, at most 2000 characters. Leave out code, file paths, prompt text, names and secrets. Check each claim against what this session shows.\n\nThen hand the draft to the tool \`mcp__agentmon-live__feedback\`. Do not send it yourself: I read it in the AgentMon Live pane and send or cancel it there.`,
+  feedbackSend: 'send',
+  feedbackCancel: 'cancel',
+  feedbackIssue: 'open as GitHub issue',
+  feedbackSent: 'Feedback sent. Thank you.',
+  feedbackFailed: (why: string) => `Feedback not sent: ${why}`,
   promptUpdate: (from: string, to: string) =>
     `Update AgentMon Live from ${from} to ${to}: run \`claude plugin marketplace update agentmon-live\`, then \`claude plugin update agentmon-live\`, then tell me to run /reload-plugins.`,
   costWord: 'cost',

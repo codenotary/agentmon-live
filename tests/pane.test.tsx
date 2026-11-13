@@ -228,3 +228,51 @@ test('a secret in the project settings shows on Focus: git will commit it, or gi
   }
   cfg.leaks = []
 })
+
+test('feedback drafts a prompt, the tool puts the draft in the pane, and only send posts it', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('env.get', (_, e) => ({ value: e.name === 'AGENTMON_FEEDBACK_URL' ? 'http://localhost:8787/feedback' : undefined }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  on('ui.toast', () => ({ value: undefined }))
+  const posts: { url: string; body: string }[] = []
+  on('http.fetch', (_, e) => {
+    if (e.init?.method === 'POST') posts.push({ url: e.url, body: String(e.init.body) })
+    return { value: { status: 204, ok: true, headers: {}, text: '' } }
+  })
+  let drafted = ''
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('prompt.fill', (_, e) => {
+    drafted = e.text
+    return { isFilled: true }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'feedback' })
+  expect(drafted).toContain('mcp__agentmon-live__feedback')
+
+  const refused = await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'praise', text: 'x' })
+  expect(String(refused.result)).toContain('Not taken')
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'idea', text: 'Export the flow as a picture.' })
+  expect(await ui.find({ type: 'Text', text: /^Export the flow as a picture\.$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Link', text: /GitHub/ })).toBeTruthy()
+  expect(posts.length).toBe(0)
+
+  await ui.press({ key: 'feedback:send' })
+  expect(posts.map(p => p.url)).toEqual(['http://localhost:8787/feedback'])
+  expect(JSON.parse(posts[0]!.body)).toMatchObject({ type: 'idea', text: 'Export the flow as a picture.', app: 'agentmon-live', language: 'en' })
+  expect(await ui.find({ type: 'Text', text: /^Export the flow/ })).toBe(undefined)
+
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Good pane.' })
+  expect(await ui.find({ type: 'Link', text: /GitHub/ })).toBe(undefined)
+  await ui.press({ key: 'feedback:cancel' })
+  expect(await ui.find({ type: 'Text', text: /^Good pane/ })).toBe(undefined)
+  expect(posts.length).toBe(1)
+  await ui.unmount()
+
+  for (const t of Object.values(LANGUAGES)) {
+    for (const part of ['problem', 'idea', 'thanks', 'other', '2000', 'mcp__agentmon-live__feedback']) expect(t.promptFeedback).toContain(part)
+  }
+})
