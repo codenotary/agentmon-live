@@ -274,6 +274,10 @@ export const es: Strings = {
   feedbackIssue: 'abrir como issue de GitHub',
   feedbackSent: 'Opinión enviada. Gracias.',
   feedbackFailed: why => `Opinión no enviada: ${why}`,
+  feedbackAnonymous: 'anónimo',
+  feedbackNewId: 'un nuevo ID de instalación',
+  feedbackFrom: who => `de: ${who}`,
+  feedbackNotice: 'Va a los autores: este texto, las versiones de AgentMon Live y de Claude Code, el idioma y de quién viene. Una vez enviado, no se puede borrar.',
   promptUpdate: (from, to) =>
     `Actualiza AgentMon Live de ${from} a ${to}: ejecuta \`claude plugin marketplace update agentmon-live\`, luego \`claude plugin update agentmon-live\`, y después dime que ejecute /reload-plugins.`,
   costWord: 'coste',

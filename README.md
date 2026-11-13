@@ -181,7 +181,7 @@ One searchable stream of your prompts, Claude's answers, tool calls and subagent
 - **Kiro Crew chats are read, not changed.** The server reads Kiro Crew's log files under `~/.kiro/crew/` and sends nothing to Kiro Crew. Only Kiro Crew's own page may frame the web view, and only while Kiro Crew runs.
 - **One optional model call.** Before Claude stops, Fable, a second model, may check that every part of your request got an answer and that nothing you did not ask for got built: a small call with about 12,000 characters of session text, at most 30 per session by default. Set `advisorMode` to `gate` for no model calls at all.
 - **One network check.** It asks GitHub for the latest release. No session data goes with it.
-- **Feedback only when you send it.** `feedback` (`b`) drafts a prompt and sends nothing. Claude writes the feedback and hands it to the pane, where you read it. `send` (`y`) posts it without your name or address to the makers' feedback service: the text, the AgentMon Live and Claude Code versions, and the language. A problem or an idea can go to GitHub as an issue instead, from a link that opens it filled in. `cancel` (`n`) drops it. With `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set there is no `send`; `AGENTMON_FEEDBACK_URL` sends to another address.
+- **Feedback only when you send it.** `feedback` (`b`) drafts a prompt and sends nothing. Claude writes the feedback and hands it to the pane, where you read it. `send` (`y`) posts it without your name or address to the makers' feedback service: the text, the AgentMon Live and Claude Code versions, and the language. A problem or an idea can go to GitHub as an issue instead, from a link that opens it filled in. `cancel` (`n`) drops it. `from` (`w`) names you: it adds an install ID the mod made itself and, if you set the option `feedbackIdentity`, your email or handle. Sent feedback cannot be deleted from the mod; the option `feedback: off` removes the feature. With `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set there is no `send`; `AGENTMON_FEEDBACK_URL` sends to another address.
 
 To remove it: `claude plugin uninstall agentmon-live`.
 
@@ -198,6 +198,7 @@ Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn t
 | `u` | Draft the update commands, when a new release is out |
 | `b` | Draft a prompt that writes feedback to the makers |
 | `y`, `n` | Send the feedback draft in the pane, or cancel it |
+| `w` | Send the draft anonymously, or as yourself |
 | `l` | Show the new release's changelog |
 | `x` | Put Focus items away |
 | `d` | Show long lists and texts whole |

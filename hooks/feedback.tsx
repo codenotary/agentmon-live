@@ -5,9 +5,10 @@ import { mask } from './format'
 import { isQuiet } from './release'
 import { cfg } from './state'
 
-export const FEEDBACK_URL = 'https://agentmon-live-feedback.dolbik.workers.dev/feedback'
+export const FEEDBACK_URL = 'https://feedback.codenotary.com/feedback'
 export const FEEDBACK_TOOL = 'mcp__agentmon-live__feedback'
 const ISSUES = 'https://github.com/codenotary/agentmon-live/issues/new'
+const INSTALL_KEY = 'feedbackInstall'
 const KINDS = ['problem', 'idea', 'thanks', 'other']
 export const MAX_TEXT = 2000
 // What a browser's address bar and GitHub both take, with room for the title and the footer.
@@ -17,6 +18,7 @@ const MAX_ISSUE_BODY = 5000
 export async function loadFeedback($: EngineInterface): Promise<void> {
   cfg.feedbackUrl = (await isQuiet($).catch(() => false)) ? '' : (await $.env.get('AGENTMON_FEEDBACK_URL').catch(() => undefined)) || FEEDBACK_URL
   cfg.claudeCode = await $.session.version().then(v => v.version, () => '')
+  cfg.feedbackInstall = String((await $.store.get(INSTALL_KEY).catch(() => undefined)) ?? '')
 }
 
 export async function registerFeedback($: EngineInterface): Promise<void> {
@@ -38,6 +40,7 @@ export async function registerFeedback($: EngineInterface): Promise<void> {
 
 // The tool's answer goes to the model, so it says who sends: the person, in the pane.
 export function holdDraft($: EngineInterface, input: { readonly type?: unknown; readonly text?: unknown; readonly details?: unknown }): string {
+  if (!cfg.feedback) return "Not taken: feedback is turned off in AgentMon Live's options."
   const text = mask(String(input.text ?? '')).trim()
   const details = mask(String(input.details ?? '')).trim()
   if (!KINDS.includes(String(input.type))) return `Not taken: type must be one of ${KINDS.join(', ')}.`
@@ -45,9 +48,24 @@ export function holdDraft($: EngineInterface, input: { readonly type?: unknown; 
   if ([...text].length > MAX_TEXT || [...details].length > MAX_TEXT) return `Not taken: text and details take at most ${MAX_TEXT} characters each.`
   if (cfg.feedbackDraft) return 'Not taken: a draft is already in the AgentMon Live pane. The person sends or cancels that one first.'
   cfg.feedbackDraft = { type: String(input.type), text, details }
+  // Naming an identity in the options is the person's choice to be known; without one a draft starts anonymous.
+  cfg.isFeedbackNamed = Boolean(cfg.feedbackIdentity)
   $.ui.invalidate('ui.render')
   return 'The draft is in the AgentMon Live pane. The person sends or cancels it there; do not send it any other way.'
 }
+
+export function toggleNamed($: EngineInterface): void {
+  cfg.isFeedbackNamed = !cfg.isFeedbackNamed
+  $.ui.invalidate('ui.render')
+}
+
+// Who the pane says the draft is from: what `sendDraft` will put in the post.
+export function sender(): string {
+  if (!cfg.isFeedbackNamed) return cfg.t.feedbackAnonymous
+  return [cfg.feedbackIdentity, cfg.feedbackInstall ? `ID ${cfg.feedbackInstall.slice(0, 8)}…` : cfg.t.feedbackNewId].filter(Boolean).join(' · ')
+}
+
+const why = (e: unknown) => String((e as { message?: unknown })?.message ?? e)
 
 export function dropDraft($: EngineInterface): void {
   cfg.feedbackDraft = undefined
@@ -56,14 +74,28 @@ export function dropDraft($: EngineInterface): void {
 
 let isSending = false
 
+async function post($: EngineInterface, draft: Draft): Promise<string> {
+  // The install ID is made here, on the first send the person chose to put a name to, and never read from Claude Code or the machine.
+  if (cfg.isFeedbackNamed && !cfg.feedbackInstall) {
+    // Read again: a read that failed at the start is not a missing ID. An ID that is not kept would be a new sender at every send, so nothing goes out under it.
+    try {
+      const id = String((await $.store.get(INSTALL_KEY)) ?? '') || crypto.randomUUID()
+      await $.store.set(INSTALL_KEY, id)
+      cfg.feedbackInstall = id
+    } catch (e) {
+      return why(e)
+    }
+  }
+  const who = cfg.isFeedbackNamed ? { install: cfg.feedbackInstall, ...(cfg.feedbackIdentity ? { identity: cfg.feedbackIdentity } : {}) } : {}
+  const body = { ...draft, app: 'agentmon-live', version: cfg.version, claude_code: cfg.claudeCode, language: cfg.lang, ...who }
+  return $.http.fetch(cfg.feedbackUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(r => (r.ok ? '' : `${r.status} ${r.text.trim().slice(0, 200)}`), why)
+}
+
 export async function sendDraft($: EngineInterface): Promise<void> {
   const draft = cfg.feedbackDraft
   if (!draft || !cfg.feedbackUrl || isSending) return
   isSending = true
-  const body = { ...draft, app: 'agentmon-live', version: cfg.version, claude_code: cfg.claudeCode, language: cfg.lang }
-  const failure = await $.http
-    .fetch(cfg.feedbackUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-    .then(r => (r.ok ? '' : `${r.status} ${r.text.trim().slice(0, 200)}`), e => String((e as { message?: unknown })?.message ?? e))
+  const failure = await post($, draft)
   isSending = false
   // A draft that did not go stays, so the person can try again or open it as an issue.
   if (failure) return void $.ui.toast(cfg.t.feedbackFailed(failure))
