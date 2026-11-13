@@ -3,6 +3,7 @@ import type { EngineInterface, RenderChildren, RenderElement, RenderInput } from
 
 import type { Card, Check, Note } from '../types'
 import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, callText, smoothBar, spinner, width } from './format'
+import { dropDraft, issueLink, MAX_TEXT, sendDraft, sender, toggleNamed } from './feedback'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
@@ -158,6 +159,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       {` ${label.toUpperCase()} `}
     </Text>
   )
+  const draft = cfg.feedback ? cfg.feedbackDraft : undefined
   const title = (label: string, color?: string) => (
     <Text color={color} bold>
       ● {label.toUpperCase()}
@@ -707,6 +709,11 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       <Button key="pane:hide" plain hotkey="p" onPress={() => setPane($, false)}>{`◂ ${t.paneHide}`}</Button>
       {/* Narrower, the address wraps the header row; `o` still opens it. */}
       {cfg.webOn && cfg.webUrl && cols >= 130 && <Link href={cfg.webUrl}>{cfg.webUrl}</Link>}
+      {cfg.feedback && (
+        <Button key="feedback" plain hotkey="b" onPress={() => investigate(t.promptFeedback(MAX_TEXT))}>
+          {t.feedback}
+        </Button>
+      )}
       {release && (
         <Button key="update" plain hotkey="u" onPress={() => investigate(t.promptUpdate(cfg.version, release.version))}>
           {t.update}
@@ -722,6 +729,20 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         <Box flexDirection="column" borderStyle="round" borderColor="green" paddingX={1}>
           {title(`${t.changelog} ${release.version}`, 'green')}
           {release.notes.split('\n').filter(line => line.trim()).map(line => <Text>{line}</Text>)}
+        </Box>
+      )}
+      {draft && (
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1}>
+          {title(`${t.feedback} · ${draft.type}`, 'cyan')}
+          <Text>{draft.text}</Text>
+          {draft.details && <Text dimColor>{draft.details}</Text>}
+          <Text dimColor>{t.feedbackNotice}</Text>
+          <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+            {cfg.feedbackUrl && <Button key="feedback:send" plain hotkey="y" onPress={() => sendDraft($)}>{t.feedbackSend}</Button>}
+            {cfg.feedbackUrl && <Button key="feedback:who" plain hotkey="w" onPress={() => toggleNamed($)}>{t.feedbackFrom(sender())}</Button>}
+            <Button key="feedback:cancel" plain hotkey="n" onPress={() => dropDraft($)}>{t.feedbackCancel}</Button>
+            {(draft.type === 'problem' || draft.type === 'idea') && <Link href={issueLink(draft)}>{t.feedbackIssue}</Link>}
+          </Box>
         </Box>
       )}
       {attention.length > 0 ? (

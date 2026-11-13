@@ -1,6 +1,6 @@
 {
   "name": "agentmon-live",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "displayName": "AgentMon Live",
   "iconPath": ".claude-plugin/icon.png",
   "heroImage": "docs/kiro/hero.png",

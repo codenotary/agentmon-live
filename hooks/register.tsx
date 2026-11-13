@@ -10,6 +10,7 @@ import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, noteShellEdit, noteTes
 import { isTestPath, NOTHING, weakeningOf } from './testreview'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
+import { FEEDBACK_TOOL, holdDraft, loadFeedback, registerFeedback } from './feedback'
 import { build, checkRelease, refreshBase, watchBase } from './release'
 import { category, labelOf } from './label'
 import { errSig } from './learn'
@@ -322,6 +323,8 @@ export const register: Register = on => {
     // Reading the build need not hold up the session.
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
+      await loadFeedback($)
+      await registerFeedback($).catch(() => undefined)
       // The network need not hold up learning.
       void checkRelease($).catch(() => undefined)
       if (cfg.baseMinutes > 0 && !isBaseWatched) {
@@ -345,6 +348,7 @@ export const register: Register = on => {
   on('session.end', async ($, e, next) => {
     const r = await next(e)
     await stopWeb($, e.sessionId).catch(() => undefined)
+    cfg.feedbackDraft = undefined
     // After `/clear` no session.start follows, and a closed pane's button must come back.
     $.ui.invalidate('ui.render')
     return r
@@ -790,6 +794,9 @@ export const register: Register = on => {
     })
     return r
   }).catch(($, e, next) => failOpen($, 'tool.call', next.error, () => next(e)))
+
+  // After the handler above, so that one counts and times this call like any other.
+  on('tool.call', { tool: FEEDBACK_TOOL }, ($, e) => ({ result: holdDraft($, e) }))
 
   // An `ask` verdict means the call now waits for the person; `tool.call` above already listed it as active.
   on('tool.check', async ($, e, next) => {

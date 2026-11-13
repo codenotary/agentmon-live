@@ -1,6 +1,7 @@
 import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { issueLink } from '../hooks/feedback'
 import { LANGUAGES } from '../hooks/i18n'
 import { cfg } from '../hooks/state'
 import { settingsWith, withOptions } from './options-helper'
@@ -226,6 +227,166 @@ test('a secret in the project settings shows on Focus: git will commit it, or gi
     expect(await shows(/settings\.local\.json · git-ignored/)).toBe(true)
   }
   cfg.leaks = []
+})
+
+test('feedback drafts a prompt, the tool puts the draft in the pane, and only send posts it', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('env.get', (_, e) => ({ value: e.name === 'AGENTMON_FEEDBACK_URL' ? 'http://localhost:8787/feedback' : undefined }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  on('ui.toast', () => ({ value: undefined }))
+  const posts: { url: string; body: string }[] = []
+  on('http.fetch', (_, e) => {
+    if (e.init?.method === 'POST') posts.push({ url: e.url, body: String(e.init.body) })
+    return { value: { status: 204, ok: true, headers: {}, text: '' } }
+  })
+  let drafted = ''
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('prompt.fill', (_, e) => {
+    drafted = e.text
+    return { isFilled: true }
+  })
+
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }) as never)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  await ui.press({ key: 'feedback' })
+  expect(drafted).toContain('mcp__agentmon-live__feedback')
+
+  const refused = await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'praise', text: 'x' })
+  expect(String(refused.result)).toContain('Not taken')
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'idea', text: 'Export the flow as a picture.' })
+  expect(await ui.find({ type: 'Text', text: /^Export the flow as a picture\.$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Link', text: /GitHub/ })).toBeTruthy()
+  const second = await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Another.' })
+  expect(String(second.result)).toContain('already')
+  expect(posts.length).toBe(0)
+
+  await Promise.all([ui.press({ key: 'feedback:send' }), ui.press({ key: 'feedback:send' })])
+  expect(posts.map(p => p.url)).toEqual(['http://localhost:8787/feedback'])
+  expect(JSON.parse(posts[0]!.body)).toMatchObject({ type: 'idea', text: 'Export the flow as a picture.', app: 'agentmon-live', language: 'en' })
+  expect(JSON.parse(posts[0]!.body).install).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /^Export the flow/ })).toBe(undefined)
+
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Good pane.' })
+  expect(await ui.find({ type: 'Link', text: /GitHub/ })).toBe(undefined)
+  await ui.press({ key: 'feedback:cancel' })
+  expect(await ui.find({ type: 'Text', text: /^Good pane/ })).toBe(undefined)
+  expect(posts.length).toBe(1)
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'other', text: 'Left\u202eover.\n\u200bLine\tend' })
+  // What could hide or reorder the text is gone before the person reads it; the line break stays.
+  expect(await ui.find({ type: 'Text', text: /^Left over\.\n Line end$/ })).toBeTruthy()
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { sessionId: 's1' } } as never)
+  expect(await ui.find({ type: 'Text', text: /^Left over/ })).toBe(undefined)
+  await ui.unmount()
+
+  const link = issueLink({ type: 'problem', text: '漢'.repeat(2000), details: '' })
+  expect(link.length).toBeLessThan(6000)
+  expect(link).toContain('Claude+Code')
+
+  for (const t of Object.values(LANGUAGES)) {
+    for (const part of ['problem', 'idea', 'thanks', 'other', '2000', 'mcp__agentmon-live__feedback']) expect(t.promptFeedback(2000)).toContain(part)
+  }
+})
+
+test('a store read that failed at the start does not replace the kept install ID', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('env.get', () => ({ value: undefined }))
+  on('fs.read', (_, e, next) => (e.path.endsWith('/settings.json') ? { value: settingsWith({ feedbackIdentity: 'ada@example.com' }) } : next(e)))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  on('ui.toast', () => ({ value: undefined }))
+  let isReadBroken = true
+  on('store.get', (_, e, next) => {
+    if (e.key !== 'feedbackInstall') return next(e)
+    if (isReadBroken) throw new Error('locked')
+    return { value: 'kept-id' }
+  })
+  on('store.set', () => ({ value: undefined }))
+  const sent: { install?: string }[] = []
+  on('http.fetch', (_, e) => {
+    sent.push(JSON.parse(String(e.init?.body ?? '{}')) as { install?: string })
+    return { value: { status: 200, ok: true, headers: {}, text: '{}' } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'One.' })
+  await ui.press({ key: 'feedback:send' })
+  expect(sent).toEqual([])
+  isReadBroken = false
+  // `w` pressed while the send is under way does not change who it is from.
+  await Promise.all([ui.press({ key: 'feedback:send' }), ui.press({ key: 'feedback:who' })])
+  expect(sent[0]?.install).toBe('kept-id')
+  await ui.unmount()
+})
+
+test('feedback is anonymous until the person names it; the install ID is the mod\'s own', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('env.get', () => ({ value: undefined }))
+  on('fs.read', (_, e, next) => (e.path.endsWith('/settings.json') ? { value: settingsWith({ feedbackIdentity: 'ada@example.com' }) } : next(e)))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  on('ui.toast', () => ({ value: undefined }))
+  const store = new Map<string, unknown>()
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  let isStoreBroken = false
+  on('store.set', (_, e) => {
+    if (isStoreBroken) throw new Error('disk full')
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  const calls: { method: string; url: string; body: string }[] = []
+  on('http.fetch', (_, e) => {
+    calls.push({ method: e.init?.method ?? 'GET', url: e.url, body: String(e.init?.body ?? '') })
+    return { value: { status: 200, ok: true, headers: {}, text: '{}' } }
+  })
+  const sent = () => calls.filter(c => c.method === 'POST').map(c => JSON.parse(c.body) as { install?: string; identity?: string })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+
+  // An identity in the options starts the draft named; `w` takes the name off again.
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'One.' })
+  expect(await ui.find({ type: 'Button', text: /ada@example\.com/ })).toBeTruthy()
+  await ui.press({ key: 'feedback:who' })
+  expect(await ui.find({ type: 'Button', text: /anonymous/ })).toBeTruthy()
+  await ui.press({ key: 'feedback:send' })
+  expect(sent()[0]).not.toHaveProperty('install')
+  expect(sent()[0]).not.toHaveProperty('identity')
+  expect(store.get('feedbackInstall')).toBe(undefined)
+
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Two.' })
+  // An ID that cannot be kept sends nothing, and the draft stays.
+  isStoreBroken = true
+  await ui.press({ key: 'feedback:send' })
+  expect(sent().length).toBe(1)
+  expect(await ui.find({ type: 'Text', text: /^Two\.$/ })).toBeTruthy()
+  isStoreBroken = false
+  await ui.press({ key: 'feedback:send' })
+  const id = String(store.get('feedbackInstall'))
+  expect(id).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/)
+  expect(sent()[1]).toMatchObject({ install: id, identity: 'ada@example.com' })
+
+  expect(calls.at(-1)).toMatchObject({ method: 'POST', url: 'https://feedback.codenotary.com/feedback' })
+  await ui.unmount()
+})
+
+test('feedback off shows no button and takes no draft', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  withOptions(on, { feedback: 'off' })
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Button', text: /^feedback$/ })).toBe(undefined)
+  const refused = await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'idea', text: 'x' })
+  expect(String(refused.result)).toContain('turned off')
+  await ui.unmount()
 })
 
 // A turn with one model step and three reads of one file.

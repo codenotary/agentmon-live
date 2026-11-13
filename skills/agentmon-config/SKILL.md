@@ -30,6 +30,8 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 | `sizeExclude` | comma-separated globs the size guide skips | `""` |
 | `learning` | `on` or `off` | `on` |
 | `debugLog` | `on` or `off` | `on` |
+| `feedback` | `on` or `off`: the feedback button, tool and draft | `on` |
+| `feedbackIdentity` | an email or a GitHub handle sent with feedback the person chooses to name; set it only when the person gives one | empty |
 | `gitPollMinutes` | minutes between base-branch checks, `0` for off | `5` |
 | `gitFetch` | `true` runs `git fetch` for the base before each check | `false` |
 | `web` | `on` or `off` (the local web view) | `on` |
