@@ -273,6 +273,12 @@ export const zh: Strings = {
   feedbackIssue: '作为 GitHub issue 打开',
   feedbackSent: '反馈已发送。谢谢。',
   feedbackFailed: why => `反馈未发送：${why}`,
+  feedbackAnonymous: '匿名',
+  feedbackNewId: '新的安装 ID',
+  feedbackFrom: who => `来自：${who}`,
+  feedbackNotice: '发送给作者的内容：这段文本、AgentMon Live 和 Claude Code 的版本、语言，以及发送者。`/agentmon feedback-delete` 会删除你用自己的 ID 发送的内容。',
+  feedbackDeleted: n => `已删除 ${n} 条用你的安装 ID 发送的反馈。该 ID 已被清除。`,
+  feedbackNothing: '这里没有安装 ID：没有用 ID 发送过任何内容，所以没有可查找和删除的内容。',
   promptUpdate: (from, to) =>
     `将 AgentMon Live 从 ${from} 更新到 ${to}：运行 \`claude plugin marketplace update agentmon-live\`，然后运行 \`claude plugin update agentmon-live\`，然后提醒我运行 /reload-plugins。`,
   costWord: '费用',

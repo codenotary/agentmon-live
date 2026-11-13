@@ -66,6 +66,8 @@ export function applyOptions(options: Options, envLanguage: string | undefined):
   configureSize(cfg.sizeLimit, cfg.sizeExclude, cfg.sizeExceptions)
   cfg.learning = String(options.learning ?? 'on') !== 'off'
   cfg.debugLog = String(options.debugLog ?? 'on') !== 'off'
+  cfg.feedback = String(options.feedback ?? 'on') !== 'off'
+  cfg.feedbackIdentity = String(options.feedbackIdentity ?? '').trim().slice(0, 200)
   cfg.hidden = String(options.hiddenSections ?? '').split(',').map(s => s.trim()).filter(Boolean)
   // `live` or anything not a positive number redraws on every change.
   const refresh = Number(options.refreshRate ?? 'live')

@@ -267,6 +267,7 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
   await Promise.all([ui.press({ key: 'feedback:send' }), ui.press({ key: 'feedback:send' })])
   expect(posts.map(p => p.url)).toEqual(['http://localhost:8787/feedback'])
   expect(JSON.parse(posts[0]!.body)).toMatchObject({ type: 'idea', text: 'Export the flow as a picture.', app: 'agentmon-live', language: 'en' })
+  expect(JSON.parse(posts[0]!.body).install).toBe(undefined)
   expect(await ui.find({ type: 'Text', text: /^Export the flow/ })).toBe(undefined)
 
   await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Good pane.' })
@@ -286,4 +287,65 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
   for (const t of Object.values(LANGUAGES)) {
     for (const part of ['problem', 'idea', 'thanks', 'other', '2000', 'mcp__agentmon-live__feedback']) expect(t.promptFeedback(2000)).toContain(part)
   }
+})
+
+test('feedback is anonymous until the person names it; the install ID is the mod\'s own and feedback-delete removes what it sent', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('env.get', () => ({ value: undefined }))
+  on('fs.read', (_, e, next) => (e.path.endsWith('/settings.json') ? { value: settingsWith({ feedbackIdentity: 'ada@example.com' }) } : next(e)))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  on('ui.toast', () => ({ value: undefined }))
+  const store = new Map<string, unknown>()
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  const calls: { method: string; url: string; body: string }[] = []
+  on('http.fetch', (_, e) => {
+    calls.push({ method: e.init?.method ?? 'GET', url: e.url, body: String(e.init?.body ?? '') })
+    return { value: { status: 200, ok: true, headers: {}, text: e.init?.method === 'DELETE' ? '{"deleted":1}' : '{}' } }
+  })
+  const sent = () => calls.filter(c => c.method === 'POST').map(c => JSON.parse(c.body) as { install?: string; identity?: string })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('No install ID')
+
+  // An identity in the options starts the draft named; `w` takes the name off again.
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'One.' })
+  expect(await ui.find({ type: 'Button', text: /ada@example\.com/ })).toBeTruthy()
+  await ui.press({ key: 'feedback:who' })
+  expect(await ui.find({ type: 'Button', text: /anonymous/ })).toBeTruthy()
+  await ui.press({ key: 'feedback:send' })
+  expect(sent()[0]).not.toHaveProperty('install')
+  expect(sent()[0]).not.toHaveProperty('identity')
+  expect(store.get('feedbackInstall')).toBe(undefined)
+
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Two.' })
+  await ui.press({ key: 'feedback:send' })
+  const id = String(store.get('feedbackInstall'))
+  expect(id).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/)
+  expect(sent()[1]).toMatchObject({ install: id, identity: 'ada@example.com' })
+
+  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('Deleted 1')
+  expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `https://agentmon-live-feedback.dolbik.workers.dev/feedback?install=${id}` })
+  expect(store.get('feedbackInstall')).toBe('')
+  await ui.unmount()
+})
+
+test('feedback off shows no button and takes no draft', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  withOptions(on, { feedback: 'off' })
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Button', text: /^feedback$/ })).toBe(undefined)
+  const refused = await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'idea', text: 'x' })
+  expect(String(refused.result)).toContain('turned off')
+  await ui.unmount()
 })

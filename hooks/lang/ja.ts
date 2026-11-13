@@ -274,6 +274,12 @@ export const ja: Strings = {
   feedbackIssue: 'GitHub の issue として開く',
   feedbackSent: 'フィードバックを送信しました。ありがとうございます。',
   feedbackFailed: why => `フィードバックを送信できませんでした: ${why}`,
+  feedbackAnonymous: '匿名',
+  feedbackNewId: '新しいインストール ID',
+  feedbackFrom: who => `送信者: ${who}`,
+  feedbackNotice: '作者に送られる内容: この文章、AgentMon Live と Claude Code のバージョン、言語、送信者。`/agentmon feedback-delete` で、自分の ID で送った内容を削除できます。',
+  feedbackDeleted: n => `インストール ID で送ったフィードバックを ${n} 件削除しました。ID は破棄しました。`,
+  feedbackNothing: 'インストール ID がありません。ID 付きで送ったものがないため、探して削除する対象がありません。',
   promptUpdate: (from, to) =>
     `AgentMon Live を ${from} から ${to} に更新して: \`claude plugin marketplace update agentmon-live\` を実行し、次に \`claude plugin update agentmon-live\` を実行してから、/reload-plugins を実行するよう私に伝えて。`,
   costWord: 'コスト',

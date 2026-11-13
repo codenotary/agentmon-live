@@ -274,6 +274,12 @@ export const fr: Strings = {
   feedbackIssue: 'ouvrir comme issue GitHub',
   feedbackSent: 'Avis envoyé. Merci.',
   feedbackFailed: why => `Avis non envoyé : ${why}`,
+  feedbackAnonymous: 'anonyme',
+  feedbackNewId: 'un nouvel identifiant d\'installation',
+  feedbackFrom: who => `de : ${who}`,
+  feedbackNotice: 'Va aux auteurs : ce texte, les versions d\'AgentMon Live et de Claude Code, la langue et de qui il vient. `/agentmon feedback-delete` supprime ce que tu as envoyé sous ton identifiant.',
+  feedbackDeleted: n => `${n} avis envoyés sous ton identifiant d'installation ont été supprimés. L'identifiant est oublié.`,
+  feedbackNothing: 'Pas d\'identifiant d\'installation ici : rien n\'a été envoyé sous un identifiant, il n\'y a donc rien à trouver ni à supprimer.',
   promptUpdate: (from, to) =>
     `Mets à jour AgentMon Live de ${from} vers ${to} : lance \`claude plugin marketplace update agentmon-live\`, puis \`claude plugin update agentmon-live\`, puis dis-moi de lancer /reload-plugins.`,
   costWord: 'coût',

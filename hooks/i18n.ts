@@ -281,6 +281,12 @@ const en = {
   feedbackIssue: 'open as GitHub issue',
   feedbackSent: 'Feedback sent. Thank you.',
   feedbackFailed: (why: string) => `Feedback not sent: ${why}`,
+  feedbackAnonymous: 'anonymous',
+  feedbackNewId: 'a new install ID',
+  feedbackFrom: (who: string) => `from: ${who}`,
+  feedbackNotice: 'Goes to the makers: this text, the AgentMon Live and Claude Code versions, the language, and who it is from. `/agentmon feedback-delete` deletes what you sent under your ID.',
+  feedbackDeleted: (n: number) => `Deleted ${n} feedback rows sent under your install ID. The ID is forgotten.`,
+  feedbackNothing: 'No install ID here: nothing was sent under one, so there is nothing to find and delete.',
   promptUpdate: (from: string, to: string) =>
     `Update AgentMon Live from ${from} to ${to}: run \`claude plugin marketplace update agentmon-live\`, then \`claude plugin update agentmon-live\`, then tell me to run /reload-plugins.`,
   costWord: 'cost',

@@ -10,7 +10,7 @@ import { benchPrompt, checkNow, MIN_TOOLS_FOR_DONE_CHECK, noteShellEdit, noteTes
 import { isTestPath, NOTHING, weakeningOf } from './testreview'
 import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
-import { FEEDBACK_TOOL, holdDraft, loadFeedback, registerFeedback } from './feedback'
+import { deleteSent, FEEDBACK_TOOL, holdDraft, loadFeedback, registerFeedback } from './feedback'
 import { build, checkRelease, refreshBase, watchBase } from './release'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
@@ -304,7 +304,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'agentmon',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|open|learn|memory|debug]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|open|learn|memory|debug|feedback-delete]`,
     })
     cwd = e.cwd
     turn.root = cwd
@@ -428,6 +428,7 @@ export const register: Register = on => {
     if (arg === 'memory') return { text: await memoryCommand($) }
     if (arg === 'bench') return { text: await benchCommand($) }
     if (arg === 'debug') return { text: t.debugLog(debugPath()) }
+    if (arg === 'feedback-delete') return { text: await deleteSent($) }
     // Details from the prompt, so a script reaches it without focusing the pane.
     if (arg === 'details') {
       const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
