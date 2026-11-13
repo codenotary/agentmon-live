@@ -70,7 +70,7 @@ export async function deleteSent($: EngineInterface): Promise<string> {
   const t = cfg.t
   if (!cfg.feedbackInstall) return t.feedbackNothing
   if (!cfg.feedbackUrl) return t.feedbackFailed('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
-  const r = await $.http.fetch(`${cfg.feedbackUrl}?${new URLSearchParams({ install: cfg.feedbackInstall })}`, { method: 'DELETE' }).catch(e => String((e as { message?: unknown })?.message ?? e))
+  const r = await $.http.fetch(cfg.feedbackUrl, { method: 'DELETE', headers: { 'x-install': cfg.feedbackInstall } }).catch(e => String((e as { message?: unknown })?.message ?? e))
   if (typeof r === 'string' || !r.ok) return t.feedbackFailed(typeof r === 'string' ? r : `${r.status} ${r.text.trim().slice(0, 200)}`)
   cfg.feedbackInstall = ''
   await $.store.set(INSTALL_KEY, '').catch(() => undefined)

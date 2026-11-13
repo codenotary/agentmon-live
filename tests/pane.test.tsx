@@ -302,9 +302,9 @@ test('feedback is anonymous until the person names it; the install ID is the mod
     store.set(e.key, e.value)
     return { value: undefined }
   })
-  const calls: { method: string; url: string; body: string }[] = []
+  const calls: { method: string; url: string; body: string; install?: string }[] = []
   on('http.fetch', (_, e) => {
-    calls.push({ method: e.init?.method ?? 'GET', url: e.url, body: String(e.init?.body ?? '') })
+    calls.push({ method: e.init?.method ?? 'GET', url: e.url, body: String(e.init?.body ?? ''), install: (e.init?.headers as Record<string, string> | undefined)?.['x-install'] })
     return { value: { status: 200, ok: true, headers: {}, text: e.init?.method === 'DELETE' ? '{"deleted":1}' : '{}' } }
   })
   const sent = () => calls.filter(c => c.method === 'POST').map(c => JSON.parse(c.body) as { install?: string; identity?: string })
@@ -331,7 +331,7 @@ test('feedback is anonymous until the person names it; the install ID is the mod
   expect(sent()[1]).toMatchObject({ install: id, identity: 'ada@example.com' })
 
   expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('Deleted 1')
-  expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: `https://agentmon-live-feedback.dolbik.workers.dev/feedback?install=${id}` })
+  expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: 'https://agentmon-live-feedback.dolbik.workers.dev/feedback', install: id })
   expect(store.get('feedbackInstall')).toBe('')
   await ui.unmount()
 })
