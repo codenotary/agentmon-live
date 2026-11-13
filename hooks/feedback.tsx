@@ -2,6 +2,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { FeedbackDraft as Draft } from '../types'
 import { mask } from './format'
+import { CONTROL_OR_BIDI } from './label'
 import { isQuiet } from './release'
 import { cfg } from './state'
 
@@ -41,8 +42,10 @@ export async function registerFeedback($: EngineInterface): Promise<void> {
 // The tool's answer goes to the model, so it says who sends: the person, in the pane.
 export function holdDraft($: EngineInterface, input: { readonly type?: unknown; readonly text?: unknown; readonly details?: unknown }): string {
   if (!cfg.feedback) return "Not taken: feedback is turned off in AgentMon Live's options."
-  const text = mask(String(input.text ?? '')).trim()
-  const details = mask(String(input.details ?? '')).trim()
+  // The pane is the person's only check before sending: nothing that can hide or reorder text stays in, line breaks do.
+  const shown = (v: unknown) => mask(String(v ?? '')).replace(CONTROL_OR_BIDI, c => (c === '\n' ? c : '')).trim()
+  const text = shown(input.text)
+  const details = shown(input.details)
   if (!KINDS.includes(String(input.type))) return `Not taken: type must be one of ${KINDS.join(', ')}.`
   if (!text) return 'Not taken: text is required.'
   if ([...text].length > MAX_TEXT || [...details].length > MAX_TEXT) return `Not taken: text and details take at most ${MAX_TEXT} characters each.`
@@ -55,6 +58,8 @@ export function holdDraft($: EngineInterface, input: { readonly type?: unknown; 
 }
 
 export function toggleNamed($: EngineInterface): void {
+  // A send under way goes out as the pane showed it when `send` was pressed.
+  if (isSending) return
   cfg.isFeedbackNamed = !cfg.isFeedbackNamed
   $.ui.invalidate('ui.render')
 }

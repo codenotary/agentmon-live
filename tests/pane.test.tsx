@@ -274,9 +274,11 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
   await ui.press({ key: 'feedback:cancel' })
   expect(await ui.find({ type: 'Text', text: /^Good pane/ })).toBe(undefined)
   expect(posts.length).toBe(1)
-  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'other', text: 'Left over.' })
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'other', text: 'Left\u202e over.\n\u0007Line' })
+  // What could hide or reorder the text is gone before the person reads it; the line break stays.
+  expect(await ui.find({ type: 'Text', text: /^Left over\.\nLine$/ })).toBeTruthy()
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: { sessionId: 's1' } } as never)
-  expect(cfg.feedbackDraft).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /^Left over/ })).toBe(undefined)
   await ui.unmount()
 
   const link = issueLink({ type: 'problem', text: '漢'.repeat(2000), details: '' })
@@ -315,7 +317,8 @@ test('a store read that failed at the start does not replace the kept install ID
   await ui.press({ key: 'feedback:send' })
   expect(sent).toEqual([])
   isReadBroken = false
-  await ui.press({ key: 'feedback:send' })
+  // `w` pressed while the send is under way does not change who it is from.
+  await Promise.all([ui.press({ key: 'feedback:send' }), ui.press({ key: 'feedback:who' })])
   expect(sent[0]?.install).toBe('kept-id')
   await ui.unmount()
 })
