@@ -282,6 +282,8 @@ export type WebSnapshot = {
   focus: WebFocus[]
   // Absent on a session from an older version or another reader.
   steps?: WebStep[]
+  // The list starts partway: older steps of the turn fell out of the history, or the list was cut for sending.
+  isStepsCut?: boolean
   // `credits` only from a Kiro Crew chat on kiro-cli, which reports them in place of tokens and cost.
   usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number; credits?: number }
   turns: WebTurn[]

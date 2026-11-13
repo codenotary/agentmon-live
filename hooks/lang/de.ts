@@ -142,6 +142,7 @@ export const de: Strings = {
       rawCall: 'Roher Aufruf',
       steps: 'Schritte der Runde',
       helpSteps: 'Die laufende Runde Schritt für Schritt, das Neueste zuerst: jede Modellanfrage und jeder Aufruf der Hauptsitzung, mit Akteur und Dauer. Ruhige Wiederholungen werden zu einer Zeile mit Zähler. Ein Klick auf einen Aufruf zeigt seine Details.',
+      stepsCut: 'frühere Schritte nicht gezeigt',
       error: 'Fehler',
       noMatch: 'Kein Treffer.',
       verification: 'Prüfung',

@@ -161,7 +161,8 @@
       "lastMinutes": "{n} min",
       "rawCall": "Raw call",
       "steps": "Turn steps",
-      "helpSteps": "The current turn step by step, newest first: each model request and each call of the main session, with who acted and how long it took. Quiet repeats fold into one row with a count. Click a call for its details."
+      "helpSteps": "The current turn step by step, newest first: each model request and each call of the main session, with who acted and how long it took. Quiet repeats fold into one row with a count. Click a call for its details.",
+      "stepsCut": "earlier steps not shown"
     },
     "status": {
       "running": "running",
@@ -1117,6 +1118,7 @@
     "isSent": true,
     "at": 1793802970000
   },
+  "isStepsCut": true,
   "steps": [
     {
       "id": "a1",

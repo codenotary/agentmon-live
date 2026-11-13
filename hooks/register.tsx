@@ -20,6 +20,7 @@ import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, fileOf, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawBand, drawPane } from './render'
+import { KEEP_STEPS, KEEP_TRACE } from './steps'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadLeaks, loadOptions } from './options'
 import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
@@ -36,8 +37,6 @@ const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stat
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
 const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
 const steps = atom({ plugin: 'agentmon-live', key: 'steps' } as const, INIT.steps)
-const KEEP_TRACE = 500
-const KEEP_STEPS = 200
 const TRACE_TEXT = 300
 const AGENT_PROMPT = 500
 // Enough for the answer's gist in the web view's log; 50 turns of it keep the snapshot small.

@@ -85,7 +85,7 @@ const Part = memo(function Part({ view, s, l, p, events, trend }: { view: string
             <div className="flex min-w-0 flex-col gap-4 max-xl:order-first">
               <Events list={events} p={p} />
               <Running s={s} p={p} />
-              <Steps s={s} p={p} />
+              {s.steps ? <Steps s={s} p={p} /> : null}
             </div>
           </div>
         </>

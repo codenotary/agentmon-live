@@ -2,6 +2,14 @@ import type { Active, Insights, Step, StepRow, TraceCall } from '../types'
 import { callText, modelName } from './format'
 import { actorOf } from './label'
 
+export const KEEP_TRACE = 500
+export const KEEP_STEPS = 200
+
+// A full history that starts inside the turn has dropped the turn's first calls or model requests.
+export function isCut(d: { trace: readonly TraceCall[]; steps: readonly Step[] }, span: { from: number }): boolean {
+  return (d.trace.length >= KEEP_TRACE && d.trace[0]!.at >= span.from) || (d.steps.length >= KEEP_STEPS && d.steps[0]!.at >= span.from)
+}
+
 // The turn the step list shows: the one under way, else the last one.
 export function turnSpan(ins: Pick<Insights, 'turn' | 'last'>): { from: number; to?: number } | undefined {
   if (ins.turn) return { from: ins.turn.startedAt }

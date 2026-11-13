@@ -142,6 +142,7 @@ export const fr: Strings = {
       rawCall: 'Appel brut',
       steps: 'Étapes du tour',
       helpSteps: 'Le tour en cours pas à pas, le plus récent d’abord : chaque requête au modèle et chaque appel de la session principale, avec l’acteur et la durée. Les répétitions sans incident se regroupent en une ligne avec un compteur. Cliquez sur un appel pour ses détails.',
+      stepsCut: 'étapes précédentes non affichées',
       error: 'Erreur',
       noMatch: 'Aucun résultat.',
       verification: 'Vérification',

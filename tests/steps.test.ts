@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Active, Step, TraceCall } from '../types'
-import { stepRows, turnSpan } from '../hooks/steps'
+import { isCut, KEEP_STEPS, KEEP_TRACE, stepRows, turnSpan } from '../hooks/steps'
 
 const MODEL = 'claude-opus-5-5'
 const call = (id: string, at: number, extra: Partial<TraceCall> = {}): TraceCall => ({ id, at, who: 'main', tool: 'Bash', what: `run ${id}`, ms: 10, ...extra })
@@ -65,4 +65,15 @@ test('the list covers the turn under way, else the last one', async () => {
   expect(turnSpan({ turn: { startedAt: 5 }, last: { startedAt: 1, wallMs: 2 } } as never)).toEqual({ from: 5 })
   expect(turnSpan({ last: { startedAt: 1, wallMs: 2 } } as never)).toEqual({ from: 1, to: 3 })
   expect(turnSpan({})).toBe(undefined)
+})
+
+test('a full history that starts inside the turn says the list is cut', async () => {
+  const full = Array.from({ length: KEEP_TRACE }, (_, i) => call(`c${i}`, 200 + i))
+  const steps = Array.from({ length: KEEP_STEPS }, (_, i) => ({ id: `t:${i}`, at: 200 + i, ms: 1, model: MODEL }))
+  expect(isCut({ trace: full, steps: [] }, { from: 100 })).toBe(true)
+  expect(isCut({ trace: [], steps }, { from: 100 })).toBe(true)
+  // The oldest kept entry is from before the turn: the turn is whole.
+  expect(isCut({ trace: full, steps }, { from: 201 })).toBe(false)
+  // Not full: nothing fell out.
+  expect(isCut({ trace: full.slice(1), steps: steps.slice(1) }, { from: 100 })).toBe(false)
 })

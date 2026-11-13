@@ -142,6 +142,7 @@ export const zh: Strings = {
       rawCall: '原始调用',
       steps: '本轮步骤',
       helpSteps: '按步骤列出当前这一轮,最新的在前:主会话的每次模型请求和每次调用,以及执行者和耗时。连续的正常重复会合并为一行并计数。点击某次调用可查看详情。',
+      stepsCut: '更早的步骤未显示',
       error: '错误',
       noMatch: '无匹配。',
       verification: '验证',

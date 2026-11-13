@@ -9,7 +9,7 @@ import { bucketName, focusList, liveBuckets, needsYou } from './insights'
 import { learnedItems } from './learn'
 import { droppedLines } from './testreview'
 import { cfg, INIT, liveStatus, liveTurn, PANE, shapeInsights } from './state'
-import { stepRows, turnSpan } from './steps'
+import { isCut, stepRows, turnSpan } from './steps'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const agents = atom({ plugin: 'agentmon-live', key: 'agents' } as const, INIT.agents)
@@ -95,6 +95,7 @@ const STEPS_SENT = 50
 export function toSnapshot(p: SnapshotParts): WebSnapshot {
   const { ins, t } = p
   const span = turnSpan(ins)
+  const rows = span ? stepRows({ trace: p.trace, steps: p.steps, active: p.doing }, span) : []
   const live: WebTurn[] = ins.turn ? [{ startedAt: ins.turn.startedAt, wallMs: p.now - ins.turn.startedAt, buckets: liveBuckets(ins.turn, p.now), isLive: true, ...(ins.turn.prompt === undefined ? {} : { prompt: ins.turn.prompt }) }] : []
   const turns = [...p.turnRing, ...live]
   const buckets = Object.fromEntries([...new Set(turns.flatMap(x => Object.keys(x.buckets)))].map(k => [k, bucketName(k)]))
@@ -109,7 +110,8 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     build: p.build,
     testReview: { files: p.testReview.files, dropped: droppedLines(t, p.testReview), isGreen: p.testReview.isGreen },
     focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: x.key.startsWith('secret:') && x.color === 'red', ...(x.isGlobal ? { scope: t.ins.environment } : {}) }))],
-    steps: (span ? stepRows({ trace: p.trace, steps: p.steps, active: p.doing }, span) : []).slice(0, STEPS_SENT).map(r => ({ ...r, actor: t.actor[r.actor] })),
+    steps: rows.slice(0, STEPS_SENT).map(r => ({ ...r, actor: t.actor[r.actor] })),
+    isStepsCut: rows.length > STEPS_SENT || (span !== undefined && isCut(p, span)),
     usage: {
       ctxPct: p.usage.context.percent,
       ctxTokens: p.usage.context.tokens,
