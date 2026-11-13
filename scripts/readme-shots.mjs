@@ -90,7 +90,7 @@ const snapshot = {
   },
 }
 
-const server = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT], { stdio: 'inherit', env: { ...process.env, KIROCREW_HOME: '/nonexistent' } })
+const server = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT], { stdio: 'inherit', env: { ...process.env, KIROCREW_HOME: '/nonexistent', CODEX_HOME: '/nonexistent' } })
 process.on('exit', () => server.kill())
 await new Promise(done => setTimeout(done, 500))
 await fetch(`${url}state/readme`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(snapshot) })
