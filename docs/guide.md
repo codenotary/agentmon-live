@@ -33,7 +33,7 @@ Languages: English (default), German, French, Spanish, Chinese and Japanese.
 | `/agentmon details` | Shows cut-off texts whole (`d` in the pane) |
 | `/agentmon open` | Opens the web view in your browser (`o` in the pane; see Web view) |
 | `/agentmon learn [dir]` | Learns from this project's past transcripts (or the `.jsonl` files in `dir`) |
-| `/agentmon memory` | Checks the memory and instruction files now and lists what it found |
+| `/agentmon memory` | Checks the memory and instruction files now and lists what it found: paths that no longer exist (absolute, `~/` and project-relative; `/tmp` is skipped), a memory with no `name` or `description`, a `description` that needs quotes, names used twice, `MEMORY.md` out of step, oversized or copied content |
 | `/agentmon bench` | Compares this project's sessions with and without the mod, and the last 7 days |
 | `/agentmon debug` | Prints the path of this session's debug log (see Debug log) |
 | `/agentmon clear` | Resets counters, finished cards, log and the done gate's results; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |

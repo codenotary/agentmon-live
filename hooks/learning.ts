@@ -297,9 +297,13 @@ async function checkMemory($: EngineInterface) {
   }
   const missing = new Map<string, string>()
   for (const [ref, file] of refsOf(files, home)) {
+    // A relative ref is read from the project; one whose top folder is missing there belongs to another repository.
+    const root = ref.startsWith('/') ? '' : `${cwd}/`
+    // An instruction file outside the project (`~/.claude/CLAUDE.md`) means its own paths, not this project's.
+    if (root && !file.startsWith(`${memDir}/`) && !file.startsWith(`${cwd}/`)) continue
     // A ref whose top folder is missing (`/api/config`) is a URL route, not a path.
-    if (!(await $.fs.exists(ref.slice(0, ref.indexOf('/', 1))).catch(() => true))) continue
-    if (!(await $.fs.exists(ref).catch(() => true))) missing.set(ref, file)
+    if (!(await $.fs.exists(root + ref.slice(0, ref.indexOf('/', 1))).catch(() => true))) continue
+    if (!(await $.fs.exists(root + ref).catch(() => true))) missing.set(ref, file)
   }
   const mem = memRules(files, dir, missing)
   // The same findings as last time: nothing to write.
