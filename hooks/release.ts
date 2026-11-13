@@ -43,7 +43,7 @@ export async function build($: EngineInterface): Promise<string> {
 // Where the branch stands against its base, read again every `minutes`; a fetch first only when asked for and the network is allowed.
 // shortcut: polls on a timer, no push; watch .git/refs if a poll proves too slow.
 export async function watchBase($: EngineInterface, cwd: string, minutes: number, fetch: boolean) {
-  await refreshBase($, cwd, fetch && !(await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')))
+  await refreshBase($, cwd, fetch && !(await isQuiet($)))
   $.clock.after(minutes * 60_000, () => watchBase($, cwd, minutes, fetch))
 }
 
@@ -58,10 +58,14 @@ const RELEASES = 'https://api.github.com/repos/codenotary/agentmon-live/releases
 const RELEASE_TTL_MS = 24 * 3_600_000
 const CURRENT_TTL_MS = 3_600_000
 
+export async function isQuiet($: EngineInterface): Promise<boolean> {
+  return Boolean(await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'))
+}
+
 // The latest GitHub release, so Focus can offer the update; cached in the store, silent on any failure.
 export async function checkRelease($: EngineInterface) {
   cfg.release = undefined
-  if (await $.env.get('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')) return
+  if (await isQuiet($)) return
   const now = await $.clock.now()
   const kept = (await $.store.get('release')) as { at?: unknown; version?: unknown; notes?: unknown; installed?: unknown } | undefined
   const isFresh =

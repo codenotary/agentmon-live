@@ -275,7 +275,7 @@ const en = {
   update: 'update',
   changelog: 'changelog',
   feedback: 'feedback',
-  promptFeedback: `Write feedback for the makers of AgentMon Live about one finding or issue from this session. If it is not clear which one, ask me first.\n\nChoose the type: problem, idea, thanks or other. \`text\` takes at most 2000 characters; \`details\` is optional, at most 2000 characters. Leave out code, file paths, prompt text, names and secrets. Check each claim against what this session shows.\n\nThen hand the draft to the tool \`mcp__agentmon-live__feedback\`. Do not send it yourself: I read it in the AgentMon Live pane and send or cancel it there.`,
+  promptFeedback: (max: number) => `Write feedback for the makers of AgentMon Live about one finding or issue from this session. If it is not clear which one, ask me first.\n\nChoose the type: problem, idea, thanks or other. \`text\` takes at most ${max} characters; \`details\` is optional, at most ${max} characters. Leave out code, file paths, prompt text, names and secrets. Check each claim against what this session shows.\n\nThen hand the draft to the tool \`mcp__agentmon-live__feedback\`. Do not send it yourself: I read it in the AgentMon Live pane and send or cancel it there.`,
   feedbackSend: 'send',
   feedbackCancel: 'cancel',
   feedbackIssue: 'open as GitHub issue',

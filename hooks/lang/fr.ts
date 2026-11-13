@@ -268,7 +268,7 @@ export const fr: Strings = {
   update: 'mettre à jour',
   changelog: 'nouveautés',
   feedback: 'avis',
-  promptFeedback: `Rédige un avis pour les auteurs d'AgentMon Live sur un constat ou un problème de cette session. Si ce n'est pas clair lequel, demande-moi d'abord.\n\nChoisis le type : problem, idea, thanks ou other. \`text\` prend au plus 2000 caractères ; \`details\` est facultatif, au plus 2000 caractères. Laisse de côté le code, les chemins de fichiers, le texte des prompts, les noms et les secrets. Vérifie chaque affirmation avec ce que montre cette session.\n\nRemets ensuite le brouillon à l'outil \`mcp__agentmon-live__feedback\`. Ne l'envoie pas toi-même : je le lis dans le panneau AgentMon Live et je l'envoie ou l'annule là.`,
+  promptFeedback: max => `Rédige un avis pour les auteurs d'AgentMon Live sur un constat ou un problème de cette session. Si ce n'est pas clair lequel, demande-moi d'abord.\n\nChoisis le type : problem, idea, thanks ou other. \`text\` prend au plus ${max} caractères ; \`details\` est facultatif, au plus ${max} caractères. Laisse de côté le code, les chemins de fichiers, le texte des prompts, les noms et les secrets. Vérifie chaque affirmation avec ce que montre cette session.\n\nRemets ensuite le brouillon à l'outil \`mcp__agentmon-live__feedback\`. Ne l'envoie pas toi-même : je le lis dans le panneau AgentMon Live et je l'envoie ou l'annule là.`,
   feedbackSend: 'envoyer',
   feedbackCancel: 'annuler',
   feedbackIssue: 'ouvrir comme issue GitHub',

@@ -268,7 +268,7 @@ export const es: Strings = {
   update: 'actualizar',
   changelog: 'novedades',
   feedback: 'opinión',
-  promptFeedback: `Escribe una opinión para los autores de AgentMon Live sobre un hallazgo o problema de esta sesión. Si no está claro cuál, pregúntame primero.\n\nElige el tipo: problem, idea, thanks u other. \`text\` admite como máximo 2000 caracteres; \`details\` es opcional, como máximo 2000 caracteres. Deja fuera código, rutas de archivos, texto de prompts, nombres y secretos. Comprueba cada afirmación con lo que muestra esta sesión.\n\nDespués entrega el borrador a la herramienta \`mcp__agentmon-live__feedback\`. No lo envíes tú: lo leo en el panel de AgentMon Live y allí lo envío o lo cancelo.`,
+  promptFeedback: max => `Escribe una opinión para los autores de AgentMon Live sobre un hallazgo o problema de esta sesión. Si no está claro cuál, pregúntame primero.\n\nElige el tipo: problem, idea, thanks u other. \`text\` admite como máximo ${max} caracteres; \`details\` es opcional, como máximo ${max} caracteres. Deja fuera código, rutas de archivos, texto de prompts, nombres y secretos. Comprueba cada afirmación con lo que muestra esta sesión.\n\nDespués entrega el borrador a la herramienta \`mcp__agentmon-live__feedback\`. No lo envíes tú: lo leo en el panel de AgentMon Live y allí lo envío o lo cancelo.`,
   feedbackSend: 'enviar',
   feedbackCancel: 'cancelar',
   feedbackIssue: 'abrir como issue de GitHub',

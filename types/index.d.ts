@@ -210,6 +210,9 @@ export type LastCall = { tool: string; what: string; who: string; model?: string
 // `isAgentsOpen` lists every running subagent once more than four run; `isClassic`, set by `v`, beats the `layout` option.
 export type Layout = { isHistoryOpen: boolean; isPaneHidden?: boolean; isDetailed: boolean; dismissed?: string[]; mode?: 'radar' | 'flow'; isChangelogOpen?: boolean; isAgentsOpen?: boolean; isClassic?: boolean }
 
+// What Claude handed to the pane for the person to send or cancel; kept in memory only.
+export type FeedbackDraft = { type: string; text: string; details: string }
+
 // One tool call by category and time, for the calls-per-minute rate.
 export type Flow = { cat: string; at: number }
 
@@ -293,6 +296,9 @@ export type WebSnapshot = {
 }
 
 declare module 'claude-code' {
+  interface McpToolInputs {
+    'mcp__agentmon-live__feedback': { type: string; text: string; details?: string }
+  }
   interface PluginState {
     'agentmon-live': {
       main: Main

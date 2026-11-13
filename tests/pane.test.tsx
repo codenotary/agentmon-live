@@ -1,6 +1,7 @@
 import type { TestBody } from 'claude-code/testing'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { issueLink } from '../hooks/feedback'
 import { LANGUAGES } from '../hooks/i18n'
 import { cfg } from '../hooks/state'
 import { settingsWith, withOptions } from './options-helper'
@@ -247,6 +248,7 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
     return { isFilled: true }
   })
 
+  on('session.end', (_, e) => ({ sessionId: e.sessionId }) as never)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
@@ -258,9 +260,11 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
   await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'idea', text: 'Export the flow as a picture.' })
   expect(await ui.find({ type: 'Text', text: /^Export the flow as a picture\.$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Link', text: /GitHub/ })).toBeTruthy()
+  const second = await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Another.' })
+  expect(String(second.result)).toContain('already')
   expect(posts.length).toBe(0)
 
-  await ui.press({ key: 'feedback:send' })
+  await Promise.all([ui.press({ key: 'feedback:send' }), ui.press({ key: 'feedback:send' })])
   expect(posts.map(p => p.url)).toEqual(['http://localhost:8787/feedback'])
   expect(JSON.parse(posts[0]!.body)).toMatchObject({ type: 'idea', text: 'Export the flow as a picture.', app: 'agentmon-live', language: 'en' })
   expect(await ui.find({ type: 'Text', text: /^Export the flow/ })).toBe(undefined)
@@ -270,9 +274,16 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
   await ui.press({ key: 'feedback:cancel' })
   expect(await ui.find({ type: 'Text', text: /^Good pane/ })).toBe(undefined)
   expect(posts.length).toBe(1)
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'other', text: 'Left over.' })
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { sessionId: 's1' } } as never)
+  expect(cfg.feedbackDraft).toBe(undefined)
   await ui.unmount()
 
+  const link = issueLink({ type: 'problem', text: '漢'.repeat(2000), details: '' })
+  expect(link.length).toBeLessThan(6000)
+  expect(link).toContain('Claude+Code')
+
   for (const t of Object.values(LANGUAGES)) {
-    for (const part of ['problem', 'idea', 'thanks', 'other', '2000', 'mcp__agentmon-live__feedback']) expect(t.promptFeedback).toContain(part)
+    for (const part of ['problem', 'idea', 'thanks', 'other', '2000', 'mcp__agentmon-live__feedback']) expect(t.promptFeedback(2000)).toContain(part)
   }
 })

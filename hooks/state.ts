@@ -1,6 +1,6 @@
 import type { AgentStatus } from 'claude-code'
 
-import type { Card, Insights, Leak, Learned, TurnTime, View } from '../types'
+import type { Card, FeedbackDraft, Insights, Leak, Learned, TurnTime, View } from '../types'
 import type { BaseDrift } from './git'
 import { LANGUAGES } from './i18n'
 
@@ -40,7 +40,7 @@ export const VIEWS: View[] = ['git', 'shell', 'mcp']
 const MAX_FINISHED = 60
 
 // Set from the options at session start and at each prompt.
-export const cfg = { webOn: false, t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true, debugLog: true, hidden: [] as string[], refreshMs: 0, isClassic: false, baseMinutes: 5, isFetching: false, sizeLimit: undefined as unknown, sizeExclude: undefined as unknown, sizeExceptions: [] as string[], version: '', claudeCode: '', feedbackUrl: '', feedbackDraft: undefined as { type: string; text: string; details: string } | undefined, release: undefined as { version: string; notes: string } | undefined, base: undefined as BaseDrift | undefined, leaks: [] as Leak[], web: true, webPort: 47311, webOpenOnStart: false, webUrl: undefined as string | undefined, isWebLocked: true, webSecret: undefined as string | undefined, webMark: undefined as string | undefined }
+export const cfg = { webOn: false, t: LANGUAGES.en!, lang: 'en', build: '', advisorModel: 'claude-fable-5-1', advisorMode: 'all', advisorBudget: 30, learning: true, debugLog: true, hidden: [] as string[], refreshMs: 0, isClassic: false, baseMinutes: 5, isFetching: false, sizeLimit: undefined as unknown, sizeExclude: undefined as unknown, sizeExceptions: [] as string[], version: '', claudeCode: '', feedbackUrl: '', feedbackDraft: undefined as FeedbackDraft | undefined, release: undefined as { version: string; notes: string } | undefined, base: undefined as BaseDrift | undefined, leaks: [] as Leak[], web: true, webPort: 47311, webOpenOnStart: false, webUrl: undefined as string | undefined, isWebLocked: true, webSecret: undefined as string | undefined, webMark: undefined as string | undefined }
 
 // Each module declares the atoms it reads or writes itself, as the engine's scan needs; they share these first values.
 export const INIT = {

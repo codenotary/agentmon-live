@@ -3,7 +3,7 @@ import type { EngineInterface, RenderChildren, RenderElement, RenderInput } from
 
 import type { Card, Check, Note } from '../types'
 import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
-import { dropDraft, issueLink, sendDraft } from './feedback'
+import { dropDraft, issueLink, MAX_TEXT, sendDraft } from './feedback'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
@@ -674,7 +674,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       <Button key="pane:hide" plain hotkey="p" onPress={() => setPane($, false)}>{`◂ ${t.paneHide}`}</Button>
       {/* Narrower, the address wraps the header row; `o` still opens it. */}
       {cfg.webOn && cfg.webUrl && cols >= 130 && <Link href={cfg.webUrl}>{cfg.webUrl}</Link>}
-      <Button key="feedback" plain hotkey="b" onPress={() => investigate(t.promptFeedback)}>
+      <Button key="feedback" plain hotkey="b" onPress={() => investigate(t.promptFeedback(MAX_TEXT))}>
         {t.feedback}
       </Button>
       {release && (
@@ -700,7 +700,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           <Text>{draft.text}</Text>
           {draft.details && <Text dimColor>{draft.details}</Text>}
           <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-            {cfg.feedbackUrl && <Button key="feedback:send" plain hotkey="s" onPress={() => sendDraft($)}>{t.feedbackSend}</Button>}
+            {cfg.feedbackUrl && <Button key="feedback:send" plain hotkey="y" onPress={() => sendDraft($)}>{t.feedbackSend}</Button>}
             <Button key="feedback:cancel" plain hotkey="n" onPress={() => dropDraft($)}>{t.feedbackCancel}</Button>
             {(draft.type === 'problem' || draft.type === 'idea') && <Link href={issueLink(draft)}>{t.feedbackIssue}</Link>}
           </Box>

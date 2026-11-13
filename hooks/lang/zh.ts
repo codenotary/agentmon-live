@@ -267,7 +267,7 @@ export const zh: Strings = {
   update: '更新',
   changelog: '更新日志',
   feedback: '反馈',
-  promptFeedback: `就本次会话中的一个发现或问题，给 AgentMon Live 的作者写一条反馈。如果不清楚是哪一个，先问我。\n\n选择类型：problem、idea、thanks 或 other。\`text\` 最多 2000 个字符；\`details\` 可选，最多 2000 个字符。不要包含代码、文件路径、提示词文本、姓名和密钥。对照本次会话显示的内容核实每一个说法。\n\n然后把草稿交给工具 \`mcp__agentmon-live__feedback\`。不要自己发送：我在 AgentMon Live 面板里阅读，并在那里发送或取消。`,
+  promptFeedback: max => `就本次会话中的一个发现或问题，给 AgentMon Live 的作者写一条反馈。如果不清楚是哪一个，先问我。\n\n选择类型：problem、idea、thanks 或 other。\`text\` 最多 ${max} 个字符；\`details\` 可选，最多 ${max} 个字符。不要包含代码、文件路径、提示词文本、姓名和密钥。对照本次会话显示的内容核实每一个说法。\n\n然后把草稿交给工具 \`mcp__agentmon-live__feedback\`。不要自己发送：我在 AgentMon Live 面板里阅读，并在那里发送或取消。`,
   feedbackSend: '发送',
   feedbackCancel: '取消',
   feedbackIssue: '作为 GitHub issue 打开',
