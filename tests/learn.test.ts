@@ -177,18 +177,35 @@ test('memory rules: duplicates, index, stale paths, copied lines', async () => {
     { path: `${dir}/MEMORY.md`, text: '- [A](a.md) — one\n- [Gone](gone.md) — two\n- [Spec](https://x.dev/spec.md)\n- [Sub](notes/x.md)', inDir: true },
     { path: `${dir}/a.md`, text: '---\nname: auth\n---\nUses `/data/old/config.yml` and `~/notes/x.md` and `/tmp/*.log` and `/etc/agentxnet`\n- `/src` - Source code\n- `/docs/` - Docs', inDir: true },
     { path: `${dir}/b.md`, text: '---\nname: auth\n---\nbody', inDir: true },
-    { path: `${dir}/c.md`, text: '---\nname: ci\n---\n```yaml\nname: auth\n```\nSee `/srv2/app/main.ts:42` and `/srv2/app/x.md#setup`', inDir: true },
+    { path: `${dir}/c.md`, text: '---\nname: ci\n---\n```yaml\nname: auth\n```\nSee `/srv2/app/main.ts:42` and `/srv2/app/x.md#setup` and `hooks/gone.ts:7` and `owner/repo` and `https://x.dev/a.md` and `/tmp/run/app.log`', inDir: true },
+    { path: `${dir}/d.md`, text: '---\nname: d\ndescription: build: run make #1\ntype: project\n---\nbody', inDir: true },
+    { path: `${dir}/e.md`, text: '---\nname: e\ndescription: "build: run make #1"\n---\nbody', inDir: true },
     { path: '/h/CLAUDE.md', text: shared.join('\n'), inDir: false },
     { path: '/p/CLAUDE.md', text: `${shared.join('\n')}\n${'y'.repeat(41_000)}`, inDir: false },
   ]
-  const refs = refsOf(files, '/h')
-  expect([...refs.keys()]).toEqual(['/data/old/config.yml', '/h/notes/x.md', '/srv2/app/main.ts', '/srv2/app/x.md'])
-  const found = memRules(files, ['MEMORY.md', 'a.md', 'b.md', 'c.md'], new Map([['/data/old/config.yml', `${dir}/a.md`]]))
+  const refs = refsOf(files, '/h', [dir])
+  expect([...refs.keys()]).toEqual(['/data/old/config.yml', '/h/notes/x.md', '/srv2/app/main.ts', '/srv2/app/x.md', 'hooks/gone.ts'])
+  // A file outside the project that names the same relative path does not take it over, whichever comes last.
+  const both = [{ path: '/p/CLAUDE.md', text: '`hooks/gone.ts`', inDir: false }, { path: '/h/CLAUDE.md', text: '`hooks/gone.ts` `lib/x.ts`', inDir: false }]
+  expect([...refsOf(both, '/h', ['/p'])]).toEqual([['hooks/gone.ts', '/p/CLAUDE.md']])
+  // The cap is per file: a file full of paths leaves the next file's path checked.
+  const many = Array.from({ length: 50 }, (_, i) => `\`/data/f${i}.ts\``).join(' ')
+  expect(refsOf([{ path: '/m/a.md', text: many, inDir: true }, { path: '/m/b.md', text: '`/data/last.ts`', inDir: true }], '/h').has('/data/last.ts')).toBe(true)
+  const found = memRules(files, ['MEMORY.md', 'a.md', 'b.md', 'c.md', 'd.md', 'e.md'], new Map([['/data/old/config.yml', `${dir}/a.md`]]))
   const kinds = found.map(f => `${f.kind}:${f.detail}`)
   expect(kinds).toContain('dupName:auth (a.md, b.md)')
   expect(kinds).toContain('missingIndex:gone.md')
   expect(kinds.filter(k => k.startsWith('missingIndex'))).toEqual(['missingIndex:gone.md'])
   expect(kinds).toContain('notIndexed:b.md')
+  expect(kinds).toContain('noMeta:a.md (description)')
+  expect(kinds.filter(k => k.startsWith('noMeta')).some(k => /[de]\.md/.test(k))).toBe(false)
+  expect(kinds.filter(k => k.startsWith('cutMeta'))).toEqual(['cutMeta:d.md'])
+  expect(memRules([{ path: `${dir}/plain.md`, text: 'a hand-written note', inDir: true }], ['plain.md'], new Map())).toEqual([])
+  // Windows line ends and an empty block are frontmatter too.
+  const odd = [{ path: `${dir}/w.md`, text: '---\r\nname: w\r\n---\r\nbody', inDir: true }, { path: `${dir}/z.md`, text: '---\n---\nbody', inDir: true }]
+  expect(memRules(odd, ['w.md', 'z.md'], new Map()).map(f => `${f.kind}:${f.detail}`)).toEqual(['noMeta:w.md (description)', 'noMeta:z.md (name, description)'])
+  // A path that climbs out of the project is not checked against it.
+  expect([...refsOf([{ path: '/p/CLAUDE.md', text: '`../other/a.ts` `src/../../b.ts` `src/ok.ts`', inDir: false }], '/h', ['/p']).keys()]).toEqual(['src/ok.ts'])
   expect(found.some(f => f.kind === 'staleRef' && f.detail.endsWith('/data/old/config.yml'))).toBe(true)
   expect(found.some(f => f.kind === 'dupLine' && f.detail.endsWith('(3)'))).toBe(true)
   expect(found.some(f => f.kind === 'tooBig' && f.file === '/p/CLAUDE.md')).toBe(true)
@@ -212,7 +229,7 @@ test('an instruction file over 200 lines or full of shouted rules is flagged; me
 
 // What the engine answers; the store is a map the test reads back.
 // `memory` names the files in the project's memory folder.
-function engine(on: On, store: Map<string, unknown>, toasts: string[], transcripts: string[] = [], memory: string[] = [], cap = Infinity) {
+function engine(on: On, store: Map<string, unknown>, toasts: string[], transcripts: string[] = [], memory: string[] = [], cap = Infinity, loaded: string[] = []) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -220,14 +237,13 @@ function engine(on: On, store: Map<string, unknown>, toasts: string[], transcrip
   on('session.usage', () => ({
     value: {
       startedAt: 0,
-      context: { window: 200_000, tokens: 50_000, percent: 25, breakdown: { categories: [], mcpTools: [{ name: 'mcp__docs__read', serverName: 'docs', tokens: 3000, isLoaded: true }], memoryFiles: [] } as never },
+      context: { window: 200_000, tokens: 50_000, percent: 25, breakdown: { categories: [], mcpTools: [{ name: 'mcp__docs__read', serverName: 'docs', tokens: 3000, isLoaded: true }], memoryFiles: loaded.map(path => ({ path, tokens: 0 })) } as never },
       rateLimits: [],
     },
   }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('ui.status', () => ({ value: undefined }))
   on('ui.toast', (_, e) => {
     toasts.push(String(e.text))
     return { value: undefined }
@@ -318,11 +334,29 @@ test('/agentmon learn keeps a session recorded live and adds the new ones', asyn
   expect(saved.sessions.find(s => s.id === 'new')?.tools.Bash?.calls).toBe(1)
 })
 
+test('a relative path is read from the project: gone there it is stale, from another repository or a file outside the project it is left alone', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>()
+  const note = '/h/projects/-p/memory/notes.md'
+  engine(on, store, [], [], ['notes.md'], Infinity, ['/h/CLAUDE.md'])
+  on('fs.read', (_, e) => {
+    if (e.path === note) return { value: '---\nname: notes\ndescription: notes\n---\n`hooks/gone.ts:7` `hooks/here.ts` `other/x.ts`' }
+    if (e.path === '/h/CLAUDE.md') return { value: '`hooks/elsewhere.ts`' }
+    throw new Error('ENOENT')
+  })
+  on('fs.exists', (_, e) => ({ value: ['/p/hooks', '/p/hooks/here.ts'].includes(e.path) }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.advance(1000)
+  await clock.settle()
+  expect(viewOf(store).mem.map(f => `${f.kind}:${f.detail}`)).toEqual(['staleRef:memory/notes.md → hooks/gone.ts'])
+})
+
 test('a memory file shrunk outside Edit and Write is checked again at the turn end', async ($, on) => {
   const clock = mock.clock(on)
   const store = new Map<string, unknown>()
   const note = '/h/projects/-p/memory/notes.md'
-  let text = 'x'.repeat(50_000)
+  const meta = '---\nname: notes\ndescription: notes\n---\n'
+  let text = meta + 'x'.repeat(50_000)
   engine(on, store, [], [], ['notes.md'])
   on('fs.read', (_, e) => {
     if (e.path === note) return { value: text }
@@ -334,7 +368,7 @@ test('a memory file shrunk outside Edit and Write is checked again at the turn e
   await clock.settle()
   expect(viewOf(store).mem.map(f => f.kind)).toEqual(['tooBig'])
   await $.turn.start({ text: 'trim the notes', turnId: 'm1' })
-  text = 'short'
+  text = `${meta}short`
   await $.tool.call({ tool: 'Bash', command: "python3 trim.py notes.md" } as never)
   await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
   await clock.advance(1000)
@@ -364,6 +398,15 @@ test('the same error behind other numbers and paths has one signature', async ()
   // A rejection is the person's call, not an error of the work.
   expect(errSig("The user doesn't want to proceed with this tool use.")).toBe(undefined)
   expect(errSig(' \n ')).toBe(undefined)
+})
+
+test('a failed shell command is keyed by its output, not by its exit line', async () => {
+  expect(errSig('Exit code 255\nfatal: Refusing to create empty bundle.')).toBe('exit 255: fatal: Refusing to create empty bundle.')
+  expect(errSig('Exit code 1\n\nError: port 3000 in use')).toBe(errSig('Exit code 1\nError: port 3001 in use'))
+  expect(errSig('Exit code 1\nno matches found')).not.toBe(errSig('Exit code 1\nfatal: not a git repository'))
+  // No output, no cause to name: a grep with no match and a failed script would read as one error.
+  expect(errSig('Exit code 1')).toBe(undefined)
+  expect(errSig('Exit code 1\n')).toBe(undefined)
 })
 
 test('an error met in 3 sessions suggests a CLAUDE.md note', async () => {
@@ -475,7 +518,6 @@ test('a turn without a usage breakdown is still saved and keeps the MCP figures'
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('ui.status', () => ({ value: undefined }))
   on('env.get', () => ({ value: '/h' }))
   on('fs.list', () => ({ value: [] }))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))

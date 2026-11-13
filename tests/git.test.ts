@@ -23,7 +23,6 @@ function engine(on: On, runs: string[], options: Record<string, unknown> = {}) {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 10000, percent: 1 }, rateLimits: [] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
   on('env.get', () => ({ value: undefined }))
   on('fs.read', (_, e) => {

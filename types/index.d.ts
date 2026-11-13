@@ -56,10 +56,11 @@ export type TurnTime = {
   isNewTask?: boolean
 }
 
-export type SlowCall = { tool: string; what: string; who: string; ms: number; at: number }
+// `label`: the call's short name (`labelOf`), shown before `what`; absent when it says the same, and on records from older versions.
+export type SlowCall = { tool: string; what: string; label?: string; who: string; ms: number; at: number }
 
 // A tool result the main loop read, by its estimated tokens (characters / 4).
-export type BigResult = { tool: string; what: string; tokens: number; at: number }
+export type BigResult = { tool: string; what: string; label?: string; tokens: number; at: number }
 
 // One tool's calls in one session; `big` counts results of 10k+ tokens, `lastErr` the last error text.
 export type ToolTally = { calls: number; errors: number; big: number; lastErr?: string }
@@ -114,7 +115,7 @@ export type PromptBench = { edit: boolean; verified: boolean; churn: boolean; ms
 export type BenchRow = Bench & { id: string; at: number; turns: number; calls: number; errors: number; compactions: number }
 
 // A memory-file problem found by the local rules.
-export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine' | 'longFile' | 'emphasis'; file: string; detail: string }
+export type MemFinding = { kind: 'dupName' | 'missingIndex' | 'notIndexed' | 'staleRef' | 'tooBig' | 'dupLine' | 'longFile' | 'emphasis' | 'noMeta' | 'cutMeta'; file: string; detail: string }
 
 // The project's sessions as the store keeps them, last 30; `current` is this session's id.
 export type Learned = { current: string; sessions: SessionRecord[]; mem: MemFinding[]; bench: BenchRow[] }
@@ -184,11 +185,11 @@ export type Note = { kind: 'done' | 'check'; ok?: boolean; text: string; fix?: s
 export type View = 'git' | 'shell' | 'mcp'
 
 // `result` is `running` from the moment the call starts until it reports back; `error` holds its error text.
-export type Call = { id?: string; at: number; who: string; view: View; what: string; result: string; error?: string; agentId?: string }
+export type Call = { id?: string; at: number; who: string; view: View; what: string; label?: string; result: string; error?: string; agentId?: string }
 
 // Every tool call of the session, for the web view's waterfall; `ms` once it reported back.
 // `to` is a SendMessage's recipient, as the call names it.
-export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; ms?: number; isFailed?: boolean; error?: string; agentId?: string; to?: string }
+export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; label?: string; ms?: number; isFailed?: boolean; isDenied?: boolean; error?: string; agentId?: string; to?: string }
 
 export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
@@ -201,7 +202,7 @@ export type Check = { kind: CheckKind; command: string; who: string; at: number;
 export type Files = { read: string[]; edited: string[]; editedAt: number; editedTimes?: Record<string, number> }
 
 // `model` is the one the caller ran on, when known.
-export type LastCall = { tool: string; what: string; who: string; model?: string; at: number }
+export type LastCall = { tool: string; what: string; label?: string; who: string; model?: string; at: number }
 
 // What the pane shows folded or in full.
 // `dismissed` holds the keys of Needs attention items the person put away.
@@ -236,7 +237,7 @@ export type Advisor = {
 }
 
 // A tool call that has started and not yet finished; `isAsking` while it waits for the person's approval.
-export type Active = { id: string; who: string; model?: string; tool: string; what: string; startedAt: number; isAsking?: boolean; agentId?: string }
+export type Active = { id: string; who: string; model?: string; tool: string; what: string; label?: string; startedAt: number; isAsking?: boolean; agentId?: string }
 
 // The session's own task list (TaskCreate/TaskUpdate or TodoWrite), as the calls left it.
 // `at` is when a call last changed it.
@@ -256,7 +257,16 @@ export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: n
 // One turn on the web view's clock; `isLive` while it still runs.
 export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean; prompt?: string; answer?: string }
 
-export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean }
+export type Actor = 'you' | 'model' | 'shell' | 'files' | 'web' | 'browser' | 'agents' | 'skills' | 'hooks' | 'mcp'
+// One model request of the main loop; `ms` is set once its answer is in.
+export type Step = { id: string; at: number; ms?: number; model: string }
+export type StepState = 'running' | 'asking' | 'ok' | 'failed' | 'blocked'
+// A row of the turn's step list: a call or a model request, `id` the call's or the step's. `count` is above 1 for folded repeats, `at` and `ms` then span them all; a running row has `ms` 0.
+export type StepRow = { id: string; kind: 'call' | 'step'; state: StepState; actor: Actor; label: string; what?: string; at: number; ms: number; count: number }
+// The row as the page gets it, with the actor's name in the session's language.
+export type WebStep = Omit<StepRow, 'actor'> & { actor: string }
+// `scope`: the word for a finding about the machine or account, not this session; absent on a session finding.
+export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean; scope?: string }
 
 // What a session posts to the web view's server. The page draws from this alone; change `v` when a field changes meaning.
 export type WebSnapshot = {
@@ -273,6 +283,10 @@ export type WebSnapshot = {
   // Absent from a session of an older version, which cannot take the page's request.
   isPaneOpen?: boolean
   focus: WebFocus[]
+  // Absent on a session from an older version or another reader.
+  steps?: WebStep[]
+  // The list starts partway: older steps of the turn fell out of the history, or the list was cut for sending.
+  isStepsCut?: boolean
   // `credits` only from a Kiro Crew chat on kiro-cli, which reports them in place of tokens and cost.
   usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number; credits?: number }
   turns: WebTurn[]
@@ -310,6 +324,7 @@ declare module 'claude-code' {
       calls: Call[]
       testReview: TestReview
       trace: TraceCall[]
+      steps: Step[]
       view: View
       active: Active[]
       checks: Check[]

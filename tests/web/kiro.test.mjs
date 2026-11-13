@@ -34,7 +34,7 @@ test('a crew log folds into a snapshot with every required key', () => {
   const { snapshot: s, isClosed, isLive } = foldCrewLog(entries, NOW)
   assert.equal(isClosed, true)
   assert.equal(isLive, false)
-  const optional = new Set(['isPaneOpen', 'testReview', 'gate'])
+  const optional = new Set(['isPaneOpen', 'testReview', 'gate', 'steps', 'isStepsCut'])
   assert.deepEqual(SHAPE.top.filter(k => !(k in s) && !optional.has(k)), [])
   assert.deepEqual(Object.keys(s).filter(k => !SHAPE.top.includes(k)), [])
   assert.deepEqual([s.v, s.session.id, s.session.cwd, s.build, s.main.model], [1, SID, '/home/dev/github/demo', 'Kiro Crew · kirocrew', 'fable'])
@@ -99,7 +99,7 @@ test('closed chats, long idle ones and a missing folder list nothing; a half-wri
   assert.deepEqual(readKiro(dir, Date.now(), 60_000), [])
   utimesSync(file, new Date(Date.now() - 120_000), new Date(Date.now() - 120_000))
   // An idle chat's lines are let go, and a log already old is not read.
-  assert.deepEqual([...cache.values()], [{ size: readFileSync(file).length, isDone: true, agents: new Map() }])
+  assert.deepEqual([...cache.values()], [{ size: readFileSync(file).length, isDone: true, kept: new Map() }])
   // A chat whose folder is gone is forgotten.
   cache.set('gone/log.jsonl', {})
   readKiro(dir, Date.now(), 60_000, cache)
@@ -155,7 +155,7 @@ test('the server lists a live chat, leaves a posted session of the same id alone
   const WEB = join(HERE, '../../server/web.mjs')
   const token = 'c'.repeat(64)
   writeFileSync(join(dir, 'web.token'), token)
-  const env = { ...process.env, KIROCREW_HOME: dir, AGENTMON_KIRO_FILE: join(dir, 'kiro.json'), AGENTMON_KIRO_POLL_MS: '50', AGENTMON_WEB_TOKEN_FILE: join(dir, 'web.token') }
+  const env = { ...process.env, KIROCREW_HOME: dir, CODEX_HOME: dir, AGENTMON_KIRO_FILE: join(dir, 'kiro.json'), AGENTMON_KIRO_POLL_MS: '50', AGENTMON_WEB_TOKEN_FILE: join(dir, 'web.token') }
   children.push(spawn(process.execPath, [WEB, 'serve', String(port)], { env, stdio: 'ignore' }))
   const health = p => new Promise(resolve => {
     const req = request({ host: '127.0.0.1', port: p, path: '/health' }, res => {
@@ -491,7 +491,7 @@ test('a closed chat a tab asks for is listed while the ask holds, and only to th
   const port = 47472
   const token = 'd'.repeat(64)
   writeFileSync(join(dir, 'web.token'), token)
-  const env = { ...process.env, KIROCREW_HOME: dir, AGENTMON_KIRO_FILE: join(dir, 'kiro.json'), AGENTMON_KIRO_POLL_MS: '50', AGENTMON_WEB_TOKEN_FILE: join(dir, 'web.token') }
+  const env = { ...process.env, KIROCREW_HOME: dir, CODEX_HOME: dir, AGENTMON_KIRO_FILE: join(dir, 'kiro.json'), AGENTMON_KIRO_POLL_MS: '50', AGENTMON_WEB_TOKEN_FILE: join(dir, 'web.token') }
   children.push(spawn(process.execPath, [join(HERE, '../../server/web.mjs'), 'serve', String(port)], { env, stdio: 'ignore' }))
   const ask = pass => new Promise(resolve => {
     const req = request({ host: '127.0.0.1', port, path: `/kiro/${entries[0].slot}`, method: 'POST', headers: { origin: `http://127.0.0.1:${port}`, 'x-agentmon-pass': pass } }, res => res.resume().on('end', () => resolve(res.statusCode)))

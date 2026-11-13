@@ -2,11 +2,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderChildren, RenderElement, RenderInput } from 'claude-code'
 
 import type { Card, Check, Note } from '../types'
-import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
+import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, callText, smoothBar, spinner, width } from './format'
 import { dropDraft, issueLink, MAX_TEXT, sendDraft, sender, toggleNamed } from './feedback'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
+import { stepRows, turnSpan } from './steps'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, needsYou, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
@@ -31,6 +32,8 @@ const layout = atom({ plugin: 'agentmon-live', key: 'layout' } as const, INIT.la
 const insights = atom({ plugin: 'agentmon-live', key: 'insights' } as const, INIT.insights)
 const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.learned)
 const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const, INIT.testReview)
+const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
+const steps = atom({ plugin: 'agentmon-live', key: 'steps' } as const, INIT.steps)
 // Insights shown in Focus with details off; the rest wait for `d`.
 const FOCUS_SHOWN = 3
 
@@ -41,6 +44,10 @@ const MAX_CARDS = 4
 const MAX_CARDS_CLASSIC = 6
 // Sections calm leaves out unless they need the person; `v` (classic) shows them all.
 const CALM_HIDDEN = ['insights', 'skills', 'usage']
+// Room for the widest actor name in any language (`エージェント`, 12 cells) and a gap.
+const ACTOR_COLS = 13
+const STEP_GLYPH = { running: '', asking: '⏸', ok: '✓', failed: '✗', blocked: '⊘' }
+const STEP_COLOR = { running: 'cyan', asking: 'yellow', ok: undefined, failed: 'red', blocked: 'red' }
 
 // The last frame drawn, kept for `refreshRate`, and what it was drawn for.
 let frame: { key: string; tree: RenderElement } | undefined
@@ -86,7 +93,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
   const { Box, Button, Link, Text } = $.ui.resolve(e)
-  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt, reviewed] = await Promise.all([
+  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt, reviewed, traced, stepped] = await Promise.all([
     read($, main),
     read($, tools),
     read($, agents),
@@ -110,6 +117,8 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, insights),
     read($, learned),
     read($, testReview),
+    read($, trace),
+    read($, steps),
   ])
   const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
@@ -125,6 +134,8 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Only categories the session used; a column of zeros says nothing.
   const rows = [...CATEGORIES, 'other' as const].map(c => [c, counts[c] ?? 0] as const).filter(([, n]) => n > 0)
   const whatRoom = Math.max(10, Math.min(40, cols - 50))
+  // An approval with a label shows the command beside it: the two share the room one of them had.
+  const halfRoom = Math.floor(whatRoom / 2)
   const shown = recent.filter(c => c.view === tab).slice(-5)
   const perMin = (cat: string) => flows.filter(f => f.cat === cat && now - f.at < 60_000).length
   // The person's switch (`v`) beats the `layout` option.
@@ -157,11 +168,11 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const checkLabel = (c: Check) => (c.result === 'running' ? t.status.running : c.result === 'unknown' ? t.unknown : c.result === 'ok' ? t.ok : t.failed)
 
   // Each item: its row, a key to put it away by (none: it cannot be dismissed), and a prompt to look into it.
-  type Item = { key?: string; row: RenderChildren; prompt?: string }
+  type Item = { key?: string; row: RenderChildren; prompt?: string; isGlobal?: boolean }
   const errorOf = (c: Check) => recent.find(x => x.at === c.at && x.error)?.error
   // Approvals and waiting subagents cannot be put away here: they leave when answered.
   const items: Item[] = needsYou({ doing, streak: st.streak ?? 0, checks: checked, agents: list, turnAt: m.turnAt }).map((u): Item => {
-    if (u.kind === 'ask') return { row: <Text>{chip(t.approval, 'yellow')} <Text bold>{u.call.tool}</Text> {cut(u.call.what, whatRoom)}</Text> }
+    if (u.kind === 'ask') return { row: <Text>{chip(t.approval, 'yellow')} <Text bold>{u.call.tool}</Text> {cut(callText(u.call), u.call.label ? halfRoom : whatRoom)}{u.call.label ? <Text dimColor> {cut(u.call.what, whatRoom - halfRoom)}</Text> : null}</Text> }
     if (u.kind === 'streak') return { key: u.key, row: <Text>{chip(t.status.error, 'red')} {t.errorsInRow(u.n)}</Text>, prompt: t.investigateErrors(u.n) }
     if (u.kind === 'check') {
       const c = u.check
@@ -203,6 +214,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       </Text>
     ),
     prompt: x.prompt,
+    isGlobal: x.isGlobal,
   }))
   const moreInsights = found.length - insightItems.length
   const shownItems = [...urgent, ...insightItems]
@@ -215,7 +227,9 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
     const box = await $.prompt.read()
     await (box.text.trim() ? $.prompt.fill({ text: `\n\n${prompt}`, mode: 'append' }) : $.prompt.fill({ text: prompt, mode: 'replace' }))
   }
-  const attention = shownItems.map((x, i) => (
+  const firstGlobal = shownItems.findIndex(x => x.isGlobal)
+  const attention = shownItems.flatMap((x, i) => [
+    ...(i === firstGlobal ? [<Text dimColor>{t.ins.environment}</Text>] : []),
     <Box gap={1}>
       {x.row}
       {x.prompt && (
@@ -223,8 +237,8 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           {t.investigate}
         </Button>
       )}
-    </Box>
-  ))
+    </Box>,
+  ])
 
   // A subagent card is 30 columns and six rows, so three sit side by side in a narrow pane.
   const CARD = 30
@@ -272,19 +286,22 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Calm: Running now always keeps three rows, so the sections below do not jump with each call or turn.
   const padRows = isClassic ? 0 : Math.max(0, 3 - callRows)
 
+  const lastText = last ? callText(last) : ''
   const runningNow = (
     <Box flexDirection="column">
-      {doing.slice(-3).map(a => (
+      {doing.slice(-3).flatMap(a => [
         <Text wrap={rowWrap}>
           <Text color="cyan">{spin(now)} </Text>
           <Text bold>{fit(a.tool, 10)}</Text>
-          {fit(cut(a.what, whatRoom), whatRoom + 1)}
+          {fit(cut(callText(a), whatRoom), whatRoom + 1)}
           <Text dimColor>{a.who.slice(0, 16)}{a.model ? ` · ${modelName(a.model)}` : ''} · {secs(a.startedAt)}</Text>
-        </Text>
-      ))}
+        </Text>,
+        // On its own row: beside the label a long command pushed who runs it and for how long off the row.
+        ...(lay.isDetailed && a.label ? [<Text dimColor wrap={rowWrap}>{'  '}{a.what}</Text>] : []),
+      ])}
       {doing.length === 0 && last && (
         <Text dimColor wrap={rowWrap}>
-          {t.lastCall} · {last.tool}{last.what ? ` ${cut(last.what, whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
+          {t.lastCall} · {last.tool}{lastText ? ` ${cut(lastText, whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
         </Text>
       )}
       {Array.from({ length: padRows }, () => (
@@ -327,6 +344,23 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
             {'  '}{k.status === 'completed' ? '✓' : k.status === 'in_progress' ? '▸' : '·'} {k.subject}
           </Text>
         ))}
+    </Box>
+  )
+
+  // The turn step by step, newest first: who acted, on what, for how long.
+  const span = turnSpan(ins)
+  const stepList = span ? stepRows({ trace: traced, steps: stepped, active: doing }, span) : []
+  const stepsBox = stepList.length > 0 && (
+    <Box flexDirection="column">
+      <Text>{title(t.steps, 'cyan')}</Text>
+      {stepList.slice(0, lay.isDetailed ? 30 : isClassic ? 10 : 5).map(r => (
+        <Text wrap={rowWrap}>
+          <Text color={STEP_COLOR[r.state]} dimColor={r.state === 'ok'}>{r.state === 'running' ? spin(now) : STEP_GLYPH[r.state]} </Text>
+          <Text dimColor>{fit(t.actor[r.actor], ACTOR_COLS)}</Text>
+          {fit(cut(r.label, whatRoom), whatRoom + 1)}
+          <Text dimColor>{r.count > 1 ? `×${r.count} ` : ''}{r.state === 'running' || r.state === 'asking' ? secs(r.at) : dur(r.ms)}</Text>
+        </Text>
+      ))}
     </Box>
   )
 
@@ -587,7 +621,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         <Box gap={1}>
           <Text>
             <Text color={s.ms >= 60_000 ? 'yellow' : undefined}>{dur(s.ms).padStart(7)}</Text> <Text bold>{fit(s.tool, 10)}</Text>
-            {fit(cut(s.what, whatRoom), whatRoom + 1)}
+            {fit(cut(callText(s), whatRoom), whatRoom + 1)}
             {/* A narrow pane keeps room for investigate over who ran the call. */}
             {isWide && <Text dimColor>{s.who.slice(0, 16)}</Text>}
           </Text>
@@ -606,7 +640,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       )}
       {ins.big.slice(0, lay.isDetailed ? 6 : 2).map(b => (
         <Text dimColor>
-          {'  '}≈{kilo(b.tokens).padStart(6)} {b.tool} {cut(b.what, whatRoom)}
+          {'  '}≈{kilo(b.tokens).padStart(6)} {b.tool} {cut(callText(b), whatRoom)}
         </Text>
       ))}
       {lay.isDetailed && ins.breakdown && ins.breakdown.length > 0 && (
@@ -638,6 +672,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const sections = rank(
     [
       { key: 'tasks', node: taskBox, isUrgent: false, at: latest(...planned.map(k => k.at ?? 0)) },
+      { key: 'steps', node: stepsBox, isUrgent: false, at: stepList[0]?.at ?? 0 },
       { key: 'insights', node: insightBox, isUrgent: false, at: ins.turn ? now : ins.last ? ins.last.startedAt + ins.last.wallMs : 0 },
       { key: 'skills', node: skillBox, isUrgent: false, at: latest(...loaded.map(s => s.at)) },
       { key: 'advisor', node: advisorBox, isUrgent: !!verdict && !verdict.ok && !verdict.isSent, at: verdict?.at ?? 0 },

@@ -6,14 +6,14 @@
 
 <p align="center"><b>See what your AI agents are really doing.</b></p>
 
-<p align="center">Watch Claude Code and its subagents work, live in your browser or beside the chat. See what it costs, how close you are to your limits, and when it needs you. AgentMon also checks Claude's work before it says "done". <a href="#kiro-crew">Kiro Crew</a> chats show in the same page, on any harness.</p>
+<p align="center">Watch Claude Code and its subagents work, live in your browser or beside the chat. See what it costs, how close you are to your limits, and when it needs you. AgentMon also checks Claude's work before it says "done". <a href="#kiro-crew">Kiro Crew</a> and <a href="#codex">Codex</a> chats show in the same page.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcodenotary%2Fagentmon-live%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/codenotary/agentmon-live" alt="License"></a>
 </p>
 
-<p align="center"><a href="#install">Install</a> · <a href="#kiro-crew">Kiro Crew</a> · <a href="#why-you-want-it">Why you want it</a> · <a href="#the-pane">The pane</a> · <a href="#the-web-view">The web view</a> · <a href="#cost-and-privacy">Cost and privacy</a> · <a href="#make-it-yours">Make it yours</a> · <a href="#more">More</a></p>
+<p align="center"><a href="#install">Install</a> · <a href="#kiro-crew">Kiro Crew</a> · <a href="#codex">Codex</a> · <a href="#why-you-want-it">Why you want it</a> · <a href="#the-pane">The pane</a> · <a href="#the-web-view">The web view</a> · <a href="#cost-and-privacy">Cost and privacy</a> · <a href="#make-it-yours">Make it yours</a> · <a href="#more">More</a></p>
 
 **Press `o` and your session opens in the browser.** See who started whom, what each agent does right now, and where the money goes. [See all of it](#the-web-view).
 
@@ -85,6 +85,31 @@ The [guide](docs/guide.md#web-view) has the rest, including a registry install f
 
 </details>
 
+### Codex
+
+The web view lists every [Codex](https://developers.openai.com/codex) chat on the machine beside your Claude Code sessions: the CLI, `codex exec` and the IDE extension. It reads the session files Codex writes, so this needs nothing installed in Codex: open the web view and the chats are there.
+
+<details>
+<summary>Start the web view with Codex: install AgentMon as a Codex plugin</summary>
+
+With no Claude Code session open, nothing starts the web view's server. As a Codex plugin, AgentMon starts it with each Codex session. It needs `node`, on macOS or Linux.
+
+```sh
+codex plugin marketplace add codenotary/agentmon-live
+codex plugin add agentmon-live@agentmon-live
+```
+
+Codex runs a plugin's hook only after you trust it: open `/hooks` in Codex and trust AgentMon Live's `SessionStart` hook. It is one line in [`codex/hooks.json`](codex/hooks.json) that starts the web view's server. Then open `http://127.0.0.1:47311/`.
+
+- **What you see:** turns with their time split, tool calls with duration and result, files read and edited, prompts and answers, tokens, the context gauge and your 5-hour and weekly limits.
+- **Verification:** the last test, lint, typecheck and build command of the chat, each ok, failed or unknown.
+- **What stays empty:** approvals, subagent cards, cost in dollars, the done gate and learning. The pane is part of Claude Code.
+- **To remove it:** `codex plugin remove agentmon-live@agentmon-live`.
+
+The [guide](docs/guide.md#web-view) has the rest.
+
+</details>
+
 ### Standalone
 
 <details>
@@ -140,7 +165,7 @@ The agent flow shows who started whom, when each subagent handed back, the messa
 
 ![Agent flow: the main session starts six subagents, one reports failing tests, and two still run](docs/web/flow.png)
 
-The waterfall shows every call in that time, nested under the agent that made it. Beside it are what needs you, with buttons for failures, waiting, context and memory, and what runs now, and below it where each turn's time went.
+The waterfall shows every call in that time, nested under the agent that made it. A call goes by a short name, such as the description Claude gave a shell command or a file's last two path parts; the raw command is in the tooltip and the call's details. Beside it are what needs you, with buttons for failures, waiting, context and memory, what runs now and the turn step by step, and below it where each turn's time went.
 
 ![Turn waterfall, Events, Running now and where each turn went](docs/web/overview.png)
 

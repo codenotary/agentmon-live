@@ -12,14 +12,16 @@ import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { FEEDBACK_TOOL, holdDraft, loadFeedback, registerFeedback } from './feedback'
 import { build, checkRelease, refreshBase, watchBase } from './release'
+import { category, labelOf } from './label'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
-import { brief, describe, failLine, findChecks, gitCommand, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
+import { brief, describe, failLine, findChecks, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, fileOf, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawBand, drawPane } from './render'
+import { KEEP_STEPS, KEEP_TRACE } from './steps'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadLeaks, loadOptions } from './options'
 import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
@@ -35,7 +37,7 @@ const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
 const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
-const KEEP_TRACE = 500
+const steps = atom({ plugin: 'agentmon-live', key: 'steps' } as const, INIT.steps)
 const TRACE_TEXT = 300
 const AGENT_PROMPT = 500
 // Enough for the answer's gist in the web view's log; 50 turns of it keep the snapshot small.
@@ -62,7 +64,6 @@ const BIG_MIN_TOKENS = 2000
 const KEEP_AREAS = 50
 
 const CLEAR_ARGS = Object.values(LANGUAGES).map(l => l.argClear)
-let statusQueued = false
 let rateQueued = false
 let isTicking = false
 let isPulsing = false
@@ -85,21 +86,6 @@ function editedFiles(f: Files, path: string, at: number): Files {
   return { ...f, edited, editedAt: at, editedTimes: Object.fromEntries(edited.flatMap(p => (times[p] === undefined ? [] : [[p, times[p]]]))) }
 }
 
-function category(tool: string, call: object): Category {
-  if (tool === 'Bash' && gitCommand(String((call as { command?: unknown }).command ?? ''))) return 'git'
-  if (/^(Read|NotebookRead)$/.test(tool)) return 'read'
-  if (/^(Grep|Glob|LSP|ToolSearch)$/.test(tool)) return 'search'
-  if (/^Web(Fetch|Search)$|fetch_and_index/.test(tool)) return 'web'
-  if (/^(Bash|Monitor|TaskStop)$/.test(tool)) return 'shell'
-  if (EDIT_TOOLS.has(tool)) return 'edit'
-  if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
-  if (/^Skill$/.test(tool)) return 'skills'
-  if (/playwright|browser|chrome/i.test(tool)) return 'browser'
-  if (/computer/i.test(tool)) return 'computer'
-  if (/^mcp__/.test(tool)) return 'mcp'
-  return 'other'
-}
-
 // Which detail tab lists a call, if any. MCP wins over the category, so a browser MCP tool shows there too.
 function viewOf(tool: string, cat: Category): View | undefined {
   if (cat === 'git') return 'git'
@@ -111,13 +97,6 @@ function viewOf(tool: string, cat: Category): View | undefined {
 async function addLog($: EngineInterface, line: Omit<LogLine, 'at'>) {
   const at = await $.clock.now()
   await update($, log, list => [...list, { ...line, at }].slice(-50))
-}
-
-async function refreshStatus($: EngineInterface) {
-  const [m, counts, list, adv] = await Promise.all([read($, main), read($, tools), read($, agents), read($, advisor)])
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
-  const running = list.filter(isLive).length
-  $.ui.status(cfg.t.statusLine(m.effort || '?', running, list.length, listening(adv.isOn), total, counts.git ?? 0))
 }
 
 // The spinner and elapsed seconds under Running now move on their own: redraw while a call or a subagent runs, twice a second in classic, where the seconds show.
@@ -154,16 +133,6 @@ function pulse($: EngineInterface) {
       if (doing.length > 0 || list.some(a => a.status === 'running')) pulse($)
     }),
   )
-}
-
-// Tool calls come in bursts; redraw the status line at most twice a second.
-function queueStatus($: EngineInterface) {
-  if (statusQueued) return
-  statusQueued = true
-  $.clock.after(500, async () => {
-    statusQueued = false
-    await refreshStatus($)
-  })
 }
 
 // The session's task list as its own calls change it; `deleted` removes a task.
@@ -351,12 +320,11 @@ export const register: Register = on => {
       update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
     if (!(await read($, layout)).isPaneHidden) void $.ui.open({ id: PANE, title: 'AgentMon Live' })
-    // Reading the build and the status line need not hold up the session.
+    // Reading the build need not hold up the session.
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
       await loadFeedback($)
       await registerFeedback($).catch(() => undefined)
-      await refreshStatus($)
       // The network need not hold up learning.
       void checkRelease($).catch(() => undefined)
       if (cfg.baseMinutes > 0 && !isBaseWatched) {
@@ -406,7 +374,6 @@ export const register: Register = on => {
     const arg = e.args.trim()
     if (arg === t.argAdvisor) {
       const a = await update($, advisor, v => ({ ...v, isOn: !v.isOn }))
-      await refreshStatus($)
       return { text: t.advisorToggled(a.isOn) }
     }
     if (arg === t.argCheck || arg === 'check') {
@@ -450,6 +417,7 @@ export const register: Register = on => {
         update($, stats, () => ({ errors: {}, compactions: 0, streak: 0 })),
         update($, calls, () => []),
         update($, trace, () => []),
+        update($, steps, () => []),
         update($, checks, () => []),
         update($, files, () => ({ read: [], edited: [], editedAt: 0 })),
         update($, lastCall, () => null),
@@ -462,7 +430,6 @@ export const register: Register = on => {
       resetTurn(turn, [])
       await update($, testReview, () => INIT.testReview)
       await update($, advisor, a => ({ ...a, notes: [], epoch: (a.epoch ?? 0) + 1, state: 'idle' as const }))
-      await refreshStatus($)
       return { text: t.cleared }
     }
     await setPane($, true)
@@ -545,25 +512,32 @@ export const register: Register = on => {
           list.map(a => (a.id === id ? { ...a, model: e.model, effort: effort || a.effort } : a)),
         )
       }
-      await refreshStatus($)
     }
     const isMain = e.agentId === undefined
     const agentId = e.agentId
     const stepAt = await $.clock.now()
+    const stepId = `${e.turnId}:${e.index}`
     if (isMain) {
       book(clk, stepAt)
       clk.stepping = true
       clk.steps += 1
+      // Off the stream's path, like the bookkeeping below.
+      $.clock.after(0, () => update($, steps, all => [...all, { id: stepId, at: stepAt, model: e.model }].slice(-KEEP_STEPS)))
     } else {
       await update($, agents, list => list.map(a => (a.id === agentId ? { ...a, lastAt: stepAt } : a)))
     }
     let r: Awaited<ReturnType<typeof next>['result']> | undefined
+    let isAnswered = false
     try {
       r = yield* next(e)
+      isAnswered = true
     } finally {
       if (isMain) {
-        book(clk, await $.clock.now())
+        const end = await $.clock.now()
+        book(clk, end)
         clk.stepping = false
+        // A request that failed or was cut off is no step of the turn: it leaves the list.
+        $.clock.after(0, () => update($, steps, all => (isAnswered ? all.map(s => (s.id === stepId ? { ...s, ms: end - stepAt } : s)) : all.filter(s => s.id !== stepId))))
       }
     }
     // What the request was answered over is the context as it stands.
@@ -602,6 +576,9 @@ export const register: Register = on => {
     const rawTo = e.tool === 'SendMessage' ? (e as { to?: unknown }).to : undefined
     const to = typeof rawTo === 'string' && rawTo ? mask(rawTo).slice(0, NAME_TEXT) : undefined
     const what = to === undefined ? describe(e.tool, e) : `→ ${to}`
+    const name = labelOf(e.tool, e, t)
+    // Only when it says something, and something else: a record without a label shows `what`.
+    const label = name && name !== what ? { label: name } : {}
     const callId = e.tool_use_id ?? `call-${++callCount}`
     const [list, m, startedAt] = await Promise.all([read($, agents), read($, main), $.clock.now()])
     const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)
@@ -640,22 +617,21 @@ export const register: Register = on => {
     const scopeDir = scopes.at(-1) && relPath(scopes.at(-1)!.dir, cwd)
     if (cat === 'git') isGitRun = true
     // Listed as running before it starts: an approval asked at once must find its row.
-    await update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, startedAt, ...(id === undefined ? {} : { agentId: id }) }])
+    await update($, active, all => [...all, { id: callId, who, model, tool: e.tool, what, ...label, startedAt, ...(id === undefined ? {} : { agentId: id }) }])
     tick($)
     pulse($)
     // The other rows are written as it starts, so the detail tabs and the checks show it while it is under way; the call does not wait for them.
     const recorded = Promise.all([
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
-      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
-      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
+      tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, ...label, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
+      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...label, ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
           ...found.map(f => ({ ...greenOf(all, f.kind), kind: f.kind, command: mask(f.part).slice(0, 200), who, at: startedAt, result: 'running' as const, ...(f.kind === 'test' && scopeDir ? { dir: scopeDir } : {}) })),
         ]),
     ]).catch(error => void debug($, 'hook.fail', { event: 'tool.call', message: mask(String(error)) }))
-    queueStatus($)
 
     // The file-size guide needs the size before the first edit of a file.
     const sized = EDIT_TOOLS.has(e.tool) && watched(pathOf(e), cwd) !== undefined ? pathOf(e) : undefined
@@ -775,10 +751,10 @@ export const register: Register = on => {
             streak: isMain ? (r.isError ? (v.streak ?? 0) + 1 : 0) : v.streak,
           })),
         failed && e.agentId !== undefined && update($, agents, all => all.map(a => (a.id === e.agentId ? { ...a, errors: (a.errors ?? 0) + 1 } : a))),
-        update($, lastCall, () => ({ tool: e.tool, what, who, model, at })),
+        update($, lastCall, () => ({ tool: e.tool, what, ...label, who, model, at })),
         update($, flow, all => [...all, { cat, at }].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
-        update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}) } : c))),
+        update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}), ...(r.deny === undefined ? {} : { isDenied: true }) } : c))),
         found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: isBackground ? ('running' as const) : resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
         !failed && e.agentId === undefined && trackTasks($, e, r.result),
         !failed && sized && recordSize($, sized),
@@ -802,8 +778,8 @@ export const register: Register = on => {
             slow:
               wasAsked || r.deny !== undefined || ms < SLOW_MIN_MS
                 ? v.slow
-                : [...v.slow, { tool: e.tool, what, who, ms, at }].sort((a, b) => b.ms - a.ms).slice(0, 8),
-            big: resultTokens < BIG_MIN_TOKENS ? v.big : [...v.big, { tool: e.tool, what, tokens: resultTokens, at }].sort((a, b) => b.tokens - a.tokens).slice(0, 6),
+                : [...v.slow, { tool: e.tool, what, ...label, who, ms, at }].sort((a, b) => b.ms - a.ms).slice(0, 8),
+            big: resultTokens < BIG_MIN_TOKENS ? v.big : [...v.big, { tool: e.tool, what, ...label, tokens: resultTokens, at }].sort((a, b) => b.tokens - a.tokens).slice(0, 6),
             reads: touched && cat === 'read' && e.agentId === undefined ? bump(v.reads, touched) : v.reads,
             edits: touched && cat === 'edit' ? bump(v.edits, touched) : v.edits,
             fails,
@@ -902,7 +878,6 @@ export const register: Register = on => {
     tick($)
     pulse($)
     await addLog($, { who: e.subagentType, what: card.task, result: t.started, agentId: r.agentId })
-    await refreshStatus($)
     return r
   }).catch(($, e, next) => failOpen($, 'agent.spawn', next.error, () => next(e)))
 
@@ -936,7 +911,6 @@ export const register: Register = on => {
         }
         await addLog($, { who: card.type, what: t.doneAfter(took(e.durationMs)), result: t.filesTools(card.files, card.tools), agentId: id })
       }
-      await refreshStatus($)
     } else {
       // Docs read and code changed: the docs-vs-code hint in Focus; a refactor changes the code on purpose.
       const isRefactor = /refactor|refaktor|重构|重構|リファクタ/i.test(turn.prompt)

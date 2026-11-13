@@ -20,7 +20,7 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 | Option | Values | Default |
 | --- | --- | --- |
 | `language` | `en`, `de`, `fr`, `es`, `zh`, `ja` | the terminal's (`LC_ALL`, `LC_MESSAGES`, `LANG`), else `en` |
-| `hiddenSections` | comma-separated: `tasks`, `insights`, `skills`, `advisor`, `changes`, `usage` | `""` |
+| `hiddenSections` | comma-separated: `tasks`, `steps`, `insights`, `skills`, `advisor`, `changes`, `usage` | `""` |
 | `refreshRate` | `live`, `5`, `15`, `30`, `60` (seconds between pane redraws) | `live` |
 | `layout` | `calm` or `classic` | `calm` |
 | `advisorModel` | any model id | `claude-fable-5-1` |

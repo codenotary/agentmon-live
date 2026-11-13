@@ -38,7 +38,6 @@ function engine(on: On, ensure: () => unknown = () => ({ exitCode: 0, stdout: '{
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: 290000, percent: 29 }, cost: { usd: 1.5 }, rateLimits: [{ kind: 'seven_day', percentUsed: 77 }] } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   return argvs
 }
 
@@ -62,7 +61,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     usage: { startedAt: 5, context: { window: 100, tokens: 19, percent: 19 }, cost: { usd: 2 }, rateLimits: [{ kind: 'seven_day', percentUsed: 77 }, { kind: 'five_hour', percentUsed: 5, resetsAt: '2026-11-06T00:00:00Z' }, { kind: 'other', percentUsed: 1, resetsAt: 'soon' }] },
     ins: shapeInsights({ turns: 3, turn: { startedAt: 900, wallMs: 0, buckets: { model: 40 }, steps: 1, mode: 'shell', since: 950 } }),
     turnRing: [{ startedAt: 1, wallMs: 9, buckets: { model: 9 } }],
-    doing: [{ id: 'a', who: 'main', tool: 'Bash', what: 'rm x', startedAt: 990, isAsking: true }],
+    doing: [{ id: 'a', who: 'main', tool: 'Bash', what: 'rm x', label: 'Remove the old file', startedAt: 990, isAsking: true }],
     calls: [],
     agents: [],
     checks: [{ kind: 'test', command: 'npm test', who: 'main', at: 2, result: 'failed' }],
@@ -72,13 +71,14 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     streak: 0,
     dismissed: [],
     learned: { current: 's', sessions: [], mem: [], bench: [] },
-    focus: [{ key: 'k', score: 1, tag: 'tip', color: 'blue', text: 'look', prompt: 'p' }],
+    focus: [{ key: 'k', score: 1, tag: 'tip', color: 'blue', text: 'look', prompt: 'p' }, { key: 'mcp', score: 1, tag: 'mcp', color: 'blue', text: 'big', isGlobal: true }],
     t,
     lang: 'de',
     isPaneOpen: true,
     build: '1.2.3 · abc1234',
     testReview: { files: [{ path: '/r/a.test.ts', removed: 0, skips: 0, at: 1, changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] }], dropped: [], isGreen: true },
     trace: [],
+    steps: [{ id: 't:0', at: 950, ms: 20, model: 'claude-opus-5-5' }],
   })
   expect(snap.testReview?.files[0]).toMatchObject({ changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] })
   expect(snap.v).toBe(1)
@@ -87,7 +87,14 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   // The finished turn, then the one under way with the time not yet booked.
   expect(snap.turns).toEqual([{ startedAt: 1, wallMs: 9, buckets: { model: 9 } }, { startedAt: 900, wallMs: 100, buckets: { model: 40, shell: 50 }, isLive: true }])
   // What needs the person comes first, then the insights.
-  expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false]])
+  // An approval shows the label and the command it stands for: the person approves the command, not its description.
+  expect(snap.focus[0]?.text).toBe('Bash Remove the old file · rm x')
+  expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false], ['mcp', false]])
+  // Only a finding about the machine or account carries the word for it.
+  expect(snap.focus.map(f => f.scope)).toEqual([undefined, undefined, undefined, t.ins.environment])
+  // The turn's steps go out as finished rows, the actor in the session's language.
+  expect(snap.steps).toEqual([{ id: 't:0', kind: 'step', state: 'ok', actor: t.actor.model, label: 'Opus 5.5', at: 950, ms: 20, count: 1 }])
+  expect(snap.isStepsCut).toBe(false)
   expect(snap.lang).toBe('de')
   expect(snap.build).toBe('1.2.3 · abc1234')
   expect((snap.labels.page as Record<string, string>).events).toBe(t.web.page.events)
@@ -246,21 +253,20 @@ test('approvals over the session, edit times and the done gate reach the page', 
   expect(body.gate).toMatchObject({ ok: expect.any(Boolean), isSent: expect.any(Boolean) })
 })
 
-test('a full session stays under the size the server takes', () => {
-  const text = 'x'.repeat(300)
-  const snap = toSnapshot({
+const TEXT = 'x'.repeat(300)
+const FULL = {
     session: { id: 's', cwd: '/w' },
     now: 1,
     main: { model: 'm', effort: '' },
     usage: { startedAt: 0, context: { window: 100 }, cost: { usd: 0 }, rateLimits: [] },
     ins: shapeInsights({}),
-    turnRing: Array.from({ length: 50 }, (_, i) => ({ startedAt: i, wallMs: 1, buckets: { model: 1 }, prompt: text.slice(0, 120) })),
+    turnRing: Array.from({ length: 50 }, (_, i) => ({ startedAt: i, wallMs: 1, buckets: { model: 1 }, prompt: TEXT.slice(0, 120) })),
     doing: [],
-    calls: Array.from({ length: 60 }, (_, i) => ({ id: `c${i}`, at: i, who: 'general-purpose', view: 'shell' as const, what: text, result: 'failed', error: 'e'.repeat(2000), agentId: 'a' })),
-    agents: Array.from({ length: 60 }, (_, i) => ({ id: `a${i}`, type: 'general-purpose', model: 'm', effort: 'high', task: text.slice(0, 100), status: 'done' as const, files: 1, tools: 1, input: 1, output: 1, startedAt: 0, callId: 'toolu_01234567890123456789', prompt: 'p'.repeat(500), usd: 1, cached: 1, errors: 1 })),
+    calls: Array.from({ length: 60 }, (_, i) => ({ id: `c${i}`, at: i, who: 'general-purpose', view: 'shell' as const, what: TEXT, result: 'failed', error: 'e'.repeat(2000), agentId: 'a' })),
+    agents: Array.from({ length: 60 }, (_, i) => ({ id: `a${i}`, type: 'general-purpose', model: 'm', effort: 'high', task: TEXT.slice(0, 100), status: 'done' as const, files: 1, tools: 1, input: 1, output: 1, startedAt: 0, callId: 'toolu_01234567890123456789', prompt: 'p'.repeat(500), usd: 1, cached: 1, errors: 1 })),
     checks: [],
     files: { read: [], edited: [], editedAt: 0 },
-    log: Array.from({ length: 50 }, (_, i) => ({ at: i, who: 'general-purpose', what: text, result: 'done', agentId: 'a' })),
+    log: Array.from({ length: 50 }, (_, i) => ({ at: i, who: 'general-purpose', what: TEXT, result: 'done', agentId: 'a' })),
     tasks: [],
     streak: 0,
     dismissed: [],
@@ -271,9 +277,19 @@ test('a full session stays under the size the server takes', () => {
     isPaneOpen: true,
     build: 'x',
     testReview: { files: [], dropped: [], isGreen: false },
-    trace: Array.from({ length: 500 }, (_, i) => ({ id: `toolu_${i}`, at: i, who: 'general-purpose', tool: 'Bash', what: text, ms: 1, isFailed: true, error: text, agentId: 'agent-1234' })),
-  })
-  expect(JSON.stringify(snap).length).toBeLessThan(1024 * 1024)
+    trace: Array.from({ length: 500 }, (_, i) => ({ id: `toolu_${i}`, at: i, who: 'general-purpose', tool: 'Bash', what: TEXT, ms: 1, isFailed: true, error: TEXT, agentId: 'agent-1234' })),
+    steps: [],
+}
+
+test('a full session stays under the size the server takes', () => {
+  expect(JSON.stringify(toSnapshot(FULL)).length).toBeLessThan(1024 * 1024)
+})
+
+test('the page gets the newest 50 step rows and is told when the turn has more', () => {
+  const turn = (n: number) => toSnapshot({ ...FULL, ins: shapeInsights({ turn: { startedAt: 0, wallMs: 0, buckets: {}, steps: 0 } }), trace: Array.from({ length: n }, (_, i) => ({ id: `m${i}`, at: i, who: 'main', tool: 'Bash', what: `run ${i}`, ms: 1 })) })
+  expect(turn(51).steps?.length).toBe(50)
+  expect(turn(51).isStepsCut).toBe(true)
+  expect(turn(50).isStepsCut).toBe(false)
 })
 
 test('a dismissed item stays away from the page as from the pane', () => {
@@ -301,6 +317,7 @@ test('a dismissed item stays away from the page as from the pane', () => {
     build: '1.2.3 · abc1234',
     testReview: { files: [], dropped: [], isGreen: false },
     trace: [],
+    steps: [],
   })
   expect(snap.focus).toEqual([])
 })
@@ -806,4 +823,36 @@ test('the folder a VM or a container mounts is the switch, with no variable set'
   await clock.settle()
   expect(written[0]).toBe('/var/lib/agentmon-live/spool/sess-1.json')
   expect(argvs.some(a => a.includes('ensure'))).toBe(false)
+})
+
+test('a refused call is a blocked step in the snapshot', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('tool.call', () => ({ deny: 'not allowed here' }))
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.tool.call({ tool: 'Bash', command: 'git push --force', tool_use_id: 'b1' })
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).steps).toMatchObject([{ id: 'b1', kind: 'call', state: 'blocked', label: 'git push' }])
+})
+
+test('a model request that fails leaves no step behind', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  const sent = posts(on)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.step', async function* () {
+    throw new Error('overloaded')
+  })
+  await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await (async () => { for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1 })) void _ })().catch(() => {})
+  await clock.advance(600)
+  await clock.settle()
+  expect(lastSnapshot(sent).steps).toEqual([])
 })

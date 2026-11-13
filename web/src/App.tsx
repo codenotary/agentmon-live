@@ -18,6 +18,7 @@ import { Agents } from './panels/Agents.tsx'
 import { Flow } from './panels/Flow.tsx'
 import { Files } from './panels/Files.tsx'
 import { Checks, Insights, Running, Tasks } from './panels/Side.tsx'
+import { Steps } from './panels/Steps.tsx'
 import { TurnClock } from './panels/TurnClock.tsx'
 import { Waterfall } from './panels/Waterfall.tsx'
 import { currentOf, dismiss, getState, hasNoSignal, set, setCollapsed, useStore, type Trend } from './store.ts'
@@ -84,6 +85,7 @@ const Part = memo(function Part({ view, s, l, p, events, trend }: { view: string
             <div className="flex min-w-0 flex-col gap-4 max-xl:order-first">
               <Events list={events} p={p} />
               <Running s={s} p={p} />
+              {s.steps ? <Steps s={s} p={p} /> : null}
             </div>
           </div>
         </>

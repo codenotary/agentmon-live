@@ -16,6 +16,7 @@ function Row({ e, p }: { e: FeedEvent; p: Page }) {
       <span className="font-mono text-[11px] whitespace-nowrap text-ink-3 tabular-nums">{time(e.at)}</span>
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 [overflow-wrap:anywhere]">
         <Pill text={e.tag} tone={isCleared ? '' : isBad ? 'bad' : 'warn'} />
+        {e.scope ? <span className="font-mono text-[11px] whitespace-nowrap text-ink-3" data-testid="event-scope">{e.scope}</span> : null}
         <span className={`min-w-0 text-[13px] ${isCleared ? 'text-ink-3' : ''}`}>{e.text}</span>
         {isCleared ? <span className="font-mono text-[11px] whitespace-nowrap text-ink-3">{p.cleared} {hhmm(e.clearedAt ?? e.at)}</span> : null}
       </div>

@@ -22,13 +22,12 @@ const PANE = {
   },
 } as const
 
-function engine(on: On, percent = 1) {
+function engine(on: On, percent = 1, breakdown?: object) {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
-  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: percent * 10000, percent }, rateLimits: [] } }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 1000000, tokens: percent * 10000, percent, breakdown }, rateLimits: [] } }) as never)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
   on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
@@ -68,6 +67,11 @@ test('focus ranks a hanging call over a re-read file', async () => {
   expect(list.map(x => x.tag)).toEqual(['slow', 're-read'])
   expect(list[0]?.text).toBe('Bash npm run build running 2m00s · usually 2.5s')
   expect(list[0]?.prompt).toMatch(/stuck/)
+})
+
+test('focus puts a session finding above a machine-wide one, whatever the scores', async () => {
+  const list = focusList({ ins: { ...EMPTY_INSIGHTS, mcpTokens: 300_000, reads: { '/r/a.ts': 4 } }, doing: [], agents: [], window: 1_000_000, now: 0, learned: [{ key: 'mem:x', score: 99, tag: 'memory', color: 'yellow', text: 'm', isGlobal: true }] })
+  expect(list.map(x => [x.tag, x.isGlobal ?? false])).toEqual([['re-read', false], ['memory', true], ['mcp', true]])
 })
 
 test('focus stays quiet for a call within its usual time', async () => {
@@ -290,6 +294,23 @@ test('the german pane names the insights', async ($, on) => {
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^ KONTEXT  Kontext 85% · Verdichtung steht bevor/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /FOKUS/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('the pane sets machine-wide findings apart under their own label', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on, 85, { categories: [], mcpTools: [{ name: 'x', tokens: 300_000, isLoaded: true }], memoryFiles: [] })
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  // The breakdown is read when a turn ends.
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  const texts = (await ui.findAll({ type: 'Text' })).map(x => x.text ?? '')
+  const at = (re: RegExp) => texts.findIndex(x => re.test(x))
+  expect(at(/^ CONTEXT /)).toBeGreaterThan(-1)
+  expect(at(/^Environment$/)).toBeGreaterThan(at(/^ CONTEXT /))
+  expect(at(/^ MCP /)).toBeGreaterThan(at(/^Environment$/))
   await ui.unmount()
 })
 

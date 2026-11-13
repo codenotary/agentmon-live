@@ -49,7 +49,7 @@ test('a server asked for by a gateway may be framed by it and outlives its sessi
   children.push(gateway)
   writeFileSync(file, JSON.stringify({ pid: gateway.pid, origins: ['http://127.0.0.1:5476'] }))
   const port = 47480
-  const server = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', String(port), '--open'], { env: { ...process.env, AGENTMON_KIRO_FILE: file, KIROCREW_HOME: join(dir, 'none'), AGENTMON_WEB_IDLE_MS: '200', AGENTMON_WEB_SWEEP_MS: '100' }, stdio: 'ignore' })
+  const server = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', String(port), '--open'], { env: { ...process.env, AGENTMON_KIRO_FILE: file, KIROCREW_HOME: join(dir, 'none'), CODEX_HOME: join(dir, 'none'), AGENTMON_WEB_IDLE_MS: '200', AGENTMON_WEB_SWEEP_MS: '100' }, stdio: 'ignore' })
   children.push(server)
   let exited = false
   server.on('exit', () => (exited = true))
@@ -63,7 +63,7 @@ test('a server asked for by a gateway may be framed by it and outlives its sessi
 
 test('without a gateway no page may frame this one', async () => {
   const port = 47481
-  children.push(spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', String(port), '--open'], { env: { ...process.env, AGENTMON_KIRO_FILE: join(dir, 'none.json'), KIROCREW_HOME: join(dir, 'none') }, stdio: 'ignore' }))
+  children.push(spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', String(port), '--open'], { env: { ...process.env, AGENTMON_KIRO_FILE: join(dir, 'none.json'), KIROCREW_HOME: join(dir, 'none'), CODEX_HOME: join(dir, 'none') }, stdio: 'ignore' }))
   assert.ok(await until(() => get(port, '/health').then(() => true, () => false)))
   assert.match((await get(port, '/')).headers['content-security-policy'], /frame-ancestors 'none'/)
 })

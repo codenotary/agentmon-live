@@ -296,11 +296,17 @@ async function checkMemory($: EngineInterface) {
     if (text !== undefined) files.push({ path, text, inDir: path.startsWith(`${memDir}/`) })
   }
   const missing = new Map<string, string>()
-  for (const [ref, file] of refsOf(files, home)) {
+  const refs = [...refsOf(files, home, [memDir, cwd])]
+  // All lookups at once: the cap is per file, so a big folder names thousands of paths.
+  const gone = await Promise.all(refs.map(async ([ref]) => {
+    // A relative ref is read from the project; one whose top folder is missing there belongs to another repository.
+    const root = ref.startsWith('/') ? '' : `${cwd}/`
     // A ref whose top folder is missing (`/api/config`) is a URL route, not a path.
-    if (!(await $.fs.exists(ref.slice(0, ref.indexOf('/', 1))).catch(() => true))) continue
-    if (!(await $.fs.exists(ref).catch(() => true))) missing.set(ref, file)
-  }
+    if (!(await $.fs.exists(root + ref.slice(0, ref.indexOf('/', 1))).catch(() => true))) return false
+    return !(await $.fs.exists(root + ref).catch(() => true))
+  }))
+  // In the files' order, so the same findings compare equal from run to run.
+  refs.forEach(([ref, file], i) => { if (gone[i]) missing.set(ref, file) })
   const mem = memRules(files, dir, missing)
   // The same findings as last time: nothing to write.
   const memJson = JSON.stringify(mem)

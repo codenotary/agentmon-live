@@ -51,6 +51,7 @@ await page.goto(url)
 // With no choice saved, the page starts dark, even on a system set to light.
 if (await page.evaluate(() => document.documentElement.dataset.theme) !== 'dark') problems.push('theme: the default is not dark')
 await page.waitForSelector('[data-testid=nav]')
+if (!(await page.$('[data-testid=steps-cut]'))) problems.push('steps: a list cut short does not say so')
 let lastY = -1
 for (const href of await links()) {
   await page.click(`.nav-item[href="${href}"]`)

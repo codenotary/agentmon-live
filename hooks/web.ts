@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, SessionUsage } from 'claude-code'
 
-import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main, Note, Task, TestReview, TraceCall, TurnTime, WebFocus, WebSnapshot, WebTurn } from '../types'
+import type { Active, Call, Card, Check, Files, Insights, Learned, LogLine, Main, Note, Step, Task, TestReview, TraceCall, TurnTime, WebFocus, WebSnapshot, WebTurn } from '../types'
 import { debug } from './debuglog'
 import type { Strings } from './i18n'
 import type { Insight } from './insights'
@@ -9,6 +9,7 @@ import { bucketName, focusList, liveBuckets, needsYou } from './insights'
 import { learnedItems } from './learn'
 import { droppedLines } from './testreview'
 import { cfg, INIT, liveStatus, liveTurn, PANE, shapeInsights } from './state'
+import { isCut, stepRows, turnSpan } from './steps'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const agents = atom({ plugin: 'agentmon-live', key: 'agents' } as const, INIT.agents)
@@ -16,6 +17,7 @@ const log = atom({ plugin: 'agentmon-live', key: 'log' } as const, INIT.log)
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
 const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
+const steps = atom({ plugin: 'agentmon-live', key: 'steps' } as const, INIT.steps)
 const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const, INIT.testReview)
 const active = atom({ plugin: 'agentmon-live', key: 'active' } as const, INIT.active)
 const checks = atom({ plugin: 'agentmon-live', key: 'checks' } as const, INIT.checks)
@@ -64,6 +66,7 @@ export type SnapshotParts = {
   build: string
   testReview: TestReview
   trace: TraceCall[]
+  steps: Step[]
   notes?: Note[]
 }
 
@@ -72,7 +75,7 @@ export function urgentItems(p: SnapshotParts): WebFocus[] {
   const { t } = p
   const items = needsYou({ doing: p.doing, streak: p.streak, checks: p.checks, agents: p.agents, turnAt: p.main.turnAt }).map((u): WebFocus => {
     const base = { key: u.key, isUrgent: true }
-    if (u.kind === 'ask') return { ...base, tag: t.approval, text: `${u.call.tool} ${u.call.what}` }
+    if (u.kind === 'ask') return { ...base, tag: t.approval, text: `${u.call.tool} ${u.call.label ? `${u.call.label} · ` : ''}${u.call.what}` }
     if (u.kind === 'streak') return { ...base, tag: t.status.error, text: t.errorsInRow(u.n) }
     if (u.kind === 'check') return { ...base, tag: t.failed, text: `${t.check[u.check.kind]} ${u.check.command}` }
     if (u.kind === 'agent') return { ...base, tag: u.agent.tests === 'FAIL' ? 'FAIL' : t.status.error, text: `${u.agent.type} ${u.agent.testsWhy ?? u.agent.task}` }
@@ -86,9 +89,13 @@ function lastGate(notes: readonly Note[]): WebSnapshot['gate'] {
   return note ? { ok: note.ok ?? false, text: note.text, isSent: note.isSent ?? false, at: note.at ?? 0 } : null
 }
 
+const STEPS_SENT = 50
+
 // Pure, and the one place that knows both shapes: the test holds its keys to the fixture the page is drawn from.
 export function toSnapshot(p: SnapshotParts): WebSnapshot {
   const { ins, t } = p
+  const span = turnSpan(ins)
+  const rows = span ? stepRows({ trace: p.trace, steps: p.steps, active: p.doing }, span) : []
   const live: WebTurn[] = ins.turn ? [{ startedAt: ins.turn.startedAt, wallMs: p.now - ins.turn.startedAt, buckets: liveBuckets(ins.turn, p.now), isLive: true, ...(ins.turn.prompt === undefined ? {} : { prompt: ins.turn.prompt }) }] : []
   const turns = [...p.turnRing, ...live]
   const buckets = Object.fromEntries([...new Set(turns.flatMap(x => Object.keys(x.buckets)))].map(k => [k, bucketName(k)]))
@@ -102,7 +109,9 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     isPaneOpen: p.isPaneOpen,
     build: p.build,
     testReview: { files: p.testReview.files, dropped: droppedLines(t, p.testReview), isGreen: p.testReview.isGreen },
-    focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: x.key.startsWith('secret:') && x.color === 'red' }))],
+    focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: x.key.startsWith('secret:') && x.color === 'red', ...(x.isGlobal ? { scope: t.ins.environment } : {}) }))],
+    steps: rows.slice(0, STEPS_SENT).map(r => ({ ...r, actor: t.actor[r.actor] })),
+    isStepsCut: rows.length > STEPS_SENT || (span !== undefined && isCut(p, span)),
     usage: {
       ctxPct: p.usage.context.percent,
       ctxTokens: p.usage.context.tokens,
@@ -235,7 +244,7 @@ async function publish($: EngineInterface): Promise<number> {
   // A live turn keeps the short round: its end must go by before the next one's does.
   const wait = hasTab || ins.turn ? PUBLISH_MS : IDLE_MS
   if (!hasTab && now - lastPostAt < HEARTBEAT_MS) return wait
-  const [usage, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, learnt, panes, traced, reviewed, adv] = await Promise.all([
+  const [usage, m, list, live, lines, st, recent, doing, checked, touched, lay, planned, learnt, panes, traced, reviewed, adv, stepped] = await Promise.all([
     $.session.usage(),
     read($, main),
     read($, agents),
@@ -253,6 +262,7 @@ async function publish($: EngineInterface): Promise<number> {
     read($, trace),
     read($, testReview),
     read($, advisor),
+    read($, steps),
   ])
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
   const cards = list.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
@@ -283,6 +293,7 @@ async function publish($: EngineInterface): Promise<number> {
     build: cfg.build,
     testReview: reviewed,
     trace: traced,
+    steps: stepped,
     notes: adv.notes,
   })
   const json = changeKey(snapshot)
