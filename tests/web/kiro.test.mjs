@@ -34,7 +34,7 @@ test('a crew log folds into a snapshot with every required key', () => {
   const { snapshot: s, isClosed, isLive } = foldCrewLog(entries, NOW)
   assert.equal(isClosed, true)
   assert.equal(isLive, false)
-  const optional = new Set(['isPaneOpen', 'testReview', 'gate', 'steps'])
+  const optional = new Set(['isPaneOpen', 'testReview', 'gate', 'steps', 'isStepsCut'])
   assert.deepEqual(SHAPE.top.filter(k => !(k in s) && !optional.has(k)), [])
   assert.deepEqual(Object.keys(s).filter(k => !SHAPE.top.includes(k)), [])
   assert.deepEqual([s.v, s.session.id, s.session.cwd, s.build, s.main.model], [1, SID, '/home/dev/github/demo', 'Kiro Crew · kirocrew', 'fable'])

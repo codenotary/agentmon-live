@@ -36,6 +36,7 @@ export function Steps({ s, p }: { s: WebSnapshot; p: Page }) {
           return <li key={`${r.kind}:${r.id}`} className="row-in">{call ? <button type="button" className={`${ROW} cursor-pointer hover:bg-surface-2`} aria-label={`${p.details}: ${r.label}`} onClick={() => openTrace(call)}>{cells}</button> : <div className={ROW}>{cells}</div>}</li>
         })}
       </ol>
+      {s.isStepsCut && rows.length > 0 && (isAll || rows.length <= ROWS_FOLDED) ? <p className="px-1 pt-1 text-xs text-ink-3" data-testid="steps-cut">… {p.stepsCut}</p> : null}
       {rows.length > ROWS_FOLDED ? <ShowAll isAll={isAll} count={rows.length} onToggle={() => setAll(!isAll)} p={p} /> : null}
     </Panel>
   )

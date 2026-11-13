@@ -6,7 +6,7 @@ import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, pe
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
-import { stepRows, turnSpan } from './steps'
+import { isCut, stepRows, turnSpan } from './steps'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, needsYou, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
@@ -348,10 +348,11 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // The turn step by step, newest first: who acted, on what, for how long.
   const span = turnSpan(ins)
   const stepList = span ? stepRows({ trace: traced, steps: stepped, active: doing }, span) : []
+  const stepsShown = stepList.slice(0, lay.isDetailed ? 30 : isClassic ? 10 : 5)
   const stepsBox = stepList.length > 0 && (
     <Box flexDirection="column">
       <Text>{title(t.steps, 'cyan')}</Text>
-      {stepList.slice(0, lay.isDetailed ? 30 : isClassic ? 10 : 5).map(r => (
+      {stepsShown.map(r => (
         <Text wrap={rowWrap}>
           <Text color={STEP_COLOR[r.state]} dimColor={r.state === 'ok'}>{r.state === 'running' ? spin(now) : STEP_GLYPH[r.state]} </Text>
           <Text dimColor>{fit(t.actor[r.actor], ACTOR_COLS)}</Text>
@@ -359,6 +360,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           <Text dimColor>{r.count > 1 ? `×${r.count} ` : ''}{r.state === 'running' || r.state === 'asking' ? secs(r.at) : dur(r.ms)}</Text>
         </Text>
       ))}
+      {span && stepsShown.length === stepList.length && isCut({ trace: traced, steps: stepped }, span) ? <Text dimColor>  … {t.web.page.stepsCut}</Text> : null}
     </Box>
   )
 

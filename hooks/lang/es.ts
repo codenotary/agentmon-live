@@ -142,6 +142,7 @@ export const es: Strings = {
       rawCall: 'Llamada sin procesar',
       steps: 'Pasos del turno',
       helpSteps: 'El turno en curso paso a paso, lo más reciente primero: cada petición al modelo y cada llamada de la sesión principal, con quién actuó y cuánto tardó. Las repeticiones sin incidencias se agrupan en una fila con un contador. Haz clic en una llamada para ver sus detalles.',
+      stepsCut: 'pasos anteriores no mostrados',
       error: 'Error',
       noMatch: 'Sin resultados.',
       verification: 'Verificación',
