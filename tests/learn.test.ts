@@ -183,8 +183,11 @@ test('memory rules: duplicates, index, stale paths, copied lines', async () => {
     { path: '/h/CLAUDE.md', text: shared.join('\n'), inDir: false },
     { path: '/p/CLAUDE.md', text: `${shared.join('\n')}\n${'y'.repeat(41_000)}`, inDir: false },
   ]
-  const refs = refsOf(files, '/h')
+  const refs = refsOf(files, '/h', [dir])
   expect([...refs.keys()]).toEqual(['/data/old/config.yml', '/h/notes/x.md', '/srv2/app/main.ts', '/srv2/app/x.md', 'hooks/gone.ts'])
+  // A file outside the project that names the same relative path does not take it over, whichever comes last.
+  const both = [{ path: '/p/CLAUDE.md', text: '`hooks/gone.ts`', inDir: false }, { path: '/h/CLAUDE.md', text: '`hooks/gone.ts` `lib/x.ts`', inDir: false }]
+  expect([...refsOf(both, '/h', ['/p'])]).toEqual([['hooks/gone.ts', '/p/CLAUDE.md']])
   // The cap is per file: a file full of paths leaves the next file's path checked.
   const many = Array.from({ length: 50 }, (_, i) => `\`/data/f${i}.ts\``).join(' ')
   expect(refsOf([{ path: '/m/a.md', text: many, inDir: true }, { path: '/m/b.md', text: '`/data/last.ts`', inDir: true }], '/h').has('/data/last.ts')).toBe(true)

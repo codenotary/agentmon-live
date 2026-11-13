@@ -23,16 +23,18 @@ const base = (p: string) => p.slice(p.lastIndexOf('/') + 1)
 // A lone `/src` or `/docs` is a project folder convention, not an absolute path, so `/` needs two segments.
 // A system path (`/etc/app`, `/opt/app`) usually describes the host the project deploys to, and `/tmp` lives only while a process runs.
 const SYSTEM = /^\/(etc|opt|var|usr|srv|run|root|proc|sys|dev|boot|lib|lib64|bin|sbin|tmp|private)\//
-export function refsOf(files: readonly MemFile[], home: string): Map<string, string> {
+// A relative path counts only in a file under one of `roots` (the project, its memory folder): an instruction file elsewhere means its own paths.
+export function refsOf(files: readonly MemFile[], home: string, roots: readonly string[] = []): Map<string, string> {
   const out = new Map<string, string>()
   for (const f of files) {
     let n = 0
+    const isLocal = roots.some(r => f.path.startsWith(`${r}/`))
     for (const m of f.text.matchAll(/`(~\/[^\s`]+|\/[^\s`/]+\/[^\s`]+|[\w.@-]+\/[^\s`]+)`/g)) {
       // `a.ts:42` and `x.md#setup` name the file, not a file of that name.
       const ref = m[1]!.replace(/(?::\d+)+$|#[^/]*$/, '')
       // shortcut: a relative path counts only with a file extension, so a named folder is not checked; widen when folders go stale unseen.
       const isRelative = !/^[~/]/.test(ref)
-      if (/[*<>${}]/.test(ref) || SYSTEM.test(ref) || (isRelative && !/^[^:]+\.\w+$/.test(ref)) || n >= MAX_REFS) continue
+      if (/[*<>${}]/.test(ref) || SYSTEM.test(ref) || (isRelative && !(isLocal && /^[^:]+\.\w+$/.test(ref))) || n >= MAX_REFS) continue
       n++
       out.set(ref.startsWith('~/') ? `${home}${ref.slice(1)}` : ref, f.path)
     }
