@@ -201,6 +201,11 @@ test('memory rules: duplicates, index, stale paths, copied lines', async () => {
   expect(kinds.filter(k => k.startsWith('noMeta')).some(k => /[de]\.md/.test(k))).toBe(false)
   expect(kinds.filter(k => k.startsWith('cutMeta'))).toEqual(['cutMeta:d.md'])
   expect(memRules([{ path: `${dir}/plain.md`, text: 'a hand-written note', inDir: true }], ['plain.md'], new Map())).toEqual([])
+  // Windows line ends and an empty block are frontmatter too.
+  const odd = [{ path: `${dir}/w.md`, text: '---\r\nname: w\r\n---\r\nbody', inDir: true }, { path: `${dir}/z.md`, text: '---\n---\nbody', inDir: true }]
+  expect(memRules(odd, ['w.md', 'z.md'], new Map()).map(f => `${f.kind}:${f.detail}`)).toEqual(['noMeta:w.md (description)', 'noMeta:z.md (name, description)'])
+  // A path that climbs out of the project is not checked against it.
+  expect([...refsOf([{ path: '/p/CLAUDE.md', text: '`../other/a.ts` `src/../../b.ts` `src/ok.ts`', inDir: false }], '/h', ['/p']).keys()]).toEqual(['src/ok.ts'])
   expect(found.some(f => f.kind === 'staleRef' && f.detail.endsWith('/data/old/config.yml'))).toBe(true)
   expect(found.some(f => f.kind === 'dupLine' && f.detail.endsWith('(3)'))).toBe(true)
   expect(found.some(f => f.kind === 'tooBig' && f.file === '/p/CLAUDE.md')).toBe(true)

@@ -13,7 +13,7 @@
       "name": "agentmon-live",
       "source": "./",
       "description": "AgentMon Live: see what Claude Code and its subagents are doing, live in your browser or beside the chat, with cost, limits, a nudge when it needs you and a check of its work before it says done",
-      "version": "0.43.3",
+      "version": "0.43.4",
       "author": {
         "name": "vchaindz",
         "email": "dennis@dzlabs.ch",
