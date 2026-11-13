@@ -82,7 +82,12 @@ export async function deleteSent($: EngineInterface): Promise<string> {
   if (!cfg.feedbackUrl) return t.feedbackFailed('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
   const { failure, text } = await call($, { method: 'DELETE', headers: { 'x-install': cfg.feedbackInstall } })
   if (failure) return t.feedbackFailed(failure)
-  const deleted = Number(text.match(/"deleted":\s*(\d+)/)?.[1] ?? 0)
+  let deleted = 0
+  try {
+    deleted = Number((JSON.parse(text) as { deleted?: unknown }).deleted) || 0
+  } catch {
+    // The rows are gone whatever the answer says; only the count is unknown.
+  }
   cfg.feedbackInstall = ''
   await $.store.set(INSTALL_KEY, '').catch(() => undefined)
   return t.feedbackDeleted(deleted)
