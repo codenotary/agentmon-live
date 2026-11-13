@@ -10,6 +10,7 @@ export const BIG_CHARS = 40_000
 // Lines shared by two files before it counts as copied content, and how long a line must be to count.
 const DUP_LINES = 3
 const DUP_MIN = 40
+// Per file, so one long file does not use up the check for the rest.
 const MAX_REFS = 40
 // The memory guide's line budget for an instruction file, and how many emphasised lines count as piled on.
 export const LONG_LINES = 200
@@ -18,17 +19,23 @@ const EMPHASIS = /\b(IMPORTANT|CRITICAL|MUST|NEVER|ALWAYS|MANDATORY|ABSOLUTE)\b/
 
 const base = (p: string) => p.slice(p.lastIndexOf('/') + 1)
 
-// Backticked absolute or home paths a file names, home expanded; globs and placeholders left out.
+// Backticked paths a file names: absolute, home (expanded), or relative with a file extension; globs and placeholders left out.
 // A lone `/src` or `/docs` is a project folder convention, not an absolute path, so `/` needs two segments.
-// A system path (`/etc/app`, `/opt/app`) usually describes the host the project deploys to, not this machine.
-const SYSTEM = /^\/(etc|opt|var|usr|srv|run|root|proc|sys|dev|boot|lib|lib64|bin|sbin)\//
-export function refsOf(files: readonly MemFile[], home: string): Map<string, string> {
+// A system path (`/etc/app`, `/opt/app`) usually describes the host the project deploys to, and `/tmp` lives only while a process runs.
+const SYSTEM = /^\/(etc|opt|var|usr|srv|run|root|proc|sys|dev|boot|lib|lib64|bin|sbin|tmp|private)\//
+// A relative path counts only in a file under one of `roots` (the project, its memory folder): an instruction file elsewhere means its own paths.
+export function refsOf(files: readonly MemFile[], home: string, roots: readonly string[] = []): Map<string, string> {
   const out = new Map<string, string>()
   for (const f of files) {
-    for (const m of f.text.matchAll(/`(~\/[^\s`]+|\/[^\s`/]+\/[^\s`]+)`/g)) {
+    let n = 0
+    const isLocal = roots.some(r => f.path.startsWith(`${r}/`))
+    for (const m of f.text.matchAll(/`(~\/[^\s`]+|\/[^\s`/]+\/[^\s`]+|[\w.@-]+\/[^\s`]+)`/g)) {
       // `a.ts:42` and `x.md#setup` name the file, not a file of that name.
       const ref = m[1]!.replace(/(?::\d+)+$|#[^/]*$/, '')
-      if (/[*<>${}]/.test(ref) || SYSTEM.test(ref) || out.size >= MAX_REFS) continue
+      // shortcut: a relative path counts only with a file extension, so a named folder is not checked; widen when folders go stale unseen.
+      const isRelative = !/^[~/]/.test(ref)
+      if (/[*<>${}]/.test(ref) || SYSTEM.test(ref) || (isRelative && !(isLocal && /^[^:]+\.\w+$/.test(ref))) || n >= MAX_REFS) continue
+      n++
       out.set(ref.startsWith('~/') ? `${home}${ref.slice(1)}` : ref, f.path)
     }
   }
@@ -47,6 +54,18 @@ export function memRules(files: readonly MemFile[], dir: readonly string[], miss
     if (name) byName.set(name, [...(byName.get(name) ?? []), base(f.path)])
   }
   for (const [name, list] of byName) if (list.length > 1) out.push({ kind: 'dupName', file: list[0]!, detail: `${name} (${list.join(', ')})` })
+
+  for (const f of mem) {
+    if (base(f.path) === 'MEMORY.md') continue
+    // A plain note with no frontmatter at all is an older or hand-written one, not a broken one.
+    const meta = f.text.match(/^---\n[\s\S]*?\n---/)?.[0]
+    if (!meta) continue
+    const gone = ['name', 'description'].filter(k => !new RegExp(`^${k}:[ \\t]*\\S`, 'm').test(meta))
+    if (gone.length > 0) out.push({ kind: 'noMeta', file: f.path, detail: `${base(f.path)} (${gone.join(', ')})` })
+    // Unquoted, YAML ends the value at ` #` and fails on `: `, so recall sees a stub or nothing.
+    const desc = meta.match(/^description:[ \t]*(.+)$/m)?.[1] ?? ''
+    if (!/^["'|>]/.test(desc) && /: | #/.test(desc)) out.push({ kind: 'cutMeta', file: f.path, detail: base(f.path) })
+  }
 
   const index = mem.find(f => base(f.path) === 'MEMORY.md')
   if (index) {
