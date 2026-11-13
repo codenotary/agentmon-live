@@ -1,6 +1,6 @@
 {
   "name": "agentmon-live",
-  "version": "0.43.5",
+  "version": "0.44.0",
   "description": "AgentMon Live: see what every Codex chat is doing, live in your browser: turns, tool calls, checks, files, context and limits",
   "license": "Apache-2.0",
   "author": {
