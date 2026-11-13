@@ -26,7 +26,6 @@ function engine(on: On) {
     value: { startedAt: 0, context: { window: 1000000, tokens: 290000, percent: 29 }, cost: { usd: 17.9 }, rateLimits: [{ kind: 'five_hour', percentUsed: 6 }, { kind: 'seven_day', percentUsed: 75 }] },
   }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('ui.status', () => ({ value: undefined }))
 }
 
 test('hiddenSections drops those boxes', async ($, on) => {
