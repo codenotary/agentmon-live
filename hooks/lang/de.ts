@@ -277,9 +277,7 @@ export const de: Strings = {
   feedbackAnonymous: 'anonym',
   feedbackNewId: 'eine neue Installations-ID',
   feedbackFrom: who => `von: ${who}`,
-  feedbackNotice: 'Geht an die Entwickler: dieser Text, die Versionen von AgentMon Live und Claude Code, die Sprache und von wem es kommt. `/agentmon feedback-delete` löscht, was du unter deiner ID gesendet hast.',
-  feedbackDeleted: n => `${n} Feedback-Einträge unter deiner Installations-ID gelöscht. Die ID ist vergessen.`,
-  feedbackNothing: 'Keine Installations-ID vorhanden: Unter einer ID wurde nichts gesendet, also gibt es nichts zu finden und zu löschen.',
+  feedbackNotice: 'Geht an die Entwickler: dieser Text, die Versionen von AgentMon Live und Claude Code, die Sprache und von wem es kommt. Nach dem Senden lässt es sich nicht mehr löschen.',
   promptUpdate: (from, to) =>
     `Aktualisiere AgentMon Live von ${from} auf ${to}: führe \`claude plugin marketplace update agentmon-live\` aus, dann \`claude plugin update agentmon-live\`, und sag mir dann, dass ich /reload-plugins ausführen soll.`,
   costWord: 'Kosten',

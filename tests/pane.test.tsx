@@ -289,7 +289,7 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
   }
 })
 
-test('feedback is anonymous until the person names it; the install ID is the mod\'s own and feedback-delete removes what it sent', async ($, on) => {
+test('feedback is anonymous until the person names it; the install ID is the mod\'s own', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
   on('env.get', () => ({ value: undefined }))
@@ -304,18 +304,16 @@ test('feedback is anonymous until the person names it; the install ID is the mod
     store.set(e.key, e.value)
     return { value: undefined }
   })
-  const calls: { method: string; url: string; body: string; install?: string }[] = []
+  const calls: { method: string; url: string; body: string }[] = []
   on('http.fetch', (_, e) => {
-    calls.push({ method: e.init?.method ?? 'GET', url: e.url, body: String(e.init?.body ?? ''), install: (e.init?.headers as Record<string, string> | undefined)?.['x-install'] })
-    return { value: { status: 200, ok: true, headers: {}, text: e.init?.method === 'DELETE' ? deleteAnswer : '{}' } }
+    calls.push({ method: e.init?.method ?? 'GET', url: e.url, body: String(e.init?.body ?? '') })
+    return { value: { status: 200, ok: true, headers: {}, text: '{}' } }
   })
-  let deleteAnswer = '{"deleted":1}'
   const sent = () => calls.filter(c => c.method === 'POST').map(c => JSON.parse(c.body) as { install?: string; identity?: string })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
-  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('No install ID')
 
   // An identity in the options starts the draft named; `w` takes the name off again.
   await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'One.' })
@@ -339,16 +337,7 @@ test('feedback is anonymous until the person names it; the install ID is the mod
   expect(id).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/)
   expect(sent()[1]).toMatchObject({ install: id, identity: 'ada@example.com' })
 
-  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('Deleted 1')
-  expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: 'https://feedback.codenotary.com/feedback', install: id })
-  expect(store.get('feedbackInstall')).toBe('')
-
-  // An answer that is not JSON still counts as deleted, and the ID still goes.
-  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'Three.' })
-  await ui.press({ key: 'feedback:send' })
-  deleteAnswer = 'ok'
-  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'feedback-delete' })).text).toContain('Deleted 0')
-  expect(store.get('feedbackInstall')).toBe('')
+  expect(calls.at(-1)).toMatchObject({ method: 'POST', url: 'https://feedback.codenotary.com/feedback' })
   await ui.unmount()
 })
 

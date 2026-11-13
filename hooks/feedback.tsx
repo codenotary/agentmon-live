@@ -67,32 +67,6 @@ export function sender(): string {
 
 const why = (e: unknown) => String((e as { message?: unknown })?.message ?? e)
 
-// One request to the feedback service: what went wrong, or '' and the answer's text.
-async function call($: EngineInterface, init: { method: string; headers: Record<string, string>; body?: string }): Promise<{ failure: string; text: string }> {
-  return $.http.fetch(cfg.feedbackUrl, init).then(
-    r => ({ failure: r.ok ? '' : `${r.status} ${r.text.trim().slice(0, 200)}`, text: r.text }),
-    e => ({ failure: why(e), text: '' }),
-  )
-}
-
-// Deletes what this install sent under its ID, then forgets the ID; anonymous posts carry none and stay.
-export async function deleteSent($: EngineInterface): Promise<string> {
-  const t = cfg.t
-  if (!cfg.feedbackInstall) return t.feedbackNothing
-  if (!cfg.feedbackUrl) return t.feedbackFailed('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
-  const { failure, text } = await call($, { method: 'DELETE', headers: { 'x-install': cfg.feedbackInstall } })
-  if (failure) return t.feedbackFailed(failure)
-  let deleted = 0
-  try {
-    deleted = Number((JSON.parse(text) as { deleted?: unknown }).deleted) || 0
-  } catch {
-    // The rows are gone whatever the answer says; only the count is unknown.
-  }
-  cfg.feedbackInstall = ''
-  await $.store.set(INSTALL_KEY, '').catch(() => undefined)
-  return t.feedbackDeleted(deleted)
-}
-
 export function dropDraft($: EngineInterface): void {
   cfg.feedbackDraft = undefined
   $.ui.invalidate('ui.render')
@@ -104,14 +78,14 @@ async function post($: EngineInterface, draft: Draft): Promise<string> {
   // The install ID is made here, on the first send the person chose to put a name to, and never read from Claude Code or the machine.
   if (cfg.isFeedbackNamed && !cfg.feedbackInstall) {
     const id = crypto.randomUUID()
-    // An ID that is not kept could never delete its rows again, so nothing goes out under it.
+    // An ID that is not kept would be a new sender at every send, so nothing goes out under it.
     const unsaved = await $.store.set(INSTALL_KEY, id).then(() => '', why)
     if (unsaved) return unsaved
     cfg.feedbackInstall = id
   }
   const who = cfg.isFeedbackNamed ? { install: cfg.feedbackInstall, ...(cfg.feedbackIdentity ? { identity: cfg.feedbackIdentity } : {}) } : {}
   const body = { ...draft, app: 'agentmon-live', version: cfg.version, claude_code: cfg.claudeCode, language: cfg.lang, ...who }
-  return (await call($, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).failure
+  return $.http.fetch(cfg.feedbackUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(r => (r.ok ? '' : `${r.status} ${r.text.trim().slice(0, 200)}`), why)
 }
 
 export async function sendDraft($: EngineInterface): Promise<void> {
