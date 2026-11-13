@@ -196,7 +196,8 @@ export function bucketName(k: string): string {
 }
 
 // One thing worth looking at: `score` orders the list, `tag` is its chip, `prompt` drafts a question about it.
-export type Insight = { key: string; score: number; tag: string; color: string; text: string; prompt?: string }
+// `isGlobal`: about the machine, account or config, so the same in every session.
+export type Insight = { key: string; score: number; tag: string; color: string; text: string; prompt?: string; isGlobal?: boolean }
 
 export type FocusInput = {
   testReview?: TestReview
@@ -371,7 +372,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
   }
 
   if (ins.mcpTokens && window > 0 && ins.mcpTokens / window >= MCP_SHARE) {
-    out.push({ key: 'mcp', score: 25, tag: t.tag.mcp, color: 'blue', text: t.mcp(kilo(ins.mcpTokens), Math.round((ins.mcpTokens / window) * 100)) })
+    out.push({ key: 'mcp', score: 25, isGlobal: true, tag: t.tag.mcp, color: 'blue', text: t.mcp(kilo(ins.mcpTokens), Math.round((ins.mcpTokens / window) * 100)) })
   }
 
   // A plan window filling faster than it resets.
@@ -385,6 +386,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
     const win = limitName(kind)
     out.push({
       key: `pace:${kind}:${last.resetsAt}`,
+      isGlobal: true,
       score: 55,
       tag: t.tag.pace,
       color: 'yellow',
@@ -401,9 +403,10 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
 
   // Limits may be used up faster in peak hours; only plans report a `seven_day` window.
   const peak = ins.limits.seven_day ? peakEnd(now) : undefined
-  if (peak) out.push({ key: `peak:${new Date(now).toDateString()}`, score: 20, tag: t.tag.peak, color: 'blue', text: t.peak(clockTime(peak)) })
+  if (peak) out.push({ key: `peak:${new Date(now).toDateString()}`, score: 20, isGlobal: true, tag: t.tag.peak, color: 'blue', text: t.peak(clockTime(peak)) })
 
-  return out.sort((a, b) => b.score - a.score)
+  // What is about this session comes first, so it keeps the visible rows.
+  return out.sort((a, b) => Number(a.isGlobal ?? false) - Number(b.isGlobal ?? false) || b.score - a.score)
 }
 
 // Weekdays 05:00 to 11:00 Pacific time; the end of that stretch when `now` is inside it.

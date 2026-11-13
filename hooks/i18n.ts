@@ -300,6 +300,7 @@ const en = {
     focus: 'focus',
     title: 'insights',
     allClear: 'nothing needs you',
+    environment: 'Environment',
     bucket: { model: 'model', you: 'you', idle: 'idle' } as Record<string, string>,
     thisTurn: (d: string) => `this turn ${d}`,
     lastTurn: (d: string) => `last turn ${d}`,
