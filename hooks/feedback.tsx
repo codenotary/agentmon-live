@@ -77,11 +77,14 @@ let isSending = false
 async function post($: EngineInterface, draft: Draft): Promise<string> {
   // The install ID is made here, on the first send the person chose to put a name to, and never read from Claude Code or the machine.
   if (cfg.isFeedbackNamed && !cfg.feedbackInstall) {
-    const id = crypto.randomUUID()
-    // An ID that is not kept would be a new sender at every send, so nothing goes out under it.
-    const unsaved = await $.store.set(INSTALL_KEY, id).then(() => '', why)
-    if (unsaved) return unsaved
-    cfg.feedbackInstall = id
+    // Read again: a read that failed at the start is not a missing ID. An ID that is not kept would be a new sender at every send, so nothing goes out under it.
+    try {
+      const id = String((await $.store.get(INSTALL_KEY)) ?? '') || crypto.randomUUID()
+      await $.store.set(INSTALL_KEY, id)
+      cfg.feedbackInstall = id
+    } catch (e) {
+      return why(e)
+    }
   }
   const who = cfg.isFeedbackNamed ? { install: cfg.feedbackInstall, ...(cfg.feedbackIdentity ? { identity: cfg.feedbackIdentity } : {}) } : {}
   const body = { ...draft, app: 'agentmon-live', version: cfg.version, claude_code: cfg.claudeCode, language: cfg.lang, ...who }

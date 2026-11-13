@@ -289,6 +289,38 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
   }
 })
 
+test('a store read that failed at the start does not replace the kept install ID', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('env.get', () => ({ value: undefined }))
+  on('fs.read', (_, e, next) => (e.path.endsWith('/settings.json') ? { value: settingsWith({ feedbackIdentity: 'ada@example.com' }) } : next(e)))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  on('ui.toast', () => ({ value: undefined }))
+  let isReadBroken = true
+  on('store.get', (_, e, next) => {
+    if (e.key !== 'feedbackInstall') return next(e)
+    if (isReadBroken) throw new Error('locked')
+    return { value: 'kept-id' }
+  })
+  on('store.set', () => ({ value: undefined }))
+  const sent: { install?: string }[] = []
+  on('http.fetch', (_, e) => {
+    sent.push(JSON.parse(String(e.init?.body ?? '{}')) as { install?: string })
+    return { value: { status: 200, ok: true, headers: {}, text: '{}' } }
+  })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'thanks', text: 'One.' })
+  await ui.press({ key: 'feedback:send' })
+  expect(sent).toEqual([])
+  isReadBroken = false
+  await ui.press({ key: 'feedback:send' })
+  expect(sent[0]?.install).toBe('kept-id')
+  await ui.unmount()
+})
+
 test('feedback is anonymous until the person names it; the install ID is the mod\'s own', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
