@@ -37,7 +37,7 @@ export function actorOf(tool: string): Actor {
   return tool === 'ToolSearch' ? 'model' : ACTOR_OF[category(tool, {})]
 }
 
-export const CONTROL_OR_BIDI = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+export const CONTROL_OR_BIDI = /[\u0000-\u001f\u007f-\u009f\u061c\u200b\u200e\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g
 
 // Control and bidi characters to spaces, so a label cannot reorder or break the row it sits in.
 export function clean(s: string, max = LABEL_TEXT): string {

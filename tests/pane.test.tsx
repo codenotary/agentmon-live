@@ -274,9 +274,9 @@ test('feedback drafts a prompt, the tool puts the draft in the pane, and only se
   await ui.press({ key: 'feedback:cancel' })
   expect(await ui.find({ type: 'Text', text: /^Good pane/ })).toBe(undefined)
   expect(posts.length).toBe(1)
-  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'other', text: 'Left\u202e over.\n\u0007Line' })
+  await $.tool.call({ tool: 'mcp__agentmon-live__feedback', type: 'other', text: 'Left\u202eover.\n\u200bLine\tend' })
   // What could hide or reorder the text is gone before the person reads it; the line break stays.
-  expect(await ui.find({ type: 'Text', text: /^Left over\.\nLine$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^Left over\.\n Line end$/ })).toBeTruthy()
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: { sessionId: 's1' } } as never)
   expect(await ui.find({ type: 'Text', text: /^Left over/ })).toBe(undefined)
   await ui.unmount()

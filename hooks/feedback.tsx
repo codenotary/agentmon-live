@@ -43,7 +43,7 @@ export async function registerFeedback($: EngineInterface): Promise<void> {
 export function holdDraft($: EngineInterface, input: { readonly type?: unknown; readonly text?: unknown; readonly details?: unknown }): string {
   if (!cfg.feedback) return "Not taken: feedback is turned off in AgentMon Live's options."
   // The pane is the person's only check before sending: nothing that can hide or reorder text stays in, line breaks do.
-  const shown = (v: unknown) => mask(String(v ?? '')).replace(CONTROL_OR_BIDI, c => (c === '\n' ? c : '')).trim()
+  const shown = (v: unknown) => mask(String(v ?? '').replace(CONTROL_OR_BIDI, c => (c === '\n' ? c : ' '))).trim()
   const text = shown(input.text)
   const details = shown(input.details)
   if (!KINDS.includes(String(input.type))) return `Not taken: type must be one of ${KINDS.join(', ')}.`
