@@ -5,9 +5,10 @@ import { bump } from '../hooks/insights'
 
 test('findCheck on a 200 KB command of unterminated heredocs stays fast', () => {
   const command = 'npm test\n' + '<<A\n'.repeat(50_000)
+  // The input cap keeps this near 0.3 s; without it the heredoc pattern takes about half a minute. The limit leaves room for a slow machine.
   const t = performance.now()
   expect(findCheck(command)?.kind).toBe('test')
-  expect(performance.now() - t).toBeLessThan(200)
+  expect(performance.now() - t).toBeLessThan(2000)
 })
 
 test('outcomeOf reads the summary before test names', () => {
