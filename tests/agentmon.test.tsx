@@ -250,6 +250,33 @@ test('a resumed agent runs again', async ($, on) => {
   await ui.unmount()
 })
 
+test('running agents are never trimmed', async ($, on) => {
+  withOptions(on, {})
+  const clock = mock.clock(on)
+  engine(on)
+  // The agent list is read from the snapshot the web view gets: the pane shows only the last few finished agents.
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '{"port":47311}\n', stderr: '' } as never }))
+  on('session.id', () => ({ value: 'sess-1' }))
+  let body = ''
+  on('http.fetch', (_, e) => {
+    if (e.init?.method === 'POST' && e.url.includes('/state/')) body = String(e.init.body)
+    return { value: { status: 204, ok: true, headers: {}, text: '' } }
+  })
+  let n = 0
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${n++}` }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  for (let i = 0; i < 65; i++) {
+    await $.agent.spawn({ ...SPAWN, tool_use_id: `t${i}` })
+    if (i > 0) await $.turn.complete({ ...DONE, agentId: `a${i}` })
+  }
+  await clock.advance(600)
+  await clock.settle()
+  const list = (JSON.parse(body) as { agents: { id: string; status: string }[] }).agents
+  expect([list.filter(a => a.status === 'running').map(a => a.id), list.length]).toEqual([['a0'], 61])
+})
+
 test('clear keeps running agents and drops history', async ($, on) => {
   mock.clock(on)
   engine(on)
