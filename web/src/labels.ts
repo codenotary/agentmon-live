@@ -129,6 +129,8 @@ export const PAGE_EN = {
   "copied": "Copied",
   "details": "Call details",
   "rawCall": "Raw call",
+  "steps": "Turn steps",
+  "helpSteps": "The current turn step by step, newest first: each model request and each call of the main session, with who acted and how long it took. Quiet repeats fold into one row with a count. Click a call for its details.",
   "error": "Error",
   "noMatch": "No match.",
   "verification": "Verification",

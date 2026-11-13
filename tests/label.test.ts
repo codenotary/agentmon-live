@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { LANGUAGES } from '../hooks/i18n'
-import { clean, labelOf } from '../hooks/label'
+import { actorOf, clean, labelOf } from '../hooks/label'
 
 const t = LANGUAGES.en!
 const of = (tool: string, call: object = {}) => labelOf(tool, call, t)
@@ -43,4 +43,9 @@ test('a label is masked, cleaned of control and bidi characters, and capped', as
   const long = of('Bash', { command: 'x', description: 'd'.repeat(300) })
   expect(long.length).toBe(80)
   expect(long.endsWith('…')).toBe(true)
+})
+
+test('who acts in a call follows from the tool alone', async () => {
+  const actors = ['AskUserQuestion', 'mcp__ccd_session__mark_chapter', 'Bash', 'PowerShell', 'Edit', 'Grep', 'WebSearch', 'Agent', 'Skill', 'mcp__playwright__browser_click', 'mcp__sentry__search_issues', 'TodoWrite'].map(actorOf)
+  expect(actors).toEqual(['you', 'you', 'shell', 'shell', 'files', 'files', 'web', 'agents', 'skills', 'browser', 'mcp', 'model'])
 })

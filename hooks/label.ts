@@ -1,3 +1,5 @@
+import type { Actor } from '../types'
+import { EDIT_TOOLS } from './bench'
 import { mask, shortPath } from './format'
 import type { Strings } from './i18n'
 
@@ -6,6 +8,20 @@ export const LABEL_TEXT = 80
 const WRAPPERS = /^(sudo|env|time|nohup|command|exec)$/
 const HAS_SUBCOMMAND = /^(git|npm|pnpm|yarn|bun|cargo|go|docker|gh|kubectl)$/
 const FILE_TOOLS = /^(Read|Write|Edit|MultiEdit|NotebookEdit|NotebookRead)$/
+
+// Who acts in a call, by the tool's name alone: the person, the shell, the files, another agent.
+export function actorOf(tool: string): Actor {
+  if (/^(AskUserQuestion|SendUserFile)$|^mcp__(ccd_|visualize)/.test(tool)) return 'you'
+  if (/playwright|browser|chrome|computer/i.test(tool)) return 'browser'
+  if (/^mcp__terminal/.test(tool)) return 'shell'
+  if (/^mcp__plugin-authoring/.test(tool)) return 'skills'
+  if (tool.startsWith('mcp__')) return 'mcp'
+  if (/^(Bash|PowerShell|Monitor|TaskStop)$/.test(tool)) return 'shell'
+  if (/^(Read|NotebookRead|Grep|Glob|LSP)$/.test(tool) || EDIT_TOOLS.has(tool)) return 'files'
+  if (/^Web(Fetch|Search)$/.test(tool)) return 'web'
+  if (/^(Agent|SendMessage|Workflow|ListAgents)$/.test(tool)) return 'agents'
+  return tool === 'Skill' ? 'skills' : 'model'
+}
 
 // Control and bidi characters to spaces, so a label cannot reorder or break the row it sits in.
 export function clean(s: string, max = LABEL_TEXT): string {

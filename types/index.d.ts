@@ -254,6 +254,14 @@ export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: n
 // One turn on the web view's clock; `isLive` while it still runs.
 export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean; prompt?: string; answer?: string }
 
+export type Actor = 'you' | 'model' | 'shell' | 'files' | 'web' | 'browser' | 'agents' | 'skills' | 'hooks' | 'mcp'
+// One model request of the main loop; `ms` is set once its answer is in.
+export type Step = { id: string; at: number; ms?: number; model: string }
+export type StepState = 'running' | 'asking' | 'ok' | 'failed' | 'blocked'
+// A row of the turn's step list: a call or a model request, `id` the call's or the step's. `count` is above 1 for folded repeats, `ms` then their sum; a running row has `ms` 0.
+export type StepRow = { id: string; kind: 'call' | 'step'; state: StepState; actor: Actor; label: string; what?: string; at: number; ms: number; count: number }
+// The row as the page gets it, with the actor's name in the session's language.
+export type WebStep = Omit<StepRow, 'actor'> & { actor: string }
 export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean }
 
 // What a session posts to the web view's server. The page draws from this alone; change `v` when a field changes meaning.
@@ -271,6 +279,8 @@ export type WebSnapshot = {
   // Absent from a session of an older version, which cannot take the page's request.
   isPaneOpen?: boolean
   focus: WebFocus[]
+  // Absent on a session from an older version or another reader.
+  steps?: WebStep[]
   // `credits` only from a Kiro Crew chat on kiro-cli, which reports them in place of tokens and cost.
   usage: { ctxPct?: number; ctxTokens?: number; ctxWindow?: number; rate: { kind: string; pct: number; resetsAt?: number }[]; usd: number; credits?: number }
   turns: WebTurn[]
@@ -305,6 +315,7 @@ declare module 'claude-code' {
       calls: Call[]
       testReview: TestReview
       trace: TraceCall[]
+      steps: Step[]
       view: View
       active: Active[]
       checks: Check[]

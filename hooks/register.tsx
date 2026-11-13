@@ -35,7 +35,9 @@ const advisor = atom({ plugin: 'agentmon-live', key: 'advisor' } as const, INIT.
 const stats = atom({ plugin: 'agentmon-live', key: 'stats' } as const, INIT.stats)
 const calls = atom({ plugin: 'agentmon-live', key: 'calls' } as const, INIT.calls)
 const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
+const steps = atom({ plugin: 'agentmon-live', key: 'steps' } as const, INIT.steps)
 const KEEP_TRACE = 500
+const KEEP_STEPS = 200
 const TRACE_TEXT = 300
 const AGENT_PROMPT = 500
 // Enough for the answer's gist in the web view's log; 50 turns of it keep the snapshot small.
@@ -427,6 +429,7 @@ export const register: Register = on => {
         update($, stats, () => ({ errors: {}, compactions: 0, streak: 0 })),
         update($, calls, () => []),
         update($, trace, () => []),
+        update($, steps, () => []),
         update($, checks, () => []),
         update($, files, () => ({ read: [], edited: [], editedAt: 0 })),
         update($, lastCall, () => null),
@@ -525,10 +528,13 @@ export const register: Register = on => {
     const isMain = e.agentId === undefined
     const agentId = e.agentId
     const stepAt = await $.clock.now()
+    const stepId = `${e.turnId}:${e.index}`
     if (isMain) {
       book(clk, stepAt)
       clk.stepping = true
       clk.steps += 1
+      // Off the stream's path, like the bookkeeping below.
+      $.clock.after(0, () => update($, steps, all => [...all, { id: stepId, at: stepAt, model: e.model }].slice(-KEEP_STEPS)))
     } else {
       await update($, agents, list => list.map(a => (a.id === agentId ? { ...a, lastAt: stepAt } : a)))
     }
@@ -537,8 +543,10 @@ export const register: Register = on => {
       r = yield* next(e)
     } finally {
       if (isMain) {
-        book(clk, await $.clock.now())
+        const end = await $.clock.now()
+        book(clk, end)
         clk.stepping = false
+        $.clock.after(0, () => update($, steps, all => all.map(s => (s.id === stepId ? { ...s, ms: end - stepAt } : s))))
       }
     }
     // What the request was answered over is the context as it stands.

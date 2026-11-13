@@ -78,6 +78,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
     build: '1.2.3 · abc1234',
     testReview: { files: [{ path: '/r/a.test.ts', removed: 0, skips: 0, at: 1, changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] }], dropped: [], isGreen: true },
     trace: [],
+    steps: [{ id: 't:0', at: 950, ms: 20, model: 'claude-opus-5-5' }],
   })
   expect(snap.testReview?.files[0]).toMatchObject({ changed: 1, lines: [{ before: 'toBe(2)', after: 'toBe(3)' }] })
   expect(snap.v).toBe(1)
@@ -89,6 +90,8 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   expect(snap.focus.map(f => [f.tag, f.isUrgent])).toEqual([[t.approval, true], [t.failed, true], ['tip', false]])
   // The approval names the call by its label; the raw command stays in the call itself.
   expect(snap.focus[0]?.text).toBe('Bash Remove the old file')
+  // The turn's steps go out as finished rows, the actor in the session's language.
+  expect(snap.steps).toEqual([{ id: 't:0', kind: 'step', state: 'ok', actor: t.actor.model, label: 'Opus 5.5', at: 950, ms: 20, count: 1 }])
   expect(snap.lang).toBe('de')
   expect(snap.build).toBe('1.2.3 · abc1234')
   expect((snap.labels.page as Record<string, string>).events).toBe(t.web.page.events)
@@ -273,6 +276,7 @@ test('a full session stays under the size the server takes', () => {
     build: 'x',
     testReview: { files: [], dropped: [], isGreen: false },
     trace: Array.from({ length: 500 }, (_, i) => ({ id: `toolu_${i}`, at: i, who: 'general-purpose', tool: 'Bash', what: text, ms: 1, isFailed: true, error: text, agentId: 'agent-1234' })),
+    steps: [],
   })
   expect(JSON.stringify(snap).length).toBeLessThan(1024 * 1024)
 })
@@ -302,6 +306,7 @@ test('a dismissed item stays away from the page as from the pane', () => {
     build: '1.2.3 · abc1234',
     testReview: { files: [], dropped: [], isGreen: false },
     trace: [],
+    steps: [],
   })
   expect(snap.focus).toEqual([])
 })

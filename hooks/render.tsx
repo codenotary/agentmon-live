@@ -6,6 +6,7 @@ import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, pe
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
+import { stepRows, turnSpan } from './steps'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, needsYou, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
@@ -30,6 +31,8 @@ const layout = atom({ plugin: 'agentmon-live', key: 'layout' } as const, INIT.la
 const insights = atom({ plugin: 'agentmon-live', key: 'insights' } as const, INIT.insights)
 const learned = atom({ plugin: 'agentmon-live', key: 'learned' } as const, INIT.learned)
 const testReview = atom({ plugin: 'agentmon-live', key: 'testReview' } as const, INIT.testReview)
+const trace = atom({ plugin: 'agentmon-live', key: 'trace' } as const, INIT.trace)
+const steps = atom({ plugin: 'agentmon-live', key: 'steps' } as const, INIT.steps)
 // Insights shown in Focus with details off; the rest wait for `d`.
 const FOCUS_SHOWN = 3
 
@@ -40,6 +43,8 @@ const MAX_CARDS = 4
 const MAX_CARDS_CLASSIC = 6
 // Sections calm leaves out unless they need the person; `v` (classic) shows them all.
 const CALM_HIDDEN = ['insights', 'skills', 'usage']
+const STEP_GLYPH = { running: '', asking: '⏸', ok: '✓', failed: '✗', blocked: '⊘' }
+const STEP_COLOR = { running: 'cyan', asking: 'yellow', ok: undefined, failed: 'red', blocked: 'red' }
 
 // The last frame drawn, kept for `refreshRate`, and what it was drawn for.
 let frame: { key: string; tree: RenderElement } | undefined
@@ -85,7 +90,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
 async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const t = cfg.t
   const { Box, Button, Link, Text } = $.ui.resolve(e)
-  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt, reviewed] = await Promise.all([
+  const [m, counts, stored, lines, adv, usage, st, now, recent, tab, doing, live, checked, touched, last, lay, planned, loaded, flows, insStored, learnt, reviewed, traced, stepped] = await Promise.all([
     read($, main),
     read($, tools),
     read($, agents),
@@ -109,6 +114,8 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
     read($, insights),
     read($, learned),
     read($, testReview),
+    read($, trace),
+    read($, steps),
   ])
   const ins = { ...shapeInsights(insStored), turn: liveTurn.read ? liveTurn.read() : insStored?.turn }
   const statusOf = new Map(live.map(a => [a.id, liveStatus(a.status)]))
@@ -329,6 +336,23 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
             {'  '}{k.status === 'completed' ? '✓' : k.status === 'in_progress' ? '▸' : '·'} {k.subject}
           </Text>
         ))}
+    </Box>
+  )
+
+  // The turn step by step, newest first: who acted, on what, for how long.
+  const span = turnSpan(ins)
+  const stepList = span ? stepRows({ trace: traced, steps: stepped, active: doing }, span) : []
+  const stepsBox = stepList.length > 0 && (
+    <Box flexDirection="column">
+      <Text>{title(t.steps, 'cyan')}</Text>
+      {stepList.slice(0, lay.isDetailed ? 30 : isClassic ? 10 : 5).map(r => (
+        <Text wrap={rowWrap}>
+          <Text color={STEP_COLOR[r.state]} dimColor={r.state === 'ok'}>{r.state === 'running' ? spin(now) : STEP_GLYPH[r.state]} </Text>
+          <Text dimColor>{fit(t.actor[r.actor], 9)}</Text>
+          {fit(cut(r.label, whatRoom), whatRoom + 1)}
+          <Text dimColor>{r.count > 1 ? `×${r.count} ` : ''}{r.ms === 0 && r.state !== 'ok' ? secs(r.at) : dur(r.ms)}</Text>
+        </Text>
+      ))}
     </Box>
   )
 
@@ -640,6 +664,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const sections = rank(
     [
       { key: 'tasks', node: taskBox, isUrgent: false, at: latest(...planned.map(k => k.at ?? 0)) },
+      { key: 'steps', node: stepsBox, isUrgent: false, at: stepList[0]?.at ?? 0 },
       { key: 'insights', node: insightBox, isUrgent: false, at: ins.turn ? now : ins.last ? ins.last.startedAt + ins.last.wallMs : 0 },
       { key: 'skills', node: skillBox, isUrgent: false, at: latest(...loaded.map(s => s.at)) },
       { key: 'advisor', node: advisorBox, isUrgent: !!verdict && !verdict.ok && !verdict.isSent, at: verdict?.at ?? 0 },
