@@ -214,6 +214,13 @@
       "tag": "context",
       "text": "Context is 62% full. /compact before the next large task.",
       "isUrgent": false
+    },
+    {
+      "key": "mcp",
+      "tag": "mcp",
+      "text": "MCP tools take 31k tokens of context",
+      "isUrgent": false,
+      "scope": "Environment"
     }
   ],
   "usage": {

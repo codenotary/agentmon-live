@@ -102,7 +102,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     isPaneOpen: p.isPaneOpen,
     build: p.build,
     testReview: { files: p.testReview.files, dropped: droppedLines(t, p.testReview), isGreen: p.testReview.isGreen },
-    focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: x.key.startsWith('secret:') && x.color === 'red' }))],
+    focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: x.key.startsWith('secret:') && x.color === 'red', ...(x.isGlobal ? { scope: t.ins.environment } : {}) }))],
     usage: {
       ctxPct: p.usage.context.percent,
       ctxTokens: p.usage.context.tokens,

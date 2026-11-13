@@ -406,7 +406,7 @@ export function focusList({ ins, doing, agents, percent, window, tokens, now, le
   if (peak) out.push({ key: `peak:${new Date(now).toDateString()}`, score: 20, isGlobal: true, tag: t.tag.peak, color: 'blue', text: t.peak(clockTime(peak)) })
 
   // What is about this session comes first, so it keeps the visible rows.
-  return out.sort((a, b) => Number(a.isGlobal ?? false) - Number(b.isGlobal ?? false) || b.score - a.score)
+  return out.sort((a, b) => Number(!!a.isGlobal) - Number(!!b.isGlobal) || b.score - a.score)
 }
 
 // Weekdays 05:00 to 11:00 Pacific time; the end of that stretch when `now` is inside it.
