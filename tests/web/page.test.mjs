@@ -766,6 +766,10 @@ test('events kept in the browser come back per session, malformed ones left out,
   let raw = keepEvents(null, 's1', [ev, { ...ev, key: 'check:x', clearedAt: 9 }], 10)
   assert.deepEqual(keptEvents(raw, 's1'), [ev, { ...ev, key: 'check:x', clearedAt: 9 }])
   assert.deepEqual(keptEvents(raw, 's2'), [])
+  // A cleared machine-wide event lives only here, so its word must survive a reload.
+  const wide = { ...ev, key: 'mcp', clearedAt: 9, scope: 'Environment' }
+  assert.deepEqual(keptEvents(keepEvents(null, 's3', [wide], 10), 's3'), [wide])
+  assert.deepEqual(keptEvents('{"s3":[{"key":"k","tag":"t","text":"x","at":1,"scope":7}]}', 's3'), [])
   assert.deepEqual(keptEvents('{"s1":[{"key":1},null]}', 's1'), [])
   assert.deepEqual(keptEvents('not json', 's1'), [])
   for (let i = 2; i <= 12; i += 1) raw = keepEvents(raw, `s${i}`, [ev], 10)
@@ -795,4 +799,11 @@ test('a Kiro Crew chat finds its session by slot, the one with the latest turn w
   assert.equal(sessionOfSlot(sessions, ''), undefined)
   // Resumed: the new session has no turn yet and is still the chat now.
   assert.equal(sessionOfSlot(new Map([...sessions, at('resumed', 'chat-1')]), 'chat-1'), 'resumed')
+})
+
+test('the label-or-raw text of a call comes from callText, not from a copy of the fallback', () => {
+  // A search string joins the label and the raw text (`label ?? ''`): that is no fallback.
+  const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? (e.name === 'node_modules' ? [] : walk(join(dir, e.name))) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : []))
+  const copies = [join(ROOT, 'hooks'), join(ROOT, 'web', 'src')].flatMap(walk).flatMap(f => readFileSync(f, 'utf8').split('\n').flatMap((line, i) => (/label \?\? (?!'')[^\n]{0,24}what/.test(line) && !line.includes('export const callText') ? [`${f.slice(ROOT.length + 1)}:${i + 1}`] : [])))
+  assert.deepEqual(copies, [])
 })

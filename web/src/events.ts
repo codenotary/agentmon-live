@@ -50,7 +50,7 @@ export function nextEvents(list: readonly FeedEvent[], focus: readonly WebFocus[
 
 const isEvent = (e: unknown): e is FeedEvent => {
   const x = e as Partial<FeedEvent> | null
-  return typeof x?.key === 'string' && typeof x.tag === 'string' && typeof x.text === 'string' && typeof x.at === 'number' && (x.clearedAt === undefined || typeof x.clearedAt === 'number')
+  return typeof x?.key === 'string' && typeof x.tag === 'string' && typeof x.text === 'string' && typeof x.at === 'number' && (x.clearedAt === undefined || typeof x.clearedAt === 'number') && (x.scope === undefined || typeof x.scope === 'string')
 }
 
 function keptOf(raw: string | null): Record<string, unknown> {
@@ -65,7 +65,7 @@ function keptOf(raw: string | null): Record<string, unknown> {
 // A session's feed as this browser kept it; anything malformed is left out.
 export function keptEvents(raw: string | null, id: string): FeedEvent[] {
   const list = keptOf(raw)[id]
-  return Array.isArray(list) ? list.filter(isEvent).map(e => ({ key: e.key, tag: e.tag, text: e.text, isUrgent: e.isUrgent === true, at: e.at, ...(e.clearedAt === undefined ? {} : { clearedAt: e.clearedAt }) })) : []
+  return Array.isArray(list) ? list.filter(isEvent).map(e => ({ key: e.key, tag: e.tag, text: e.text, isUrgent: e.isUrgent === true, at: e.at, ...(e.clearedAt === undefined ? {} : { clearedAt: e.clearedAt }), ...(e.scope === undefined ? {} : { scope: e.scope }) })) : []
 }
 
 // The kept feeds with this session's replaced, newest session last; only the last `sessions` stay, so ended sessions do not pile up.

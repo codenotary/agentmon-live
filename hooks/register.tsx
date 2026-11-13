@@ -574,8 +574,8 @@ export const register: Register = on => {
     const to = typeof rawTo === 'string' && rawTo ? mask(rawTo).slice(0, NAME_TEXT) : undefined
     const what = to === undefined ? describe(e.tool, e) : `→ ${to}`
     const name = labelOf(e.tool, e, t)
-    // Only when it says something else: a record without a label shows `what`.
-    const label = name === what ? {} : { label: name }
+    // Only when it says something, and something else: a record without a label shows `what`.
+    const label = name && name !== what ? { label: name } : {}
     const callId = e.tool_use_id ?? `call-${++callCount}`
     const [list, m, startedAt] = await Promise.all([read($, agents), read($, main), $.clock.now()])
     const caller = e.agentId === undefined ? undefined : list.find(a => a.id === e.agentId)

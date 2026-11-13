@@ -53,6 +53,8 @@ export function editsSinceGreen(files: { editedTimes?: Record<string, number> },
 // A call with no end that the session no longer runs was lost, for example to a module reload.
 export const traceResult = (c: { isFailed?: boolean; ms?: number }, isActive: boolean) => (c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : isActive ? 'running' : 'unknown')
 export const firstLine = (text: string) => text.split('\n')[0] ?? ''
+// What a row shows for a call: its short name, else its raw text.
+export const callText = (c: { what: string; label?: string }) => c.label ?? c.what
 
 // `g` then a letter goes to a section.
 export const SECTION_KEYS: Readonly<Record<string, string>> = { o: 'overview', c: 'calls', v: 'verification', a: 'agents', f: 'files', l: 'log' }

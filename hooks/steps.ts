@@ -1,5 +1,5 @@
 import type { Active, Insights, Step, StepRow, TraceCall } from '../types'
-import { modelName } from './format'
+import { callText, modelName } from './format'
 import { actorOf } from './label'
 
 // The turn the step list shows: the one under way, else the last one.
@@ -19,7 +19,7 @@ export function stepRows(d: { trace: readonly TraceCall[]; steps: readonly Step[
     // A call that neither ended nor runs was cut off by a reload: nothing to say about it.
     if (c.agentId !== undefined || !(running || (isIn(c.at) && c.ms !== undefined))) return []
     const state = c.isDenied ? 'blocked' : c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : running?.isAsking ? 'asking' : 'running'
-    return [{ id: c.id, kind: 'call', state, actor: c.isDenied ? 'hooks' : actorOf(c.tool), label: c.label ?? c.what, ...(c.label === undefined ? {} : { what: c.what }), at: c.at, ms: c.ms ?? 0, count: 1 }]
+    return [{ id: c.id, kind: 'call', state, actor: c.isDenied ? 'hooks' : actorOf(c.tool), label: callText(c), ...(c.label === undefined ? {} : { what: c.what }), at: c.at, ms: c.ms ?? 0, count: 1 }]
   })
   const newest = d.steps.at(-1)
   const steps = d.steps.flatMap((s): StepRow[] =>

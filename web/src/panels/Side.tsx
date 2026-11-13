@@ -2,7 +2,7 @@ import { CheckCircle2, Circle, Cpu, Gauge, ListChecks, Loader, ShieldCheck } fro
 import { useMemo } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { agentNames, dur, editsSinceGreen, kilo, resultOf, time, whoOf } from '../format.ts'
+import { agentNames, dur, editsSinceGreen, kilo, resultOf, time, whoOf, callText } from '../format.ts'
 import type { Labels, Page } from '../labels.ts'
 import { fill } from '../kpi.ts'
 import { useClock } from '../store.ts'
@@ -20,7 +20,7 @@ export function Running({ s, p }: { s: WebSnapshot; p: Page }) {
             <li key={a.id} className="fade-in flex min-w-0 items-baseline justify-between gap-2.5">
               <span className="min-w-0 [overflow-wrap:anywhere]">
                 <i className="rec mr-2 inline-block size-1.5 rounded-full bg-signal-bright align-middle" aria-hidden />
-                <b className="font-semibold">{whoOf(a, names)}</b> <span className="font-mono text-xs" title={a.what}>{a.tool} {a.label ?? a.what}</span>
+                <b className="font-semibold">{whoOf(a, names)}</b> <span className="font-mono text-xs" title={a.what}>{a.tool} {callText(a)}</span>
               </span>
               <span className="whitespace-nowrap text-ink-3 tabular-nums">{dur(now - a.startedAt)}</span>
             </li>
@@ -115,7 +115,7 @@ export function Tasks({ s, l }: { s: WebSnapshot; l: Labels }) {
   )
 }
 
-function Bars({ label, rows }: { label: string; rows: { key: string; text: string; value: number; shown: string }[] }) {
+function Bars({ label, rows }: { label: string; rows: { key: string; text: string; title?: string; value: number; shown: string }[] }) {
   if (rows.length === 0) return null
   const top = Math.max(1, ...rows.map(r => r.value))
   return (
@@ -123,7 +123,7 @@ function Bars({ label, rows }: { label: string; rows: { key: string; text: strin
       <span className="eyebrow">{label}</span>
       <ul className="mt-1.5 flex flex-col gap-1.5">
         {rows.map(r => (
-          <li key={r.key} className="relative overflow-hidden rounded px-2 py-1 text-xs">
+          <li key={r.key} className="relative overflow-hidden rounded px-2 py-1 text-xs" title={r.title}>
             <i className="absolute inset-y-0 left-0 bg-signal-soft transition-[width] duration-500" style={{ width: `${(r.value / top) * 100}%` }} />
             <span className="relative flex items-baseline justify-between gap-2.5">
               <span className="min-w-0 font-mono [overflow-wrap:anywhere]">{r.text}</span>
@@ -144,8 +144,8 @@ export function Insights({ s, p }: { s: WebSnapshot; p: Page }) {
     <Panel id="insights" title={p.insights} help={p.helpInsights} icon={Gauge}>
       {isEmpty ? <Empty text={p.none} /> : (
         <div className="flex flex-col gap-3">
-          <Bars label={p.slow} rows={slow.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.label ?? c.what}`, value: c.ms, shown: dur(c.ms) }))} />
-          <Bars label={p.big} rows={big.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${c.label ?? c.what}`, value: c.tokens, shown: kilo(c.tokens) }))} />
+          <Bars label={p.slow} rows={slow.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${callText(c)}`, title: c.what, value: c.ms, shown: dur(c.ms) }))} />
+          <Bars label={p.big} rows={big.slice(0, 5).map(c => ({ key: `${c.at}:${c.what}`, text: `${c.tool} ${callText(c)}`, title: c.what, value: c.tokens, shown: kilo(c.tokens) }))} />
           <Bars label={p.repeatedApprovals} rows={asked.map(([what, n]) => ({ key: what, text: what, value: n, shown: `×${n}` }))} />
         </div>
       )}

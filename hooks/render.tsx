@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, RenderChildren, RenderElement, RenderInput } from 'claude-code'
 
 import type { Card, Check, Note } from '../types'
-import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, smoothBar, spinner, width } from './format'
+import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, callText, smoothBar, spinner, width } from './format'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
@@ -168,7 +168,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const errorOf = (c: Check) => recent.find(x => x.at === c.at && x.error)?.error
   // Approvals and waiting subagents cannot be put away here: they leave when answered.
   const items: Item[] = needsYou({ doing, streak: st.streak ?? 0, checks: checked, agents: list, turnAt: m.turnAt }).map((u): Item => {
-    if (u.kind === 'ask') return { row: <Text>{chip(t.approval, 'yellow')} <Text bold>{u.call.tool}</Text> {cut(u.call.label ?? u.call.what, whatRoom)}</Text> }
+    if (u.kind === 'ask') return { row: <Text>{chip(t.approval, 'yellow')} <Text bold>{u.call.tool}</Text> {cut(callText(u.call), whatRoom)}{u.call.label ? <Text dimColor> {cut(u.call.what, whatRoom)}</Text> : null}</Text> }
     if (u.kind === 'streak') return { key: u.key, row: <Text>{chip(t.status.error, 'red')} {t.errorsInRow(u.n)}</Text>, prompt: t.investigateErrors(u.n) }
     if (u.kind === 'check') {
       const c = u.check
@@ -288,14 +288,14 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         <Text wrap={rowWrap}>
           <Text color="cyan">{spin(now)} </Text>
           <Text bold>{fit(a.tool, 10)}</Text>
-          {fit(cut(a.label ?? a.what, whatRoom), whatRoom + 1)}
+          {fit(cut(callText(a), whatRoom), whatRoom + 1)}
           {lay.isDetailed && a.label ? <Text dimColor>{a.what} </Text> : null}
           <Text dimColor>{a.who.slice(0, 16)}{a.model ? ` · ${modelName(a.model)}` : ''} · {secs(a.startedAt)}</Text>
         </Text>
       ))}
       {doing.length === 0 && last && (
         <Text dimColor wrap={rowWrap}>
-          {t.lastCall} · {last.tool}{last.label ?? last.what ? ` ${cut(last.label ?? last.what, whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
+          {t.lastCall} · {last.tool}{callText(last) ? ` ${cut(callText(last), whatRoom)}` : ''} · {last.who.slice(0, 16)}{last.model ? ` · ${modelName(last.model)}` : ''} · {t.ago(secs(last.at))}
         </Text>
       )}
       {Array.from({ length: padRows }, () => (
@@ -615,7 +615,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         <Box gap={1}>
           <Text>
             <Text color={s.ms >= 60_000 ? 'yellow' : undefined}>{dur(s.ms).padStart(7)}</Text> <Text bold>{fit(s.tool, 10)}</Text>
-            {fit(cut(s.label ?? s.what, whatRoom), whatRoom + 1)}
+            {fit(cut(callText(s), whatRoom), whatRoom + 1)}
             {/* A narrow pane keeps room for investigate over who ran the call. */}
             {isWide && <Text dimColor>{s.who.slice(0, 16)}</Text>}
           </Text>
@@ -634,7 +634,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       )}
       {ins.big.slice(0, lay.isDetailed ? 6 : 2).map(b => (
         <Text dimColor>
-          {'  '}≈{kilo(b.tokens).padStart(6)} {b.tool} {cut(b.label ?? b.what, whatRoom)}
+          {'  '}≈{kilo(b.tokens).padStart(6)} {b.tool} {cut(callText(b), whatRoom)}
         </Text>
       ))}
       {lay.isDetailed && ins.breakdown && ins.breakdown.length > 0 && (

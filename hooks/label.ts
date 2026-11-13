@@ -5,7 +5,8 @@ import type { Category, Strings } from './i18n'
 
 export const LABEL_TEXT = 80
 
-const WRAPPERS = /^(sudo|env|time|nohup|command|exec)$/
+const WRAPPERS = /^(sudo|env|time|nohup|command|exec|timeout|npx)$/
+const KEYWORDS = /^(if|then|else|elif|fi|for|while|until|do|done|case|esac|function|select|\[\[?)$/
 const HAS_SUBCOMMAND = /^(git|npm|pnpm|yarn|bun|cargo|go|docker|gh|kubectl)$/
 const FILE_TOOLS = /^(Read|Write|Edit|MultiEdit|NotebookEdit|NotebookRead)$/
 
@@ -42,39 +43,40 @@ export function clean(s: string, max = LABEL_TEXT): string {
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat
 }
 
-// `https://user:pw@host/path?q` -> `host`
-const hostOf = (url: string) => url.replace(/^[a-z][\w+.-]*:\/\//i, '').replace(/^[^/@]*@/, '').split(/[/?#]/)[0]!.slice(0, 40)
+// `https://user:pw@host/path?q=a@b` -> `host`: cut at the path first, so an `@` further on is not taken for the user part.
+const hostOf = (url: string) => url.replace(/^[a-z][\w+.-]*:\/\//i, '').split(/[/?#]/)[0]!.replace(/^.*@/, '').slice(0, 40)
 
 // The program a shell line runs first: `cd x && sudo env A=1 npm test -- a` -> `npm test`.
+// It never reads past an option, whose value it cannot tell from a program: `sudo -u deploy x`, `timeout -s KILL 5 x` and a line
+// that opens with a shell keyword have no name, and `git -C repo push` is `git`. The row then shows the raw command.
 function commandName(command: string): string | undefined {
   for (const part of command.split(/&&|\|\||[;|\n]/)) {
-    // `(cd web && npm test)`, `{ npm test; }`, `! grep x`: the bracket or bang is not part of the program's name.
-    const words = (part.replace(/^[\s({!]+/, '').match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(w => w.replace(/^["']|["']$/g, ''))
+    // `(cd web && npm test)`, `{ npm test; }`, `! grep x`: the bracket or bang is not part of the program's name. `A="b c"` is one word.
+    const words = part.replace(/^[\s({!]+/, '').match(/(?:[A-Za-z_]\w*=)?(?:"[^"]*"|'[^']*')\S*|\S+/g) ?? []
     // PowerShell: `$r = & "C:\Tools\x.exe"`.
     if (words[0]?.startsWith('$') && words[1] === '=') words.splice(0, 2)
-    for (;;) {
-      const w = words[0] ?? ''
-      if (w === 'npx') words.splice(0, /^(-p|--package)$/.test(words[1] ?? '') ? 3 : 1)
-      else if (w === 'timeout') words.splice(0, 2)
-      else if (WRAPPERS.test(w) || /^[A-Za-z_]\w*=/.test(w) || /^(-.*|&|\.)$/.test(w)) words.shift()
-      else break
+    if (/^[&.]$/.test(words[0] ?? '')) words.shift()
+    while (/^[A-Za-z_]\w*=/.test(words[0] ?? '') || WRAPPERS.test(words[0] ?? '')) {
+      const wrapper = words.shift()
+      if (wrapper === 'npx' && /^(-y|--yes)$/.test(words[0] ?? '')) words.shift()
+      if (wrapper === 'timeout' && /^\d/.test(words[0] ?? '')) words.shift()
     }
-    const name = words[0]?.replace(/\\/g, '/').split('/').pop()?.replace(/\.(exe|cmd|bat)$/i, '')
-    if (!name || /^(cd|pushd)$/.test(name)) continue
-    // `git -C /repo push`: the folder after `-C` is no subcommand.
-    const sub = HAS_SUBCOMMAND.test(name) ? words.slice(1).find((w, i, all) => /^[a-z][\w:-]*$/.test(w) && !/^-[Cc]$/.test(all[i - 1] ?? '')) : undefined
-    return sub ? `${name} ${sub}` : name
+    const name = (words[0] ?? '').replace(/^["']|["']$/g, '').replace(/\\/g, '/').split('/').pop()!.replace(/\.(exe|cmd|bat)$/i, '')
+    // A comment line or a change of folder says nothing: the next part does.
+    if (!name || name.startsWith('#') || /^(cd|pushd)$/.test(name)) continue
+    if (name.startsWith('-') || KEYWORDS.test(name)) return undefined
+    return HAS_SUBCOMMAND.test(name) && /^[a-z][\w:-]*$/.test(words[1] ?? '') ? `${name} ${words[1]}` : name
   }
   return undefined
 }
 
-// A short name for a call, shown before its raw text. It names the call and never carries its content: a pattern or a query stays out.
+// A short name for a call, shown before its raw text; empty when it has none. It names the call and never carries its content: a pattern or a query stays out.
 export function labelOf(tool: string, call: object, t: Pick<Strings, 'label'>): string {
   const a = call as Record<string, unknown>
   const text = (k: string) => (typeof a[k] === 'string' && a[k].trim() ? a[k].trim() : undefined)
   const [, server, ...rest] = tool.split('__')
   const raw =
-    /^(Bash|PowerShell)$/.test(tool) ? text('description') ?? commandName(text('command') ?? '') ?? 'shell'
+    /^(Bash|PowerShell)$/.test(tool) ? text('description') ?? commandName(text('command') ?? '') ?? ''
     : FILE_TOOLS.test(tool) ? shortPath((text('file_path') ?? text('notebook_path') ?? tool).replace(/\\/g, '/'))
     : tool === 'WebFetch' ? hostOf(text('url') ?? '') || tool
     : tool === 'WebSearch' ? t.label.webSearch

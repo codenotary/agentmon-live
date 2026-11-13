@@ -262,7 +262,8 @@ export type StepState = 'running' | 'asking' | 'ok' | 'failed' | 'blocked'
 export type StepRow = { id: string; kind: 'call' | 'step'; state: StepState; actor: Actor; label: string; what?: string; at: number; ms: number; count: number }
 // The row as the page gets it, with the actor's name in the session's language.
 export type WebStep = Omit<StepRow, 'actor'> & { actor: string }
-export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean }
+// `scope`: the word for a finding about the machine or account, not this session; absent on a session finding.
+export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean; scope?: string }
 
 // What a session posts to the web view's server. The page draws from this alone; change `v` when a field changes meaning.
 export type WebSnapshot = {
