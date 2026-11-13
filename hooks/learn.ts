@@ -87,9 +87,12 @@ export function upsert(learned: Learned, rec: SessionRecord): Learned {
 
 // The first error line with paths, hex and numbers taken out, so one cause behind different calls reads as one key.
 export function errSig(text: string): string | undefined {
-  const line = mask(text).split('\n').map(l => l.trim()).find(l => l) ?? ''
+  const [first = '', next] = mask(text).split('\n').map(l => l.trim()).filter(l => l)
+  // A failed shell command opens with `Exit code N` whatever the cause: its first output line tells the causes apart.
+  const code = first.match(/^Exit code (\d+)$/)
+  const line = code ? next : first
   if (!line || REJECTED.test(line)) return undefined
-  return line.replace(/\/[^\s'"`():]+/g, '<path>').replace(/\b[0-9a-f]{6,}\b/gi, '#').replace(/\d+/g, '#').replace(/\s+/g, ' ').slice(0, 100)
+  return (code ? `exit ${code[1]}: ` : '') + line.replace(/\/[^\s'"`():]+/g, '<path>').replace(/\b[0-9a-f]{6,}\b/gi, '#').replace(/\d+/g, '#').replace(/\s+/g, ' ').slice(0, 100)
 }
 
 // One transcript file (`<id>.jsonl`) as a session record, for the backfill. Lines that do not parse are skipped.

@@ -239,7 +239,6 @@ function engine(on: On, store: Map<string, unknown>, toasts: string[], transcrip
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('ui.status', () => ({ value: undefined }))
   on('ui.toast', (_, e) => {
     toasts.push(String(e.text))
     return { value: undefined }
@@ -396,6 +395,15 @@ test('the same error behind other numbers and paths has one signature', async ()
   expect(errSig(' \n ')).toBe(undefined)
 })
 
+test('a failed shell command is keyed by its output, not by its exit line', async () => {
+  expect(errSig('Exit code 255\nfatal: Refusing to create empty bundle.')).toBe('exit 255: fatal: Refusing to create empty bundle.')
+  expect(errSig('Exit code 1\n\nError: port 3000 in use')).toBe(errSig('Exit code 1\nError: port 3001 in use'))
+  expect(errSig('Exit code 1\nno matches found')).not.toBe(errSig('Exit code 1\nfatal: not a git repository'))
+  // No output, no cause to name: a grep with no match and a failed script would read as one error.
+  expect(errSig('Exit code 1')).toBe(undefined)
+  expect(errSig('Exit code 1\n')).toBe(undefined)
+})
+
 test('an error met in 3 sessions suggests a CLAUDE.md note', async () => {
   const hit = (r: SessionRecord) => tally(r, 'Bash', true, 'ModuleNotFoundError: No module named foo', 0)
   expect(learnedItems(history(2, hit), LIVE).some(x => x.key.startsWith('recur:'))).toBe(false)
@@ -505,7 +513,6 @@ test('a turn without a usage breakdown is still saved and keeps the MCP figures'
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
-  on('ui.status', () => ({ value: undefined }))
   on('env.get', () => ({ value: '/h' }))
   on('fs.list', () => ({ value: [] }))
   on('store.get', (_, e) => ({ value: store.get(e.key) }))
