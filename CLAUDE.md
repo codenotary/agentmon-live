@@ -13,6 +13,8 @@ node --test 'tests/web/*.test.mjs'
 
 After a change in `web/`, also run `node scripts/web-shot.mjs <out dir>` (setup in `docs/develop.md`). It is the only check that runs the page in a browser.
 
+`tsc` needs the types in `.claude-plugin/types/`, which git ignores and only loading the mod writes. In a new worktree or clone, run `claude --plugin-dir .` there once first, or link that folder from a checkout that has it; without it `tsc` fails with `TS5083` and hundreds of errors.
+
 `tsc` has one known error in `tests/advisor.test.tsx` (`{ isAnswered: false; reason: "aborted" }` in the unanswered-Fable test); anything else is new.
 
 ## Layout
