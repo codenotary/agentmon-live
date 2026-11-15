@@ -403,6 +403,7 @@ async function turnWithReads($: Parameters<TestBody>[0], on: On) {
   for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1 })) void _
   for (const id of ['r1', 'r2', 'r3']) await $.tool.call({ tool: 'Read', file_path: '/repo/hooks/state.ts', tool_use_id: id })
   await clock.settle()
+  return clock
 }
 
 test('the turn shows step by step, quiet repeats folded', async ($, on) => {
@@ -419,6 +420,54 @@ test('hiddenSections hides the turn steps', async ($, on) => {
   await turnWithReads($, on)
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /TURN STEPS/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('memory, hooks and a typed command have rows of their own, and one category shows alone', async ($, on) => {
+  // Classic shows ten rows; the default five would cut the sixth.
+  withOptions(on, { layout: 'classic' })
+  on('skill.prompt', (_, e) => ({ text: e.text }))
+  on('prompt.attachment', (_, e) => ({ text: e.text }))
+  on('classic.InstructionsLoaded', () => ({}))
+  const clock = await turnWithReads($, on)
+  await $.tool.call({ tool: 'Read', file_path: '/repo/CLAUDE.md', tool_use_id: 'm1' })
+  await $.skill.prompt({ skill: 'review', text: 'body', frontmatter: {}, source: 'userSettings' })
+  const hook = { type: 'hook_additional_context', text: 'be brief', origin: { kind: 'hook', event: 'UserPromptSubmit' } } as const
+  await $.prompt.attachment(hook)
+  await $.prompt.attachment(hook)
+  // A subagent's request carries its own: not the main turn's step.
+  await $.prompt.attachment({ ...hook, origin: { kind: 'hook', event: 'SubagentStart' }, agentId: 'a1' })
+  await $.classic.InstructionsLoaded({ file_path: '/repo/web/CLAUDE.md', memory_type: 'Project', load_reason: 'nested_traversal' })
+  await $.classic.InstructionsLoaded({ file_path: '/repo/docs/CLAUDE.md', memory_type: 'Project', load_reason: 'nested_traversal', agent_id: 'a1' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Memory\s+repo\/CLAUDE\.md/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Memory\s+web\/CLAUDE\.md · folder entered/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Skills\s+\/review/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Hooks\s+hook added context \(UserPromptSubmit\)\s+×2/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /SubagentStart/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /docs\/CLAUDE\.md/ })).toBe(undefined)
+
+  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'steps memory' })).text).toBe('AgentMon Live: turn steps · Memory')
+  expect(await ui.find({ type: 'Text', text: /TURN STEPS · MEMORY/i })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Skills\s+\/review/ })).toBe(undefined)
+  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'steps' })).text).toBe('AgentMon Live: turn steps · all')
+  expect(await ui.find({ type: 'Text', text: /Skills\s+\/review/ })).toBeTruthy()
+  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'Steps Hooks' })).text).toBe('AgentMon Live: turn steps · Hooks')
+  await ui.unmount()
+})
+
+test('a hook that sends the turn back has a row in the turn that goes on', async ($, on) => {
+  on('classic.Stop', () => ({ block: 'go on' }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  const clock = await turnWithReads($, on)
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'done' })
+  await clock.advance(1000)
+  await $.turn.start({ text: '', turnId: 't1' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Hooks\s+a hook sent the turn back/ })).toBeTruthy()
   await ui.unmount()
 })
 

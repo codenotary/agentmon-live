@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Active, Step, TraceCall } from '../types'
-import { isCut, KEEP_STEPS, KEEP_TRACE, stepRows, turnSpan } from '../hooks/steps'
+import { isCut, KEEP_STEPS, KEEP_TRACE, keepSteps, stepRows, turnSpan } from '../hooks/steps'
 
 const MODEL = 'claude-opus-5-5'
 const call = (id: string, at: number, extra: Partial<TraceCall> = {}): TraceCall => ({ id, at, who: 'main', tool: 'Bash', what: `run ${id}`, ms: 10, ...extra })
@@ -76,4 +76,31 @@ test('a full history that starts inside the turn says the list is cut', async ()
   expect(isCut({ trace: full, steps }, { from: 201 })).toBe(false)
   // Not full: nothing fell out.
   expect(isCut({ trace: full.slice(1), steps: steps.slice(1) }, { from: 100 })).toBe(false)
+})
+
+test('a memory file is memory, not files; a moment that is no call has its own actor and folds like a call', async () => {
+  const hook = (id: string, at: number): Step => ({ id, at, ms: 0, model: '', note: { actor: 'hooks', label: 'hook added context (UserPromptSubmit)' } })
+  const trace = [call('m', 110, { tool: 'Read', what: '/r/CLAUDE.md', label: 'r/CLAUDE.md', isMemory: true }), call('no', 115, { tool: 'Edit', isMemory: true, isDenied: true })]
+  const steps: Step[] = [hook('h1', 101), hook('h2', 102), { id: 't:0', at: 105, ms: 3, model: MODEL }, { id: 's', at: 120, ms: 0, model: '', note: { actor: 'skills', label: '/review' } }]
+  const rows = stepRows({ trace, steps, active: [] }, { from: 100 })
+  expect(rows.map(r => [r.id, r.actor, r.label, r.count])).toEqual([
+    ['s', 'skills', '/review', 1],
+    // A refusal is the hooks' doing, whatever the file.
+    ['no', 'hooks', 'run no', 1],
+    ['m', 'memory', 'r/CLAUDE.md', 1],
+    ['t:0', 'model', 'Opus 5.5', 1],
+    ['h2', 'hooks', 'hook added context (UserPromptSubmit)', 2],
+  ])
+  // A moment never counts as a request still under way, even as the newest step.
+  expect(rows[0]!.state).toBe('ok')
+  // A full list of moments pushes no request out, and the other way round; each kind drops its own oldest.
+  const full: Step[] = [{ id: 't:9', at: 90, ms: 1, model: MODEL }, ...Array.from({ length: KEEP_STEPS }, (_, i) => hook(`f${i}`, 200 + i))]
+  const kept = keepSteps(full, hook('new', 900))
+  expect(kept.map(s => s.id).slice(0, 2)).toEqual(['t:9', 'f1'])
+  expect(kept).toHaveLength(KEEP_STEPS + 1)
+  expect(isCut({ trace: [], steps: kept }, { from: 100 })).toBe(true)
+  expect(isCut({ trace: [], steps: kept.slice(0, 50) }, { from: 100 })).toBe(false)
+  // A moment that lands during a request does not hide it.
+  const live = stepRows({ trace: [], steps: [{ id: 't:1', at: 130, model: MODEL }, hook('h3', 131)], active: [] }, { from: 100 })
+  expect(live.map(r => [r.id, r.state])).toEqual([['h3', 'ok'], ['t:1', 'running']])
 })

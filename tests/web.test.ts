@@ -93,7 +93,7 @@ test('toSnapshot maps a session to the contract the page reads', () => {
   // Only a finding about the machine or account carries the word for it.
   expect(snap.focus.map(f => f.scope)).toEqual([undefined, undefined, undefined, t.ins.environment])
   // The turn's steps go out as finished rows, the actor in the session's language.
-  expect(snap.steps).toEqual([{ id: 't:0', kind: 'step', state: 'ok', actor: t.actor.model, label: 'Opus 5.5', at: 950, ms: 20, count: 1 }])
+  expect(snap.steps).toEqual([{ id: 't:0', kind: 'step', state: 'ok', actor: t.actor.model, actorId: 'model', label: 'Opus 5.5', at: 950, ms: 20, count: 1 }])
   expect(snap.isStepsCut).toBe(false)
   expect(snap.lang).toBe('de')
   expect(snap.build).toBe('1.2.3 · abc1234')

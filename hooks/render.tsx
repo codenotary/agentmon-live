@@ -349,13 +349,14 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
 
   // The turn step by step, newest first: who acted, on what, for how long.
   const span = turnSpan(ins)
-  const stepList = span ? stepRows({ trace: traced, steps: stepped, active: doing }, span) : []
+  const stepList = (span ? stepRows({ trace: traced, steps: stepped, active: doing }, span) : []).filter(r => lay.stepActor === undefined || r.actor === lay.stepActor)
   const stepsBox = stepList.length > 0 && (
     <Box flexDirection="column">
-      <Text>{title(t.steps, 'cyan')}</Text>
+      <Text>{title(lay.stepActor ? `${t.steps} · ${t.actor[lay.stepActor]}` : t.steps, 'cyan')}</Text>
       {stepList.slice(0, lay.isDetailed ? 30 : isClassic ? 10 : 5).map(r => (
         <Text wrap={rowWrap}>
           <Text color={STEP_COLOR[r.state]} dimColor={r.state === 'ok'}>{r.state === 'running' ? spin(now) : STEP_GLYPH[r.state]} </Text>
+          {lay.isDetailed && <Text dimColor>{clockTime(r.at)} </Text>}
           <Text dimColor>{fit(t.actor[r.actor], ACTOR_COLS)}</Text>
           {fit(cut(r.label, whatRoom), whatRoom + 1)}
           <Text dimColor>{r.count > 1 ? `×${r.count} ` : ''}{r.state === 'running' || r.state === 'asking' ? secs(r.at) : dur(r.ms)}</Text>

@@ -7,7 +7,15 @@ export const KEEP_STEPS = 200
 
 // A full history that starts inside the turn has dropped the turn's first calls or model requests.
 export function isCut(d: { trace: readonly TraceCall[]; steps: readonly Step[] }, span: { from: number }): boolean {
-  return (d.trace.length >= KEEP_TRACE && d.trace[0]!.at >= span.from) || (d.steps.length >= KEEP_STEPS && d.steps[0]!.at >= span.from)
+  const isFull = (list: readonly { at: number }[], keep: number) => list.length >= keep && list[0]!.at >= span.from
+  return isFull(d.trace, KEEP_TRACE) || isFull(d.steps.filter(s => !s.note), KEEP_STEPS) || isFull(d.steps.filter(s => s.note), KEEP_STEPS)
+}
+
+// A new step joins the list. Requests and moments each keep their newest KEEP_STEPS, so a hook that speaks at every call pushes no request out.
+export function keepSteps(all: readonly Step[], s: Step): Step[] {
+  const same = all.filter(x => !x.note === !s.note)
+  const drop = same.length >= KEEP_STEPS ? same[0] : undefined
+  return [...all.filter(x => x !== drop), s]
 }
 
 // The turn the step list shows: the one under way, else the last one.
@@ -28,11 +36,11 @@ export function stepRows(d: { trace: readonly TraceCall[]; steps: readonly Step[
     // A call that neither ended nor runs was cut off by a reload: nothing to say about it.
     if (c.agentId !== undefined || !(running || (isIn(c.at) && c.ms !== undefined))) return []
     const state = c.isDenied ? 'blocked' : c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : running?.isAsking ? 'asking' : 'running'
-    return [{ id: c.id, kind: 'call', state, actor: c.isDenied ? 'hooks' : actorOf(c.tool), label: callText(c), ...(c.label === undefined ? {} : { what: c.what }), at: c.at, ms: c.ms ?? 0, count: 1 }]
+    return [{ id: c.id, kind: 'call', state, actor: c.isDenied ? 'hooks' : c.isMemory ? 'memory' : actorOf(c.tool), label: callText(c), ...(c.label === undefined ? {} : { what: c.what }), at: c.at, ms: c.ms ?? 0, count: 1 }]
   })
-  const newest = d.steps.at(-1)
+  const newest = d.steps.findLast(s => !s.note)
   const steps = d.steps.flatMap((s): StepRow[] =>
-    isIn(s.at) && (s.ms !== undefined || (s === newest && span.to === undefined)) ? [{ id: s.id, kind: 'step', state: s.ms === undefined ? 'running' : 'ok', actor: 'model', label: modelName(s.model), at: s.at, ms: s.ms ?? 0, count: 1 }] : [],
+    isIn(s.at) && (s.ms !== undefined || (s === newest && span.to === undefined)) ? [{ id: s.id, kind: 'step', state: s.ms === undefined ? 'running' : 'ok', actor: s.note?.actor ?? 'model', label: s.note?.label ?? modelName(s.model), at: s.at, ms: s.ms ?? 0, count: 1 }] : [],
   )
   const out: StepRow[] = []
   for (const row of [...calls, ...steps].sort((a, b) => b.at - a.at)) {

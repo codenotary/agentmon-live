@@ -132,6 +132,7 @@ export const PAGE_EN = {
   "steps": "Turn steps",
   "helpSteps": "The current turn step by step, newest first: each model request and each call of the main session, with who acted and how long it took. Quiet repeats fold into one row with a count. Click a call for its details.",
   "stepsCut": "earlier steps not shown",
+  "allSteps": "All",
   "error": "Error",
   "noMatch": "No match.",
   "verification": "Verification",

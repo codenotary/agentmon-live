@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderInput } from 'claude-code'
 
-import type { Card, Check, CheckKind, Files, LogLine, Task, TurnTime } from '../types'
+import type { Actor, Card, Check, CheckKind, Files, LogLine, Task, TurnTime } from '../types'
 import { addNote } from './advisor'
 import { isDoc, parseTestRules, testCfg } from './gate'
 import { book, newClock, snapshot } from './clock'
@@ -12,16 +12,16 @@ import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { FEEDBACK_TOOL, holdDraft, loadFeedback, registerFeedback } from './feedback'
 import { build, checkRelease, refreshBase, watchBase } from './release'
-import { category, labelOf } from './label'
+import { category, clean, labelOf } from './label'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
-import { brief, describe, failLine, findChecks, hidesExit, mask, outcomeOf, testCounts, testScope, testsOf, took } from './format'
+import { brief, describe, failLine, findChecks, hidesExit, mask, outcomeOf, shortPath, testCounts, testScope, testsOf, took } from './format'
 import { LANGUAGES } from './i18n'
 import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, fileOf, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawBand, drawPane } from './render'
-import { KEEP_STEPS, KEEP_TRACE } from './steps'
+import { KEEP_TRACE, keepSteps } from './steps'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadLeaks, loadOptions } from './options'
 import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
@@ -97,6 +97,15 @@ function viewOf(tool: string, cat: Category): View | undefined {
 async function addLog($: EngineInterface, line: Omit<LogLine, 'at'>) {
   const at = await $.clock.now()
   await update($, log, list => [...list, { ...line, at }].slice(-50))
+}
+
+let momentCount = 0
+// A moment of the turn that is no call, as a row of its step list: a hook's context, a memory file loaded, a typed command.
+function addMoment($: EngineInterface, actor: Actor, label: string) {
+  $.clock.after(0, async () => {
+    const at = await $.clock.now()
+    await update($, steps, all => keepSteps(all, { id: `m:${at}:${momentCount++}`, at, ms: 0, model: '', note: { actor, label: clean(mask(label)) } }))
+  })
 }
 
 // The spinner and elapsed seconds under Running now move on their own: redraw while a call or a subagent runs, twice a second in classic, where the seconds show.
@@ -250,6 +259,8 @@ export const register: Register = on => {
   let isGateUsed = false
   // The turn under way is one a Stop hook sent back: the same prompt's, so it is no new turn in the counts.
   let isContinued = false
+  // A send-back's row waits for the turn to go on: stamped at the stop, it falls between the turn's two clocks.
+  let sentBack: string | undefined
   // A git command ran since the base was last read.
   let isGitRun = false
   // The session this state belongs to: `/clear` and a resume change it with no session.start.
@@ -273,7 +284,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'agentmon',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|open|learn|memory|debug]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|steps [memory|hooks|…]|open|learn|memory|debug]`,
     })
     cwd = e.cwd
     turn.root = cwd
@@ -400,6 +411,12 @@ export const register: Register = on => {
       const l = await update($, layout, v => ({ ...v, isDetailed: !v.isDetailed }))
       return { text: `AgentMon Live: ${t.details} ${l.isDetailed ? t.on : t.off}` }
     }
+    // One category of the turn's steps; any other word shows them all again.
+    if (/^steps( |$)/i.test(arg)) {
+      const actor = (Object.keys(t.actor) as Actor[]).find(a => a === arg.slice(5).trim().toLowerCase())
+      await update($, layout, ({ stepActor: _, ...v }) => (actor ? { ...v, stepActor: actor } : v))
+      return { text: `AgentMon Live: ${t.steps} · ${actor ? t.actor[actor] : t.allSteps}` }
+    }
     const v = VIEWS.find(x => x === arg.toLowerCase())
     if (v) {
       await update($, view, () => v)
@@ -455,7 +472,10 @@ export const register: Register = on => {
         clk = newClock(await $.clock.now(), true)
         clk.prompt = turn.prompt.slice(0, TURN_PROMPT)
       }
+      if (sentBack) addMoment($, 'hooks', sentBack)
+      sentBack = undefined
     } else if (e.agentId === undefined) {
+      sentBack = undefined
       isTurnLive = true
       isGateUsed = false
       isContinued = false
@@ -522,7 +542,7 @@ export const register: Register = on => {
       clk.stepping = true
       clk.steps += 1
       // Off the stream's path, like the bookkeeping below.
-      $.clock.after(0, () => update($, steps, all => [...all, { id: stepId, at: stepAt, model: e.model }].slice(-KEEP_STEPS)))
+      $.clock.after(0, () => update($, steps, all => keepSteps(all, { id: stepId, at: stepAt, model: e.model })))
     } else {
       await update($, agents, list => list.map(a => (a.id === agentId ? { ...a, lastAt: stepAt } : a)))
     }
@@ -625,7 +645,7 @@ export const register: Register = on => {
       update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, ...label, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
-      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...label, ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
+      update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...label, ...(isMemoryPath(pathOf(e) ?? '') ? { isMemory: true } : {}), ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
       found.length > 0 &&
         update($, checks, all => [
           ...all.filter(c => !found.some(f => f.kind === c.kind)),
@@ -835,11 +855,26 @@ export const register: Register = on => {
     return r
   }).catch(($, e, next) => failOpen($, 'session.compact', next.error, () => next(e)))
 
+  // The engine names the hook's event, never the hook: the row says that much.
+  on('prompt.attachment', async ($, e, next) => {
+    if (e.origin.kind === 'hook' && e.agentId === undefined) addMoment($, 'hooks', t.hookContext(e.origin.event))
+    return next(e)
+  }).catch(($, e, next) => failOpen($, 'prompt.attachment', next.error, () => next(e)))
+
+  on('classic.InstructionsLoaded', async ($, e, next) => {
+    // A subagent's load is not the main turn's step.
+    if (e.agent_id === undefined) addMoment($, 'memory', `${shortPath(e.file_path.replace(/\\/g, '/'))} · ${t.loadReason[e.load_reason]}`)
+    return next(e)
+  }).catch(($, e, next) => failOpen($, 'classic.InstructionsLoaded', next.error, () => next(e)))
+
   // A skill's text is loaded, by the Skill tool or by a slash command the person typed.
   on('skill.prompt', async ($, e, next) => {
     const name = e.pluginName && !e.skill.includes(':') ? `${e.pluginName}:${e.skill}` : e.skill
     const bare = (s: string) => s.slice(s.indexOf(':') + 1)
-    const who = skillRuns.find(s => s.skill === e.skill || bare(s.skill) === bare(e.skill))?.who ?? t.you
+    const run = skillRuns.find(s => s.skill === e.skill || bare(s.skill) === bare(e.skill))
+    const who = run?.who ?? t.you
+    // The Skill tool has its own row; a command the person typed has none.
+    if (!run) addMoment($, 'skills', `/${name}`)
     $.clock.after(0, async () => {
       const at = await $.clock.now()
       await update($, skills, list => {
@@ -944,6 +979,7 @@ export const register: Register = on => {
     try {
       const r = await next(e)
       isBlocked = Boolean(r.block)
+      if (r.block) sentBack = t.hookStop
       // Another hook already sends it back: never stack.
       if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
       await noteShellEdit($, turn)
@@ -965,6 +1001,7 @@ export const register: Register = on => {
       if (!isSent) return r
       isGateUsed = true
       isBlocked = true
+      sentBack = `${t.gateLog.who}: ${t.gateLog.sent}`
       const block = t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n'))
       noteGaps(block)
       return { ...r, block }
