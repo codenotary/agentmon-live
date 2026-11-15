@@ -93,4 +93,7 @@ test('a memory file is memory, not files; a moment that is no call has its own a
   ])
   // A moment never counts as a request still under way, even as the newest step.
   expect(rows[0]!.state).toBe('ok')
+  // A moment that lands during a request does not hide it.
+  const live = stepRows({ trace: [], steps: [{ id: 't:1', at: 130, model: MODEL }, hook('h3', 131)], active: [] }, { from: 100 })
+  expect(live.map(r => [r.id, r.state])).toEqual([['h3', 'ok'], ['t:1', 'running']])
 })

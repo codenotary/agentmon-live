@@ -99,9 +99,9 @@ async function addLog($: EngineInterface, line: Omit<LogLine, 'at'>) {
   await update($, log, list => [...list, { ...line, at }].slice(-50))
 }
 
-// The spinner and elapsed seconds under Running now move on their own: redraw while a call or a subagent runs, twice a second in classic, where the seconds show.
 let momentCount = 0
 // A moment of the turn that is no call, as a row of its step list: a hook's context, a memory file loaded, a typed command.
+// shortcut: moments share the model requests' KEEP_STEPS window, give them their own once a turn's moments push requests out.
 function addMoment($: EngineInterface, actor: Actor, label: string) {
   $.clock.after(0, async () => {
     const at = await $.clock.now()
@@ -109,6 +109,7 @@ function addMoment($: EngineInterface, actor: Actor, label: string) {
   })
 }
 
+// The spinner and elapsed seconds under Running now move on their own: redraw while a call or a subagent runs, twice a second in classic, where the seconds show.
 function tick($: EngineInterface) {
   if (isTicking) return
   isTicking = true
@@ -259,6 +260,8 @@ export const register: Register = on => {
   let isGateUsed = false
   // The turn under way is one a Stop hook sent back: the same prompt's, so it is no new turn in the counts.
   let isContinued = false
+  // A send-back's row waits for the turn to go on: stamped at the stop, it falls between the turn's two clocks.
+  let sentBack: string | undefined
   // A git command ran since the base was last read.
   let isGitRun = false
   // The session this state belongs to: `/clear` and a resume change it with no session.start.
@@ -282,7 +285,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'agentmon',
       description: t.commandDescription,
-      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|steps|open|learn|memory|debug]`,
+      argumentHint: `[${t.argAdvisor}|${t.argCheck}|${t.argClear}|${VIEWS.join('|')}|details|steps [memory|hooks|…]|open|learn|memory|debug]`,
     })
     cwd = e.cwd
     turn.root = cwd
@@ -410,7 +413,7 @@ export const register: Register = on => {
       return { text: `AgentMon Live: ${t.details} ${l.isDetailed ? t.on : t.off}` }
     }
     // One category of the turn's steps; any other word shows them all again.
-    if (arg === 'steps' || arg.startsWith('steps ')) {
+    if (/^steps( |$)/i.test(arg)) {
       const actor = (Object.keys(t.actor) as Actor[]).find(a => a === arg.slice(5).trim().toLowerCase())
       await update($, layout, ({ stepActor: _, ...v }) => (actor ? { ...v, stepActor: actor } : v))
       return { text: `AgentMon Live: ${t.steps} · ${actor ? t.actor[actor] : t.allSteps}` }
@@ -470,7 +473,10 @@ export const register: Register = on => {
         clk = newClock(await $.clock.now(), true)
         clk.prompt = turn.prompt.slice(0, TURN_PROMPT)
       }
+      if (sentBack) addMoment($, 'hooks', sentBack)
+      sentBack = undefined
     } else if (e.agentId === undefined) {
+      sentBack = undefined
       isTurnLive = true
       isGateUsed = false
       isContinued = false
@@ -850,7 +856,6 @@ export const register: Register = on => {
     return r
   }).catch(($, e, next) => failOpen($, 'session.compact', next.error, () => next(e)))
 
-  // A skill's text is loaded, by the Skill tool or by a slash command the person typed.
   // The engine names the hook's event, never the hook: the row says that much.
   on('prompt.attachment', async ($, e, next) => {
     if (e.origin.kind === 'hook' && e.agentId === undefined) addMoment($, 'hooks', t.hookContext(e.origin.event))
@@ -862,6 +867,7 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => failOpen($, 'classic.InstructionsLoaded', next.error, () => next(e)))
 
+  // A skill's text is loaded, by the Skill tool or by a slash command the person typed.
   on('skill.prompt', async ($, e, next) => {
     const name = e.pluginName && !e.skill.includes(':') ? `${e.pluginName}:${e.skill}` : e.skill
     const bare = (s: string) => s.slice(s.indexOf(':') + 1)
@@ -973,7 +979,7 @@ export const register: Register = on => {
     try {
       const r = await next(e)
       isBlocked = Boolean(r.block)
-      if (r.block) addMoment($, 'hooks', t.hookStop)
+      if (r.block) sentBack = t.hookStop
       // Another hook already sends it back: never stack.
       if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
       await noteShellEdit($, turn)
@@ -995,7 +1001,7 @@ export const register: Register = on => {
       if (!isSent) return r
       isGateUsed = true
       isBlocked = true
-      addMoment($, 'hooks', `${t.gateLog.who}: ${t.gateLog.sent}`)
+      sentBack = `${t.gateLog.who}: ${t.gateLog.sent}`
       const block = t.gateReason([...found.lines, ...(found.fix ? [`→ ${found.fix}`] : [])].map(l => `- ${l}`).join('\n'))
       noteGaps(block)
       return { ...r, block }

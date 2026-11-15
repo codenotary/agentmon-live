@@ -451,6 +451,21 @@ test('memory, hooks and a typed command have rows of their own, and one category
   expect(await ui.find({ type: 'Text', text: /Skills\s+\/review/ })).toBe(undefined)
   expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'steps' })).text).toBe('AgentMon Live: turn steps · all')
   expect(await ui.find({ type: 'Text', text: /Skills\s+\/review/ })).toBeTruthy()
+  expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'Steps Hooks' })).text).toBe('AgentMon Live: turn steps · Hooks')
+  await ui.unmount()
+})
+
+test('a hook that sends the turn back has a row in the turn that goes on', async ($, on) => {
+  on('classic.Stop', () => ({ block: 'go on' }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  const clock = await turnWithReads($, on)
+  await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'done' })
+  await clock.advance(1000)
+  await $.turn.start({ text: '', turnId: 't1' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Hooks\s+a hook sent the turn back/ })).toBeTruthy()
   await ui.unmount()
 })
 
