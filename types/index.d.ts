@@ -189,7 +189,7 @@ export type Call = { id?: string; at: number; who: string; view: View; what: str
 
 // Every tool call of the session, for the web view's waterfall; `ms` once it reported back.
 // `to` is a SendMessage's recipient, as the call names it.
-export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; label?: string; ms?: number; isFailed?: boolean; isDenied?: boolean; error?: string; agentId?: string; to?: string }
+export type TraceCall = { id: string; at: number; who: string; tool: string; what: string; label?: string; ms?: number; isFailed?: boolean; isDenied?: boolean; isMemory?: boolean; error?: string; agentId?: string; to?: string }
 
 export type CheckKind = 'test' | 'lint' | 'typecheck' | 'build'
 
@@ -209,7 +209,7 @@ export type LastCall = { tool: string; what: string; label?: string; who: string
 // `mode` is unused since the flow view was dropped; kept so older stores load.
 // `isChangelogOpen` folds out a newer release's notes under the header.
 // `isAgentsOpen` lists every running subagent once more than four run; `isClassic`, set by `v`, beats the `layout` option.
-export type Layout = { isHistoryOpen: boolean; isPaneHidden?: boolean; isDetailed: boolean; dismissed?: string[]; mode?: 'radar' | 'flow'; isChangelogOpen?: boolean; isAgentsOpen?: boolean; isClassic?: boolean }
+export type Layout = { isHistoryOpen: boolean; isPaneHidden?: boolean; isDetailed: boolean; stepActor?: Actor; dismissed?: string[]; mode?: 'radar' | 'flow'; isChangelogOpen?: boolean; isAgentsOpen?: boolean; isClassic?: boolean }
 
 // What Claude handed to the pane for the person to send or cancel; kept in memory only.
 export type FeedbackDraft = { type: string; text: string; details: string }
@@ -257,14 +257,14 @@ export type TestReview = { files: TestEdit[]; dropped: { command: string; ran: n
 // One turn on the web view's clock; `isLive` while it still runs.
 export type WebTurn = { startedAt: number; wallMs: number; buckets: Record<string, number>; isLive?: boolean; prompt?: string; answer?: string }
 
-export type Actor = 'you' | 'model' | 'shell' | 'files' | 'web' | 'browser' | 'agents' | 'skills' | 'hooks' | 'mcp'
-// One model request of the main loop; `ms` is set once its answer is in.
-export type Step = { id: string; at: number; ms?: number; model: string }
+export type Actor = 'you' | 'model' | 'shell' | 'files' | 'web' | 'browser' | 'agents' | 'skills' | 'hooks' | 'mcp' | 'memory'
+// One model request of the main loop; `ms` is set once its answer is in. With a `note` it is a moment that is no call: a hook's context, a memory file loaded, a typed command.
+export type Step = { id: string; at: number; ms?: number; model: string; note?: { actor: Actor; label: string } }
 export type StepState = 'running' | 'asking' | 'ok' | 'failed' | 'blocked'
 // A row of the turn's step list: a call or a model request, `id` the call's or the step's. `count` is above 1 for folded repeats, `at` and `ms` then span them all; a running row has `ms` 0.
 export type StepRow = { id: string; kind: 'call' | 'step'; state: StepState; actor: Actor; label: string; what?: string; at: number; ms: number; count: number }
 // The row as the page gets it, with the actor's name in the session's language.
-export type WebStep = Omit<StepRow, 'actor'> & { actor: string }
+export type WebStep = Omit<StepRow, 'actor'> & { actor: string; actorId?: Actor }
 // `scope`: the word for a finding about the machine or account, not this session; absent on a session finding.
 export type WebFocus = { key: string; tag: string; text: string; isUrgent: boolean; scope?: string }
 

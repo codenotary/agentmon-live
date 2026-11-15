@@ -77,3 +77,20 @@ test('a full history that starts inside the turn says the list is cut', async ()
   // Not full: nothing fell out.
   expect(isCut({ trace: full.slice(1), steps: steps.slice(1) }, { from: 100 })).toBe(false)
 })
+
+test('a memory file is memory, not files; a moment that is no call has its own actor and folds like a call', async () => {
+  const hook = (id: string, at: number): Step => ({ id, at, ms: 0, model: '', note: { actor: 'hooks', label: 'hook added context (UserPromptSubmit)' } })
+  const trace = [call('m', 110, { tool: 'Read', what: '/r/CLAUDE.md', label: 'r/CLAUDE.md', isMemory: true }), call('no', 115, { tool: 'Edit', isMemory: true, isDenied: true })]
+  const steps: Step[] = [hook('h1', 101), hook('h2', 102), { id: 't:0', at: 105, ms: 3, model: MODEL }, { id: 's', at: 120, ms: 0, model: '', note: { actor: 'skills', label: '/review' } }]
+  const rows = stepRows({ trace, steps, active: [] }, { from: 100 })
+  expect(rows.map(r => [r.id, r.actor, r.label, r.count])).toEqual([
+    ['s', 'skills', '/review', 1],
+    // A refusal is the hooks' doing, whatever the file.
+    ['no', 'hooks', 'run no', 1],
+    ['m', 'memory', 'r/CLAUDE.md', 1],
+    ['t:0', 'model', 'Opus 5.5', 1],
+    ['h2', 'hooks', 'hook added context (UserPromptSubmit)', 2],
+  ])
+  // A moment never counts as a request still under way, even as the newest step.
+  expect(rows[0]!.state).toBe('ok')
+})

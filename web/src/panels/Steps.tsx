@@ -2,9 +2,10 @@ import { ListOrdered } from 'lucide-react'
 import { useState } from 'react'
 
 import type { StepState, WebSnapshot } from '../../../types/index'
-import { callTime, dur } from '../format.ts'
+import { callTime, dur, time } from '../format.ts'
 import type { Page } from '../labels.ts'
 import { useClock } from '../store.ts'
+import { Choice } from '../ui/Choice.tsx'
 import { Empty, Panel } from '../ui/Panel.tsx'
 import { ShowAll } from '../ui/ShowAll.tsx'
 import { openTrace } from './Waterfall.tsx'
@@ -18,10 +19,15 @@ const ROW = 'grid w-full grid-cols-[1rem_4.5rem_minmax(0,1fr)_auto] items-baseli
 export function Steps({ s, p }: { s: WebSnapshot; p: Page }) {
   const now = useClock(s)
   const [isAll, setAll] = useState(false)
-  const rows = s.steps ?? []
+  const [actor, setActor] = useState<string | null>(null)
+  const all = s.steps ?? []
+  // One entry per category the turn used, with its row count; a session of an older version sends no `actorId` and gets no filter.
+  const actors = [...new Map(all.flatMap(r => (r.actorId ? [[r.actorId, r.actor] as const] : []))).entries()].map(([id, name]) => [id, `${name} (${all.filter(r => r.actorId === id).length})`] as const)
+  const rows = actor !== null && actors.some(([id]) => id === actor) ? all.filter(r => r.actorId === actor) : all
   return (
     <Panel id="steps" title={p.steps} help={p.helpSteps} icon={ListOrdered}>
       {rows.length === 0 ? <Empty text={p.none} /> : null}
+      {actors.length > 1 ? <div className="pb-1"><Choice label={p.steps} value={actor} options={actors} anyText={p.allSteps} onChange={setActor} testId="step-filter" /></div> : null}
       <ol className="flex flex-col text-[13px]" data-testid="steps">
         {(isAll ? rows : rows.slice(0, ROWS_FOLDED)).map(r => {
           const call = r.kind === 'call' ? s.trace?.find(c => c.id === r.id) : undefined
@@ -29,7 +35,7 @@ export function Steps({ s, p }: { s: WebSnapshot; p: Page }) {
             <>
               <span className={`font-mono ${TONE[r.state]} ${r.state === 'running' ? 'rec' : ''}`} aria-hidden>{GLYPH[r.state]}</span>
               <span className="truncate text-ink-3">{r.actor}</span>
-              <span className={`min-w-0 truncate ${r.state === 'failed' || r.state === 'blocked' ? 'text-bad' : ''}`} title={r.what ?? r.label}>{r.label}</span>
+              <span className={`min-w-0 truncate ${r.state === 'failed' || r.state === 'blocked' ? 'text-bad' : ''}`} title={`${time(r.at)} · ${r.what ?? r.label}`}>{r.label}</span>
               <span className="font-mono text-xs whitespace-nowrap text-ink-3 tabular-nums">{r.count > 1 ? `×${r.count} ` : ''}{r.state === 'running' || r.state === 'asking' ? dur(now - r.at) : callTime(r.ms)}</span>
             </>
           )

@@ -28,11 +28,11 @@ export function stepRows(d: { trace: readonly TraceCall[]; steps: readonly Step[
     // A call that neither ended nor runs was cut off by a reload: nothing to say about it.
     if (c.agentId !== undefined || !(running || (isIn(c.at) && c.ms !== undefined))) return []
     const state = c.isDenied ? 'blocked' : c.isFailed ? 'failed' : c.ms !== undefined ? 'ok' : running?.isAsking ? 'asking' : 'running'
-    return [{ id: c.id, kind: 'call', state, actor: c.isDenied ? 'hooks' : actorOf(c.tool), label: callText(c), ...(c.label === undefined ? {} : { what: c.what }), at: c.at, ms: c.ms ?? 0, count: 1 }]
+    return [{ id: c.id, kind: 'call', state, actor: c.isDenied ? 'hooks' : c.isMemory ? 'memory' : actorOf(c.tool), label: callText(c), ...(c.label === undefined ? {} : { what: c.what }), at: c.at, ms: c.ms ?? 0, count: 1 }]
   })
   const newest = d.steps.at(-1)
   const steps = d.steps.flatMap((s): StepRow[] =>
-    isIn(s.at) && (s.ms !== undefined || (s === newest && span.to === undefined)) ? [{ id: s.id, kind: 'step', state: s.ms === undefined ? 'running' : 'ok', actor: 'model', label: modelName(s.model), at: s.at, ms: s.ms ?? 0, count: 1 }] : [],
+    isIn(s.at) && (s.ms !== undefined || (s === newest && span.to === undefined)) ? [{ id: s.id, kind: 'step', state: s.ms === undefined ? 'running' : 'ok', actor: s.note?.actor ?? 'model', label: s.note?.label ?? modelName(s.model), at: s.at, ms: s.ms ?? 0, count: 1 }] : [],
   )
   const out: StepRow[] = []
   for (const row of [...calls, ...steps].sort((a, b) => b.at - a.at)) {

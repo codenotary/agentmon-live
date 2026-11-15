@@ -110,7 +110,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     build: p.build,
     testReview: { files: p.testReview.files, dropped: droppedLines(t, p.testReview), isGreen: p.testReview.isGreen },
     focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: x.key.startsWith('secret:') && x.color === 'red', ...(x.isGlobal ? { scope: t.ins.environment } : {}) }))],
-    steps: rows.slice(0, STEPS_SENT).map(r => ({ ...r, actor: t.actor[r.actor] })),
+    steps: rows.slice(0, STEPS_SENT).map(r => ({ ...r, actor: t.actor[r.actor], actorId: r.actor })),
     isStepsCut: rows.length > STEPS_SENT || (span !== undefined && isCut(p, span)),
     usage: {
       ctxPct: p.usage.context.percent,
