@@ -438,6 +438,7 @@ test('memory, hooks and a typed command have rows of their own, and one category
   // A subagent's request carries its own: not the main turn's step.
   await $.prompt.attachment({ ...hook, origin: { kind: 'hook', event: 'SubagentStart' }, agentId: 'a1' })
   await $.classic.InstructionsLoaded({ file_path: '/repo/web/CLAUDE.md', memory_type: 'Project', load_reason: 'nested_traversal' })
+  await $.classic.InstructionsLoaded({ file_path: '/repo/docs/CLAUDE.md', memory_type: 'Project', load_reason: 'nested_traversal', agent_id: 'a1' })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /Memory\s+repo\/CLAUDE\.md/ })).toBeTruthy()
@@ -445,6 +446,7 @@ test('memory, hooks and a typed command have rows of their own, and one category
   expect(await ui.find({ type: 'Text', text: /Skills\s+\/review/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /Hooks\s+hook added context \(UserPromptSubmit\)\s+×2/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /SubagentStart/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Text', text: /docs\/CLAUDE\.md/ })).toBe(undefined)
 
   expect((await $.command.run({ ...TYPED, command: 'agentmon', args: 'steps memory' })).text).toBe('AgentMon Live: turn steps · Memory')
   expect(await ui.find({ type: 'Text', text: /TURN STEPS · MEMORY/i })).toBeTruthy()

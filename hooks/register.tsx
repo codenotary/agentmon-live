@@ -21,7 +21,7 @@ import type { Category } from './i18n'
 import { areaOf, bump, CACHE_TTL_MS, estTokens, isCorrection, isNewTask, fileOf, pathOf, pushDuration } from './insights'
 import { configureSize, forgetSizes, noteSizeBefore, parseExceptions, recordSize, relPath, watched } from './sizeguard'
 import { drawBand, drawPane } from './render'
-import { KEEP_STEPS, KEEP_TRACE } from './steps'
+import { KEEP_TRACE, keepSteps } from './steps'
 import { cfg, EMPTY_INSIGHTS, INIT, isLive, listening, liveTurn, reconcile, PANE, shapeInsights, trimAgents, VIEWS } from './state'
 import { applyOptions, loadLeaks, loadOptions } from './options'
 import { forgetTurns, openBrowser, setPane, startWeb, stopWeb } from './web'
@@ -101,11 +101,10 @@ async function addLog($: EngineInterface, line: Omit<LogLine, 'at'>) {
 
 let momentCount = 0
 // A moment of the turn that is no call, as a row of its step list: a hook's context, a memory file loaded, a typed command.
-// shortcut: moments share the model requests' KEEP_STEPS window, give them their own once a turn's moments push requests out.
 function addMoment($: EngineInterface, actor: Actor, label: string) {
   $.clock.after(0, async () => {
     const at = await $.clock.now()
-    await update($, steps, all => [...all, { id: `m:${at}:${momentCount++}`, at, ms: 0, model: '', note: { actor, label: clean(mask(label)) } }].slice(-KEEP_STEPS))
+    await update($, steps, all => keepSteps(all, { id: `m:${at}:${momentCount++}`, at, ms: 0, model: '', note: { actor, label: clean(mask(label)) } }))
   })
 }
 
@@ -543,7 +542,7 @@ export const register: Register = on => {
       clk.stepping = true
       clk.steps += 1
       // Off the stream's path, like the bookkeeping below.
-      $.clock.after(0, () => update($, steps, all => [...all, { id: stepId, at: stepAt, model: e.model }].slice(-KEEP_STEPS)))
+      $.clock.after(0, () => update($, steps, all => keepSteps(all, { id: stepId, at: stepAt, model: e.model })))
     } else {
       await update($, agents, list => list.map(a => (a.id === agentId ? { ...a, lastAt: stepAt } : a)))
     }
@@ -863,7 +862,8 @@ export const register: Register = on => {
   }).catch(($, e, next) => failOpen($, 'prompt.attachment', next.error, () => next(e)))
 
   on('classic.InstructionsLoaded', async ($, e, next) => {
-    addMoment($, 'memory', `${shortPath(e.file_path.replace(/\\/g, '/'))} · ${t.loadReason[e.load_reason]}`)
+    // A subagent's load is not the main turn's step.
+    if (e.agent_id === undefined) addMoment($, 'memory', `${shortPath(e.file_path.replace(/\\/g, '/'))} · ${t.loadReason[e.load_reason]}`)
     return next(e)
   }).catch(($, e, next) => failOpen($, 'classic.InstructionsLoaded', next.error, () => next(e)))
 

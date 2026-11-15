@@ -7,7 +7,15 @@ export const KEEP_STEPS = 200
 
 // A full history that starts inside the turn has dropped the turn's first calls or model requests.
 export function isCut(d: { trace: readonly TraceCall[]; steps: readonly Step[] }, span: { from: number }): boolean {
-  return (d.trace.length >= KEEP_TRACE && d.trace[0]!.at >= span.from) || (d.steps.length >= KEEP_STEPS && d.steps[0]!.at >= span.from)
+  const isFull = (list: readonly { at: number }[], keep: number) => list.length >= keep && list[0]!.at >= span.from
+  return isFull(d.trace, KEEP_TRACE) || isFull(d.steps.filter(s => !s.note), KEEP_STEPS) || isFull(d.steps.filter(s => s.note), KEEP_STEPS)
+}
+
+// A new step joins the list. Requests and moments each keep their newest KEEP_STEPS, so a hook that speaks at every call pushes no request out.
+export function keepSteps(all: readonly Step[], s: Step): Step[] {
+  const same = all.filter(x => !x.note === !s.note)
+  const drop = same.length >= KEEP_STEPS ? same[0] : undefined
+  return [...all.filter(x => x !== drop), s]
 }
 
 // The turn the step list shows: the one under way, else the last one.
