@@ -64,6 +64,7 @@ export type SnapshotParts = {
   lang: string
   isPaneOpen: boolean
   build: string
+  isStarShown?: boolean
   testReview: TestReview
   trace: TraceCall[]
   steps: Step[]
@@ -108,6 +109,7 @@ export function toSnapshot(p: SnapshotParts): WebSnapshot {
     main: p.main,
     isPaneOpen: p.isPaneOpen,
     build: p.build,
+    ...(p.isStarShown ? { isStarShown: true } : {}),
     testReview: { files: p.testReview.files, dropped: droppedLines(t, p.testReview), isGreen: p.testReview.isGreen },
     focus: [...urgentItems(p), ...p.focus.filter(x => !p.dismissed.includes(x.key)).map(x => ({ key: x.key, tag: x.tag, text: x.text, isUrgent: x.key.startsWith('secret:') && x.color === 'red', ...(x.isGlobal ? { scope: t.ins.environment } : {}) }))],
     steps: rows.slice(0, STEPS_SENT).map(r => ({ ...r, actor: t.actor[r.actor], actorId: r.actor })),
@@ -291,6 +293,7 @@ async function publish($: EngineInterface): Promise<number> {
     lang: cfg.lang,
     isPaneOpen: panes.some(x => x.id === PANE && x.isPlaced),
     build: cfg.build,
+    isStarShown: cfg.feedback && cfg.isStarShown,
     testReview: reviewed,
     trace: traced,
     steps: stepped,

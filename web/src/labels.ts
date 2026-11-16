@@ -56,6 +56,7 @@ export const PAGE_EN = {
   "repeatedApprovals": "Repeated approvals",
   "gatePassed": "Done gate passed",
   "startLink": "Need a combined view, try AgentMon Start",
+  "star": "Give AgentMon Live a star",
   "gateSent": "Done gate sent it back",
   "gateOpen": "Done gate: open items",
   "you": "You",

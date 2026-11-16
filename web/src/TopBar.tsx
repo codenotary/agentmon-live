@@ -1,5 +1,5 @@
 import * as Select from '@radix-ui/react-select'
-import { Check, ChevronDown, Command, Monitor, Moon, PanelRightClose, PanelRightOpen, Sun, X } from 'lucide-react'
+import { Check, ChevronDown, Command, Monitor, Moon, PanelRightClose, PanelRightOpen, Star, Sun, X } from 'lucide-react'
 
 import type { WebSnapshot } from '../../types/index'
 import { dur, sessionNames, stateOf, time } from './format.ts'
@@ -11,6 +11,7 @@ const NEXT: Record<Theme, Theme> = { auto: 'dark', dark: 'light', light: 'auto' 
 
 const START_ITEM = 'agentmon-start'
 const START_URL = 'https://codenotary.com/agentmon-start'
+const STARS = 'https://github.com/codenotary/agentmon-live/stargazers'
 
 // A Select item, not a link: Radix keeps keyboard focus on its items, so a plain link there could not be reached.
 function choose(id: string) {
@@ -103,6 +104,7 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
               {live.isPaneOpen ? <PanelRightClose size={14} aria-hidden /> : <PanelRightOpen size={14} aria-hidden />}
             </button>
           )}
+          {live?.isStarShown ? <a className="icon-btn" href={STARS} target="_blank" rel="noopener noreferrer" aria-label={p.star} title={p.star} data-testid="star-link"><Star size={13} aria-hidden /><span className="max-sm:hidden">{p.star}</span></a> : null}
           <button type="button" className="icon-btn" aria-label={p.commands} onClick={() => set({ isPaletteOpen: true })}>
             <Command size={13} aria-hidden /><span className="max-sm:hidden">{p.commands}</span><kbd className="max-sm:hidden">⌘K</kbd>
           </button>

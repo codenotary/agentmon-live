@@ -10,6 +10,8 @@ export const FEEDBACK_URL = 'https://feedback.codenotary.com/feedback'
 export const FEEDBACK_TOOL = 'mcp__agentmon-live__feedback'
 const ISSUES = 'https://github.com/codenotary/agentmon-live/issues/new'
 const INSTALL_KEY = 'feedbackInstall'
+const STARS_KEY = 'starCount'
+export const STARS_URL = 'https://github.com/codenotary/agentmon-live/stargazers'
 const KINDS = ['problem', 'idea', 'thanks', 'other']
 export const MAX_TEXT = 2000
 // What a browser's address bar and GitHub both take, with room for the title and the footer.
@@ -20,6 +22,10 @@ export async function loadFeedback($: EngineInterface): Promise<void> {
   cfg.feedbackUrl = (await isQuiet($).catch(() => false)) ? '' : (await $.env.get('AGENTMON_FEEDBACK_URL').catch(() => undefined)) || FEEDBACK_URL
   cfg.claudeCode = await $.session.version().then(v => v.version, () => '')
   cfg.feedbackInstall = String((await $.store.get(INSTALL_KEY).catch(() => undefined)) ?? '')
+  // Every tenth load asks for a star, so the ask stays rare.
+  const loads = (Number(await $.store.get(STARS_KEY).catch(() => undefined)) || 0) + 1
+  await $.store.set(STARS_KEY, loads).catch(() => undefined)
+  cfg.isStarShown = loads % 10 === 0
 }
 
 export async function registerFeedback($: EngineInterface): Promise<void> {

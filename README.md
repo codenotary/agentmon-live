@@ -4,20 +4,31 @@
 
 <h1 align="center">AgentMon Live</h1>
 
-<p align="center"><b>See what your AI agents are really doing.</b></p>
+<p align="center"><b>Claude Code, Codex and Kiro Crew. Follow your coding sessions in one browser.</b></p>
 
-<p align="center">Watch Claude Code and its subagents work, live in your browser or beside the chat. See what it costs, how close you are to your limits, and when it needs you. AgentMon also checks Claude's work before it says "done". <a href="#kiro-crew">Kiro Crew</a> and <a href="#codex">Codex</a> chats show in the same page.</p>
+<p align="center">See what each session is doing without switching between terminals. Follow tool calls, file changes and verification results live, with usage information where the tool provides it.</p>
+
+<p align="center">Keep working in your usual tools. Switch between sessions in AgentMon.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fcodenotary%2Fagentmon-live%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version" alt="Version">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/codenotary/agentmon-live" alt="License"></a>
+  <a href="https://github.com/codenotary/agentmon-live/stargazers"><img src="https://img.shields.io/github/stars/codenotary/agentmon-live?style=social" alt="GitHub stars"></a>
 </p>
+
+<p align="center">Like it? <a href="https://github.com/codenotary/agentmon-live/stargazers">Give AgentMon Live a star</a>.</p>
 
 <p align="center"><a href="#install">Install</a> · <a href="#kiro-crew">Kiro Crew</a> · <a href="#codex">Codex</a> · <a href="#why-you-want-it">Why you want it</a> · <a href="#the-pane">The pane</a> · <a href="#the-web-view">The web view</a> · <a href="#cost-and-privacy">Cost and privacy</a> · <a href="#make-it-yours">Make it yours</a> · <a href="#more">More</a></p>
 
 **Press `o` and your session opens in the browser.** See who started whom, what each agent does right now, and where the money goes. [See all of it](#the-web-view).
 
 [![The web view during a session: dials and rulers fill up while the main session starts subagents and the agent flow grows](docs/web/live.gif)](#the-web-view)
+
+You can use the [Codex](#codex) or [Kiro Crew](#kiro-crew) setup without running Claude Code. The browser view needs Node.js.
+
+Using Claude Code? AgentMon also checks before it says "done". Its done gate catches unfinished work such as failed checks, stale test results and test runs that selected no tests. Changed assertions and added skips are highlighted for review.
+
+The done gate, Focus and project learning are Claude Code features. Available monitoring data differs between tools; the installation sections explain what each integration shows.
 
 ## Install
 
@@ -206,7 +217,7 @@ One searchable stream of your prompts, Claude's answers, tool calls and subagent
 - **Kiro Crew chats are read, not changed.** The server reads Kiro Crew's log files under `~/.kiro/crew/` and sends nothing to Kiro Crew. Only Kiro Crew's own page may frame the web view, and only while Kiro Crew runs.
 - **One optional model call.** Before Claude stops, Fable, a second model, may check that every part of your request got an answer and that nothing you did not ask for got built: a small call with about 12,000 characters of session text, at most 30 per session by default. Set `advisorMode` to `gate` for no model calls at all.
 - **One network check.** It asks GitHub for the latest release. No session data goes with it.
-- **Feedback only when you send it.** `feedback` (`b`) drafts a prompt and sends nothing. Claude writes the feedback and hands it to the pane, where you read it. `send` (`y`) posts it without your name or address to the makers' feedback service: the text, the AgentMon Live and Claude Code versions, and the language. A problem or an idea can go to GitHub as an issue instead, from a link that opens it filled in. `cancel` (`n`) drops it. `from` (`w`) names you: it adds an install ID the mod made itself and, if you set the option `feedbackIdentity`, your email or handle. Sent feedback cannot be deleted from the mod; the option `feedback: off` removes the feature. With `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set there is no `send`; `AGENTMON_FEEDBACK_URL` sends to another address.
+- **Feedback only when you send it.** `feedback` (`b`) drafts a prompt and sends nothing. Claude writes the feedback and hands it to the pane, where you read it. `send` (`y`) posts it without your name or address to the makers' feedback service: the text, the AgentMon Live and Claude Code versions, and the language. A problem or an idea can go to GitHub as an issue instead, from a link that opens it filled in. `cancel` (`n`) drops it. `from` (`w`) names you: it adds an install ID the mod made itself and, if you set the option `feedbackIdentity`, your email or handle. Sent feedback cannot be deleted from the mod; the option `feedback: off` removes the feature. Every tenth session a link asks for a GitHub star; `feedback: off` hides it too. With `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set there is no `send`; `AGENTMON_FEEDBACK_URL` sends to another address.
 
 To remove it: `claude plugin uninstall agentmon-live`.
 

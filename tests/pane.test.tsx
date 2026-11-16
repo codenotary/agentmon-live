@@ -389,6 +389,38 @@ test('feedback off shows no button and takes no draft', async ($, on) => {
   await ui.unmount()
 })
 
+async function starAfter($: Parameters<TestBody>[0], on: On, count: number, options: Record<string, unknown>) {
+  const clock = mock.clock(on)
+  engine(on)
+  withOptions(on, options)
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  const store = new Map<string, unknown>([['starCount', count]])
+  on('store.get', (_, e) => ({ value: store.get(e.key) }))
+  on('store.set', (_, e) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  const link = await ui.find({ type: 'Link', text: /star/ })
+  await ui.unmount()
+  expect(store.get('starCount')).toBe(count + 1)
+  return Boolean(link)
+}
+
+test('every tenth load asks for a star', async ($, on) => {
+  expect(await starAfter($, on, 9, {})).toBe(true)
+})
+
+test('the other loads ask for no star', async ($, on) => {
+  expect(await starAfter($, on, 10, {})).toBe(false)
+})
+
+test('feedback off asks for no star', async ($, on) => {
+  expect(await starAfter($, on, 9, { feedback: 'off' })).toBe(false)
+})
+
 // A turn with one model step and three reads of one file.
 async function turnWithReads($: Parameters<TestBody>[0], on: On) {
   const clock = mock.clock(on)

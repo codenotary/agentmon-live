@@ -285,6 +285,11 @@ test('a full session stays under the size the server takes', () => {
   expect(JSON.stringify(toSnapshot(FULL)).length).toBeLessThan(1024 * 1024)
 })
 
+test('the page asks for a star only when the pane does', () => {
+  expect(toSnapshot(FULL)).not.toHaveProperty('isStarShown')
+  expect(toSnapshot({ ...FULL, isStarShown: true }).isStarShown).toBe(true)
+})
+
 test('the page gets the newest 50 step rows and is told when the turn has more', () => {
   const turn = (n: number) => toSnapshot({ ...FULL, ins: shapeInsights({ turn: { startedAt: 0, wallMs: 0, buckets: {}, steps: 0 } }), trace: Array.from({ length: n }, (_, i) => ({ id: `m${i}`, at: i, who: 'main', tool: 'Bash', what: `run ${i}`, ms: 1 })) })
   expect(turn(51).steps?.length).toBe(50)

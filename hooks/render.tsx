@@ -3,7 +3,7 @@ import type { EngineInterface, RenderChildren, RenderElement, RenderInput } from
 
 import type { Card, Check, Note } from '../types'
 import { ago, breath, clip, clockTime, fit, isHigh, isNewer, kilo, modelName, percent, resetTime, shortPath, callText, smoothBar, spinner, width } from './format'
-import { dropDraft, issueLink, MAX_TEXT, sendDraft, sender, toggleNamed } from './feedback'
+import { dropDraft, issueLink, MAX_TEXT, sendDraft, sender, STARS_URL, toggleNamed } from './feedback'
 import { CATEGORIES } from './i18n'
 import type { Category } from './i18n'
 import { cfg, INIT, isLive, listening, liveStatus, liveTurn, PANE, rank, shapeInsights, VIEWS } from './state'
@@ -715,6 +715,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           {t.feedback}
         </Button>
       )}
+      {cfg.feedback && cfg.isStarShown && <Link href={STARS_URL}>{t.star}</Link>}
       {release && (
         <Button key="update" plain hotkey="u" onPress={() => investigate(t.promptUpdate(cfg.version, release.version))}>
           {t.update}

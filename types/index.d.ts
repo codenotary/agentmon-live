@@ -282,6 +282,8 @@ export type WebSnapshot = {
   build?: string
   // Absent from a session of an older version, which cannot take the page's request.
   isPaneOpen?: boolean
+  // Asks for a GitHub star now and then. Absent when not asking.
+  isStarShown?: boolean
   focus: WebFocus[]
   // Absent on a session from an older version or another reader.
   steps?: WebStep[]
