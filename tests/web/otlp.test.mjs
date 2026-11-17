@@ -78,6 +78,15 @@ test('labels a sandbox wrote itself go out as names only', () => {
   assert.equal(body.resourceMetrics[0].resource.attributes.find(a => a.key === 'agentmon.model').value.stringValue, 'other')
 })
 
+test('checks with the same labels make one point, and a failure is never hidden', () => {
+  const s = fixture()
+  const at = s.files.editedAt + 1
+  const checks = [{ kind: 'test', result: 'failed', at }, { kind: 'test', result: 'ok', at }, { kind: 'a b', result: 'ok', at }, { kind: 'c d', result: 'failed', at }]
+  const m = metricsOf(toOtlp([['s1', { ...s, checks }, 'claude']], new Map(), s.now))
+  assert.deepEqual(m['agentmon.check.failed'].map(p => [attr(p, 'kind').stringValue, p.asDouble]), [['test', 1], ['other', 1]])
+  assert.equal(m['agentmon.check.stale'].length, 2)
+})
+
 test('cost goes out with a unit Prometheus leaves off the name', () => {
   const s = fixture()
   const usd = toOtlp([['s1', s, 'codex']], new Map(), s.now).resourceMetrics[0].scopeMetrics[0].metrics.find(m => m.name === 'agentmon.usage.usd')

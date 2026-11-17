@@ -20,6 +20,21 @@ const tally = (items, labelsOf) => {
   for (const x of items) bump(counts, labelsOf(x))
   return points(counts)
 }
+const num = v => Number(v) || 0
+const maybe = v => (Number.isFinite(v) ? [[v]] : [])
+// One point per label set: two checks a snapshot gives the same labels would otherwise be two points of one series.
+const highest = (items, valueOf, labelsOf) => {
+  const top = {}
+  for (const x of items) {
+    const key = JSON.stringify(labelsOf(x))
+    top[key] = Math.max(top[key] ?? 0, valueOf(x))
+  }
+  return points(top)
+}
+const metric = (kind, name, unit, pts, time, start) => {
+  const dataPoints = pts.map(([value, a = {}]) => ({ attributes: attrs(a), ...(start ? { startTimeUnixNano: start } : {}), timeUnixNano: time, asDouble: value }))
+  return { name, unit, [kind]: kind === 'sum' ? { aggregationTemporality: 2, isMonotonic: true, dataPoints } : { dataPoints } }
+}
 // A session gone this long starts its counters again when it returns.
 const KEEP_SEEN_MS = 60 * 60_000
 
@@ -81,8 +96,8 @@ function toResource(id, s, harness, seen, now) {
   count(c, s, now)
   const t = ns(now)
   const start = ns(c.start)
-  const gauge = (name, unit, pts) => ({ name, unit, gauge: { dataPoints: pts.map(([value, a = {}]) => ({ attributes: attrs(a), timeUnixNano: t, asDouble: value })) } })
-  const sum = (name, unit, pts) => ({ name, unit, sum: { aggregationTemporality: 2, isMonotonic: true, dataPoints: pts.map(([value, a = {}]) => ({ attributes: attrs(a), startTimeUnixNano: start, timeUnixNano: t, asDouble: value })) } })
+  const gauge = (name, unit, pts) => metric('gauge', name, unit, pts, t)
+  const sum = (name, unit, pts) => metric('sum', name, unit, pts, t, start)
   const editedAt = s.files?.editedAt ?? 0
   const checks = list(s.checks).filter(k => k.result !== 'running')
   const test = checks.find(k => k.kind === 'test')
@@ -92,26 +107,25 @@ function toResource(id, s, harness, seen, now) {
     sum('agentmon.gate.verdicts', '{verdict}', points(c.gates)),
     sum('agentmon.calls.failed', '{call}', points(c.failed)),
     sum('agentmon.calls.denied', '{call}', points(c.denied)),
-    gauge('agentmon.check.failed', '1', checks.map(k => [k.result === 'failed' ? 1 : 0, { kind: label(k.kind) }])),
-    gauge('agentmon.check.stale', '1', checks.map(k => [editedAt > k.at ? 1 : 0, { kind: label(k.kind) }])),
-    gauge('agentmon.tests.ran', '{test}', Number.isFinite(test?.ran) ? [[test.ran]] : []),
-    gauge('agentmon.tests.skipped', '{test}', Number.isFinite(test?.skipped) ? [[test.skipped]] : []),
+    gauge('agentmon.check.failed', '1', highest(checks, k => (k.result === 'failed' ? 1 : 0), k => ({ kind: label(k.kind) }))),
+    gauge('agentmon.check.stale', '1', highest(checks, k => (editedAt > k.at ? 1 : 0), k => ({ kind: label(k.kind) }))),
+    gauge('agentmon.tests.ran', '{test}', maybe(test?.ran)),
+    gauge('agentmon.tests.skipped', '{test}', maybe(test?.skipped)),
     gauge('agentmon.tests.weakened', '{file}', [[list(s.testReview?.files).length]]),
     gauge('agentmon.focus', '{item}', tally(list(s.focus), f => ({ kind: label(String(f.key).split(':')[0]), urgent: f.isUrgent === true }))),
     gauge('agentmon.agents', '{agent}', tally(list(s.agents), a => ({ status: label(a.status) }))),
-    gauge('agentmon.context.pct', '%', Number.isFinite(s.usage?.ctxPct) ? [[s.usage.ctxPct]] : []),
-    gauge('agentmon.context.mcp_tokens', '{token}', [[Number(s.insights?.mcpTokens) || 0]]),
-    gauge('agentmon.context.memory_tokens', '{token}', [[Number(s.insights?.memoryTokens) || 0]]),
+    gauge('agentmon.context.pct', '%', maybe(s.usage?.ctxPct)),
+    gauge('agentmon.context.mcp_tokens', '{token}', [[num(s.insights?.mcpTokens)]]),
+    gauge('agentmon.context.memory_tokens', '{token}', [[num(s.insights?.memoryTokens)]]),
   ]
   // Claude Code exports its own cost and tokens; the other harnesses have no exporter.
   if (harness !== 'claude') {
     const tk = s.insights?.tokens ?? {}
-    const n = v => Number(v) || 0
     metrics.push(
       // A curly unit, so Prometheus keeps the name `agentmon_usage_usd` the dashboard reads.
-      gauge('agentmon.usage.usd', '{usd}', [[n(s.usage?.usd)]]),
-      gauge('agentmon.usage.tokens', '{token}', [[n(tk.mainIn) + n(tk.agentsIn), { type: 'input' }], [n(tk.mainOut) + n(tk.agentsOut), { type: 'output' }]]),
-      ...(Number.isFinite(s.usage?.credits) ? [gauge('agentmon.usage.credits', '{credit}', [[s.usage.credits]])] : []),
+      gauge('agentmon.usage.usd', '{usd}', [[num(s.usage?.usd)]]),
+      gauge('agentmon.usage.tokens', '{token}', [[num(tk.mainIn) + num(tk.agentsIn), { type: 'input' }], [num(tk.mainOut) + num(tk.agentsOut), { type: 'output' }]]),
+      gauge('agentmon.usage.credits', '{credit}', maybe(s.usage?.credits)),
     )
   }
   return {
