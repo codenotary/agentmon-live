@@ -236,6 +236,7 @@ export const ja: Strings = {
   gateTitle: '完了チェック · Claude が止まる前に',
   gatePassed: '前回の停止時に未完了なし',
   gateLeft: '未完了を残して停止：',
+  gateNoStop: '別の mod が Stop フックを飛ばしました：回答後に確認、差し戻しなし',
   gateEarlier: 'このセッションの以前の結果：',
   gateSent: 'Claude に差し戻し：',
   fableSays: text => `レビュー用モデル Fable（誤る可能性あり）の指摘: ${text}`,

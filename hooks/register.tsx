@@ -116,7 +116,7 @@ async function recordGate($: EngineInterface, found: { lines: string[]; fix?: st
   const t = cfg.t
   const ok = found.lines.length === 0
   if (found.judged) {
-    await addNote($, { kind: 'done', ok, text: found.lines.join('\n'), fix: found.fix, ref, at: await $.clock.now(), isSent })
+    await addNote($, { kind: 'done', ok, text: found.lines.join('\n'), fix: found.fix, ref, at: await $.clock.now(), isSent, ...(stop ? {} : { isNoStop: true as const }) })
     await addLog($, { who: t.gateLog.who, what: ref, result: ok ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
   }
   void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook, stop })
@@ -524,6 +524,8 @@ export const register: Register = on => {
         sessionId = id
         lastAnswer = ''
         isCheckQueued = false
+        resetTurn(turn, [])
+        instructionPaths.clear()
         await startSessionLog($, await $.clock.now(), cwd)
       }
       // A prompt that says the last edit turn's change did not work; read before the turn's files reset.
@@ -1095,6 +1097,7 @@ export const register: Register = on => {
       turn.prompt = ''
       turn.startedAt = await $.clock.now()
       resetTurn(turn, [])
+      instructionPaths.clear()
       lastAnswer = ''
       isGateUsed = false
       isContinued = false

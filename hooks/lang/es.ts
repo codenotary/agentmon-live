@@ -236,6 +236,7 @@ export const es: Strings = {
   gateTitle: 'Control de fin · antes de que Claude pare',
   gatePassed: 'nada abierto en la última parada',
   gateLeft: 'paró con esto aún abierto:',
+  gateNoStop: 'otro mod saltó el hook Stop: revisado tras la respuesta, nada devuelto',
   gateEarlier: 'antes en esta sesión:',
   gateSent: 'devuelto a Claude:',
   fableSays: text => `Fable, un modelo revisor que puede equivocarse, dice: ${text}`,

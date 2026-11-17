@@ -23,7 +23,7 @@ Edit only this plugin's `options` object. Leave all other keys as they are. Crea
 | `hiddenSections` | comma-separated: `tasks`, `steps`, `insights`, `skills`, `advisor`, `changes`, `usage` | `""` |
 | `refreshRate` | `live`, `5`, `15`, `30`, `60` (seconds between pane redraws) | `live` |
 | `layout` | `calm` or `classic` | `calm` |
-| `advisorModel` | a model id, or an alias (`haiku`, `sonnet`, `opus`) resolved like `--model`, so it follows a gateway's model mapping; `haiku` is the session's small fast model | `claude-fable-5-1` |
+| `advisorModel` | a model id; `small` for the session's small fast model (`ANTHROPIC_SMALL_FAST_MODEL`, else `ANTHROPIC_DEFAULT_HAIKU_MODEL`, else the `haiku` alias), which suits setups that route models through a gateway | `claude-fable-5-1` |
 | `advisorMode` | `all` (done gate plus Fable), `gate` (done gate, no model), `off` | `all` |
 | `advisorBudget` | most Fable calls per session, `0` for no limit | `30` |
 | `sizeLimit` | bytes before Focus suggests splitting a file, `0` for off | `20000` |
