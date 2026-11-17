@@ -23,9 +23,14 @@ const TOOLS = [
   {
     name: 'pane',
     title: 'AgentMon',
-    description: "The AgentMon Live pane for the current Codex chat, as a coloured UI tree: open done-gate items, the running call, checks, recent calls, edited files, context and limits. Codex's sidebar reads it; nothing to call by hand.",
+    description: "The AgentMon Live pane for the current Codex chat, as a panel of coloured text, charts and keys: open done-gate items, the running call, checks, recent calls, edited files, context and limits. Codex's sidebar reads it; nothing to call by hand.",
     inputSchema: { type: 'object', properties: {} },
     _meta: { 'openai/ui': { entrypoints: [{ type: 'sidebar', resourceUri: PANE_URI }] } },
+  },
+  {
+    name: 'dismiss',
+    description: "Puts an open item away in the AgentMon panel. The panel's x key calls it; call it only when the person asks to put an item away.",
+    inputSchema: { type: 'object', properties: { item: { type: 'string', description: 'The item text as the panel shows it.' } }, required: ['item'] },
   },
   {
     name: 'feedback',
@@ -67,63 +72,70 @@ export function statusText(snapshot) {
 
 const secs = ms => `${Math.round(ms / 1000)}s`
 const RECENT = 8
-const BAR = 16
-// Codex's UI tree, the status line's format: coloured text, at most 256 nodes and 16 KiB of text.
+const TURNS = 20
+const MINUTES = 30
+// Text is Codex's UI tree, the status line's format; panel, box, gauge, bars, sparkline, chart and action are the patched sidebar's widgets.
 const paint = (color, text, bold) => ({ type: 'text', props: { ...(color ? { color } : {}), ...(bold ? { weight: 'bold' } : {}) }, children: [text] })
+const line = (...children) => ({ type: 'text', children: [...children, '\n'] })
+const box = (title, children, color = 'cyan') => ({ type: 'box', title, color, children })
 const one = (text, n = 80) => String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
-const head = (title, color = 'cyan') => paint(color, `\n● ${title.toUpperCase()}\n`, true)
-// A bar in eighths of a cell on a shaded track, as the Claude Code pane draws them.
-function bar(part, color) {
-  const eighths = Math.round(Math.max(0, Math.min(1, part)) * BAR * 8)
-  const full = `${'█'.repeat(Math.floor(eighths / 8))}${eighths % 8 ? ' ▏▎▍▌▋▊▉'[eighths % 8] : ''}`
-  return [paint(color, full), paint('blue', '░'.repeat(BAR - [...full].length))]
-}
 const level = pct => (pct >= 85 ? 'red' : pct >= 60 ? 'yellow' : 'green')
-const meter = (label, pct, note = '') => [`${label} `, ...bar(pct / 100, level(pct)), ` ${pct}%${note}\n`]
+const gauge = (label, pct) => ({ type: 'gauge', label, ratio: pct / 100, color: level(pct) })
+const KIND_COLORS = ['cyan', 'magenta', 'yellow', 'green', 'blue', 'red']
 
-// The pane holds no running clock: Codex redraws the sidebar whenever this tree changes.
-export function paneTree(snapshot) {
-  const out = [paint(undefined, 'AgentMon Live', true)]
-  if (!snapshot) return { type: 'text', children: [...out, '\n\nNo Codex chat written to in the last 30 minutes.\n\n', { type: 'link', props: { href: WEB }, children: ['Open the web view'] }] }
-  out.push(paint('blue', ` · ${[snapshot.build, snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' · ')}\n`))
-  const gaps = codexGaps(snapshot)
-  out.push(head('Needs attention', gaps.length > 0 ? 'red' : 'green'))
-  if (gaps.length === 0) out.push(paint('green', '✓ nothing open\n'))
-  for (const g of gaps.slice(0, 5)) out.push(g.includes(' failed: ') ? paint('red', ' FAILED ', true) : paint('yellow', ' STALE ', true), ` ${one(g)}\n`)
-  out.push(head('Now'))
-  if (snapshot.active.length === 0) out.push(paint('blue', 'idle\n'))
-  for (const a of snapshot.active.slice(0, 3)) out.push(paint('yellow', '◉ ', true), paint(undefined, `${a.tool} `, true), `${one(a.what)}\n`)
+// The pane holds no seconds clock: Codex redraws the sidebar whenever this panel changes, and the activity line moves once a minute.
+export function paneTree(snapshot, dismissed = new Set()) {
+  const web = line({ type: 'link', props: { href: WEB }, children: ['Open the web view'] })
+  if (!snapshot) return { type: 'panel', children: [line(paint(undefined, 'AgentMon Live', true)), line('No Codex chat written to in the last 30 minutes.'), web] }
+  const out = [line(paint(undefined, 'AgentMon Live', true), paint('blue', ` · ${[snapshot.build, snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' · ')}`))]
+  const gaps = codexGaps(snapshot).filter(g => !dismissed.has(g))
+  out.push(box('Needs attention', gaps.length === 0 ? [line(paint('green', '✓ nothing open'))] : gaps.slice(0, 5).map(g => line(g.includes(' failed: ') ? paint('red', ' FAILED ', true) : paint('yellow', ' STALE ', true), ` ${one(g)}`)), gaps.length > 0 ? 'red' : 'green'))
+  if (gaps.length > 0) {
+    out.push({ type: 'action', key: 'i', label: 'investigate the first item', prompt: `Before you report done, look into this and fix it, or say plainly why not: ${gaps[0]}` })
+    out.push({ type: 'action', key: 'x', label: 'put the first item away', tool: 'dismiss', arguments: { item: gaps[0] } })
+  }
+  out.push(box('Now', snapshot.active.length === 0 ? [line(paint('blue', 'idle'))] : snapshot.active.slice(0, 3).map(a => line(paint('yellow', '◉ ', true), paint(undefined, `${a.tool} `, true), one(a.what)))))
   const turn = snapshot.turns.at(-1)
   if (turn) {
-    out.push(head(`Turn ${snapshot.turns.length}`), paint('magenta', `› ${one(String(turn.prompt ?? '').split('\n')[0], 120)}\n`))
     const spent = Object.entries(turn.isLive ? {} : turn.buckets).sort((a, b) => b[1] - a[1]).slice(0, 6)
-    const most = Math.max(1, ...spent.map(([, ms]) => ms))
-    for (const [k, ms] of spent) out.push(`${k} `, ...bar(ms / most, 'cyan'), ` ${secs(ms)}\n`)
+    const bars = spent.length > 0 ? [{ type: 'bars', bars: spent.map(([k, ms], i) => ({ label: k, value: Math.round(ms), text: secs(ms), color: KIND_COLORS[i % KIND_COLORS.length] })) }] : []
+    out.push(box(`Turn ${snapshot.turns.length}`, [line(paint('magenta', `› ${one(String(turn.prompt ?? '').split('\n')[0], 120)}`)), ...bars]))
   }
-  if (snapshot.checks.length > 0) {
-    out.push(head('Checks'))
-    for (const c of snapshot.checks.slice(-6)) out.push(c.result === 'ok' ? paint('green', '✓ ') : c.result === 'running' ? paint('yellow', '◉ ') : paint('red', '✗ '), paint(undefined, `${c.kind} `, true), `${one(c.command, 60)}\n`)
+  const done = snapshot.turns.filter(t => !t.isLive).slice(-TURNS)
+  if (done.length >= 2) {
+    const first = snapshot.turns.length - done.length + 1
+    const kinds = [...new Set(done.flatMap(t => Object.keys(t.buckets)))].slice(0, KIND_COLORS.length)
+    const series = kinds.map((k, i) => ({ name: k, color: KIND_COLORS[i], points: done.map((t, n) => [first + n, Math.round((t.buckets[k] ?? 0) / 1000)]) }))
+    out.push(box(`Seconds per turn, last ${done.length}`, [{ type: 'chart', series, height: 8 }, line(...kinds.flatMap((k, i) => [paint(KIND_COLORS[i], '━ '), `${k}  `]))]))
   }
+  const minute = Math.floor(snapshot.now / 60_000)
+  const perMinute = Array.from({ length: MINUTES }, () => 0)
+  for (const c of snapshot.trace) {
+    const ago = minute - Math.floor(c.at / 60_000)
+    if (ago >= 0 && ago < MINUTES) perMinute[MINUTES - 1 - ago] += 1
+  }
+  if (perMinute.some(n => n > 0)) out.push(box(`Calls per minute, last ${MINUTES}`, [{ type: 'sparkline', data: perMinute, height: 3 }]))
+  if (snapshot.checks.length > 0) out.push(box('Checks', snapshot.checks.slice(-6).map(c => line(c.result === 'ok' ? paint('green', '✓ ') : c.result === 'running' ? paint('yellow', '◉ ') : paint('red', '✗ '), paint(undefined, `${c.kind} `, true), one(c.command, 60)))))
   const recent = snapshot.trace.slice(-RECENT).reverse()
-  if (recent.length > 0) {
-    out.push(head('Recent calls'))
-    for (const c of recent) out.push(paint(c.isFailed ? 'red' : undefined, `${c.tool} `, true), `${one(c.what, 60)}\n`)
-  }
+  if (recent.length > 0) out.push(box('Recent calls', recent.map(c => line(paint(c.isFailed ? 'red' : undefined, `${c.tool} `, true), one(c.what, 60)))))
   const cwd = `${snapshot.session.cwd}/`
   const edited = snapshot.files.edited.map(f => (f.startsWith(cwd) ? f.slice(cwd.length) : f))
-  if (edited.length > 0) out.push(head(`Files edited (${edited.length})`), `${edited.slice(-RECENT).map(f => one(f)).join('\n')}\n`)
+  if (edited.length > 0) out.push(box(`Files edited (${edited.length})`, edited.slice(-RECENT).map(f => line(one(f)))))
   const { ctxPct, ctxTokens, ctxWindow, rate = [] } = snapshot.usage
-  if (ctxPct !== undefined || rate.length > 0) {
-    out.push(head('Context and limits'))
-    if (ctxPct !== undefined) out.push(...meter('context', ctxPct, ` ${Math.round(ctxTokens / 1000)}k/${Math.round(ctxWindow / 1000)}k`))
-    for (const r of rate) out.push(...meter(r.kind === 'five_hour' ? '5h' : '7d', r.pct))
-  }
-  out.push('\n', { type: 'link', props: { href: WEB }, children: ['Open the web view'] })
-  return { type: 'text', children: out }
+  const gauges = [...(ctxPct === undefined ? [] : [gauge(`context ${ctxPct}% ${Math.round(ctxTokens / 1000)}k/${Math.round(ctxWindow / 1000)}k`, ctxPct)]), ...rate.map(r => gauge(`${r.kind === 'five_hour' ? '5h' : '7d'} ${r.pct}%`, r.pct))]
+  if (gauges.length > 0) out.push(box('Context and limits', gauges))
+  out.push(web)
+  return { type: 'panel', children: out }
 }
 
-// The tree's words alone, for a model that calls the tool.
-const words = node => (typeof node === 'string' ? node : node.children.map(words).join(''))
+// The panel's words alone, for a model that calls the tool.
+export function words(node) {
+  if (typeof node === 'string') return node
+  if (node.type === 'box') return `${node.title}\n${node.children.map(words).join('')}\n`
+  if (node.type === 'gauge') return `${node.label}\n`
+  if (node.type === 'bars') return node.bars.map(b => `${b.label} ${b.text ?? b.value}\n`).join('')
+  return (node.children ?? []).map(words).join('')
+}
 
 export function feedbackLink({ type, text }) {
   const said = String(text ?? '').trim()
@@ -135,7 +147,8 @@ export function feedbackLink({ type, text }) {
   return `Nothing was sent. Give the person this link; they read the issue and submit it themselves:\n${link}`
 }
 
-export function answer(msg, chats) {
+// shortcut: put-away items live as long as this server process and apply to every chat; persist them per chat if people restart Codex mid-task.
+export function answer(msg, chats, dismissed = new Set()) {
   const { method, params = {} } = msg
   if (method === 'initialize') return { protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: { tools: {}, resources: {} }, serverInfo: { name: 'agentmon-live', version: '1' } }
   if (method === 'ping') return {}
@@ -143,7 +156,7 @@ export function answer(msg, chats) {
   if (method === 'resources/list') return { resources: [{ uri: STATUSLINE_URI, name: 'statusline', mimeType: 'application/json' }, { uri: PANE_URI, name: 'pane', mimeType: 'application/json' }] }
   if (method === 'resources/read') {
     const chat = () => pickChat(chats(), threadOf(params._meta))
-    if (params.uri === PANE_URI) return { contents: [{ uri: PANE_URI, mimeType: 'application/json', text: JSON.stringify(paneTree(chat())) }] }
+    if (params.uri === PANE_URI) return { contents: [{ uri: PANE_URI, mimeType: 'application/json', text: JSON.stringify(paneTree(chat(), dismissed)) }] }
     if (params.uri !== STATUSLINE_URI) throw Object.assign(new Error(`unknown resource ${params.uri}`), { code: -32002 })
     const tree = { type: 'text', children: [statusText(chat())] }
     return { contents: [{ uri: STATUSLINE_URI, mimeType: 'application/json', text: JSON.stringify(tree) }] }
@@ -152,7 +165,12 @@ export function answer(msg, chats) {
     const args = params.arguments ?? {}
     if (params.name === 'feedback') return { content: [{ type: 'text', text: feedbackLink(args) }] }
     if (params.name === 'statusline') return { content: [{ type: 'text', text: statusText(pickChat(chats())) }] }
-    if (params.name === 'pane') return { content: [{ type: 'text', text: words(paneTree(pickChat(chats()))) }] }
+    if (params.name === 'pane') return { content: [{ type: 'text', text: words(paneTree(pickChat(chats()), dismissed)) }] }
+    if (params.name === 'dismiss') {
+      if (typeof args.item !== 'string' || !args.item) return { content: [{ type: 'text', text: 'Not taken: item is required.' }], isError: true }
+      dismissed.add(args.item)
+      return { content: [{ type: 'text', text: 'Put away.' }] }
+    }
     throw Object.assign(new Error(`unknown tool ${params.name}`), { code: -32602 })
   }
   throw Object.assign(new Error(`method not found: ${method}`), { code: -32601 })
@@ -161,6 +179,7 @@ export function answer(msg, chats) {
 export function serve(input = process.stdin, output = process.stdout) {
   const cache = new Map()
   const chats = () => readCodex(codexHome(), Date.now(), IDLE_MS, cache)
+  const dismissed = new Set()
   createInterface({ input }).on('line', line => {
     let msg
     try {
@@ -172,7 +191,7 @@ export function serve(input = process.stdin, output = process.stdout) {
     if (msg.id === undefined) return
     let reply
     try {
-      reply = { jsonrpc: '2.0', id: msg.id, result: answer(msg, chats) }
+      reply = { jsonrpc: '2.0', id: msg.id, result: answer(msg, chats, dismissed) }
     } catch (e) {
       reply = { jsonrpc: '2.0', id: msg.id, error: { code: e.code ?? -32603, message: String(e.message ?? e) } }
     }

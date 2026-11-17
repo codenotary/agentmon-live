@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
-import { answer, feedbackLink, PANE_URI, paneTree, pickChat, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
+import { answer, feedbackLink, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
 import { foldRollout, readCodex } from '../../server/codex.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
@@ -211,24 +211,38 @@ test('the Codex plugin declares the MCP server, skills and Stop hook it ships', 
   assert.ok(existsSync(join(ROOT, file)), file)
 })
 
-test('the pane is a coloured UI tree for the chat Codex names, within Codex limits and with no running clock', () => {
+test('the pane is a panel of text, charts and keys for the chat Codex names, with no seconds clock', () => {
   const s = foldRollout(entries, NOW).snapshot
-  const tree = paneTree(s)
-  const words = n => (typeof n === 'string' ? n : n.children.map(words).join(''))
-  const nodes = n => (typeof n === 'string' ? 1 : 1 + n.children.reduce((a, c) => a + nodes(c), 0))
-  const text = words(tree)
+  const panel = paneTree(s)
+  const text = words(panel)
+  assert.equal(panel.type, 'panel')
   assert.match(text, /^AgentMon Live · Codex · 0\.166\.0 · gpt-6\.1-sol · medium\n/)
-  assert.match(text, /● NOW\n◉ shell npm run lint\n/)
-  assert.match(text, /● TURN 2\n› run it again\n/)
-  assert.match(text, /● FILES EDITED \(2\)\nsrc\/a\.ts\nsrc\/b\.ts\n/)
-  assert.deepEqual(paneTree(foldRollout(entries, NOW + 60_000).snapshot), tree)
+  assert.match(text, /Now\n◉ shell npm run lint\n/)
+  assert.match(text, /Turn 2\n› run it again\n/)
+  assert.match(text, /Files edited \(2\)\nsrc\/a\.ts\nsrc\/b\.ts\n/)
+  assert.deepEqual(paneTree(foldRollout(entries, NOW + 20_000).snapshot), panel)
   assert.match(words(paneTree(undefined)), /No Codex chat/)
   assert.match(words(paneTree({ ...s, active: [{ tool: 'shell', what: 'echo x\nrm' }] })), /◉ shell echo x rm\n/)
-  const busy = { ...s, trace: Array.from({ length: 50 }, () => ({ tool: 'shell', what: 'x'.repeat(500) })), checks: Array.from({ length: 50 }, () => ({ kind: 'test', result: 'failed', command: 'y'.repeat(500), at: NOW })), files: { ...s.files, edited: Array.from({ length: 50 }, (_, i) => `f${i}`.repeat(50)) } }
-  assert.ok(nodes(paneTree(busy)) <= 256 && Buffer.byteLength(words(paneTree(busy))) <= 16 * 1024)
+  const busy = { ...s, trace: Array.from({ length: 500 }, (_, i) => ({ tool: 'shell', what: 'x'.repeat(500), at: s.now - i * 1000 })), checks: Array.from({ length: 50 }, () => ({ kind: 'test', result: 'failed', command: 'y'.repeat(500), at: NOW })), files: { ...s.files, edited: Array.from({ length: 50 }, (_, i) => `f${i}`.repeat(50)) } }
+  assert.ok(JSON.stringify(paneTree(busy)).length <= 64 * 1024)
   const { contents: [c] } = answer({ method: 'resources/read', params: { uri: PANE_URI, _meta: { 'com.openai/codex-sidebar-state': { thread: { id: SID } } } } }, () => [['other', { ...s, turns: [{ startedAt: NOW }] }], [SID, s]])
-  assert.deepEqual([c.mimeType, JSON.parse(c.text)], ['application/json', tree])
+  assert.deepEqual([c.mimeType, JSON.parse(c.text)], ['application/json', panel])
   assert.equal(answer({ method: 'tools/list' }, () => []).tools.find(t => t.name === 'pane')._meta['openai/ui'].entrypoints[0].type, 'sidebar')
+})
+
+test('an open item offers investigate and put-away keys, and put away it leaves the panel', () => {
+  const s = foldRollout(entries, NOW).snapshot
+  const failing = { ...s, checks: [{ kind: 'test', result: 'failed', command: 'npm test', at: s.turns.at(-1).startedAt + 1 }], files: { ...s.files, editedTimes: { 'src/a.ts': s.turns.at(-1).startedAt } } }
+  const dismissed = new Set()
+  const panel = paneTree(failing, dismissed)
+  const actions = panel.children.filter(n => n.type === 'action')
+  assert.deepEqual(actions.map(a => a.key), ['i', 'x'])
+  assert.match(actions[0].prompt, /test failed: npm test/)
+  assert.deepEqual(answer({ method: 'tools/call', params: { name: 'dismiss', arguments: actions[1].arguments } }, () => [], dismissed).content[0].text, 'Put away.')
+  assert.ok(answer({ method: 'tools/call', params: { name: 'dismiss', arguments: {} } }, () => [], dismissed).isError)
+  const after = paneTree(failing, dismissed)
+  assert.equal(after.children.filter(n => n.type === 'action').length, 0)
+  assert.match(words(after), /✓ nothing open/)
 })
 
 test('the chat on screen comes from either surface\'s state in the read', () => {
