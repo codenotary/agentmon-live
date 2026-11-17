@@ -11,7 +11,7 @@ export const es: Strings = {
     noBrowser: url => `No se pudo abrir un navegador aquí. Abre ${url} tú mismo.`,
     page: {
       disconnected: 'Desconectado del servidor de sesión. Reintentando…',
-      refused: 'Este navegador se ejecuta con otra cuenta que el servidor de AgentMon, así que no puede leer las sesiones. Por SSH, inicia sesión con la cuenta que ejecuta el servidor (Kiro Crew o Claude Code).',
+      refused: 'El servidor no puede saber que este navegador es tuyo, así que no puede leer las sesiones. Abre la página con /agentmon open o, por SSH, inicia sesión con la cuenta que ejecuta el servidor (Kiro Crew o Claude Code).',
       noSignal: 'sin señal',
       kindWaiting: 'En espera',
       kindMemory: 'Memoria',

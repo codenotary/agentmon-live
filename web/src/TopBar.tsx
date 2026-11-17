@@ -80,7 +80,7 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
   const now = live ? stateOf(live) : 'idle'
   const isSilent = live !== undefined && st.silent.has(live.session.id)
   const isLive = now === 'active' && !isSilent
-  const state = st.isDown ? { text: <><X size={12} aria-hidden /><span title={p.disconnected}>{p.disconnectedWord}</span></>, cls: 'text-bad', dot: 'var(--bad)' } : isSilent ? { text: p.noSignal, cls: 'text-warn', dot: 'var(--warn)' } : live && now === 'waiting' ? { text: stateWord(live, p, st), cls: 'text-signal', dot: 'var(--signal-bright)' } : isLive ? { text: p.live, cls: 'text-good', dot: 'var(--good)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
+  const state = st.isDown ? { text: <><X size={12} aria-hidden /><span title={st.isRefused ? p.refused : p.disconnected}>{p.disconnectedWord}</span></>, cls: 'text-bad', dot: 'var(--bad)' } : isSilent ? { text: p.noSignal, cls: 'text-warn', dot: 'var(--warn)' } : live && now === 'waiting' ? { text: stateWord(live, p, st), cls: 'text-signal', dot: 'var(--signal-bright)' } : isLive ? { text: p.live, cls: 'text-good', dot: 'var(--good)' } : { text: p.idle, cls: 'text-ink-3', dot: 'var(--ink-3)' }
   // A result from before this prompt says nothing about the turn under way.
   const gate = live?.gate && live.gate.at >= (live.main.turnAt ?? 0) ? live.gate : undefined
   const themeLabel = { auto: p.themeAuto, dark: p.themeDark, light: p.themeLight }[st.theme]

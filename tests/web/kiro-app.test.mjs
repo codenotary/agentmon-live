@@ -87,7 +87,7 @@ test('the start hook writes the host file and the stop hook removes only its own
   assert.equal(typeof start, process.platform === 'linux' ? 'number' : 'undefined')
   // The hook writes a start time and the server reads one: both must mean the same for one process.
   assert.equal(Number(run(`print(h.start_of(${process.pid}))`).stdout) || undefined, startOf(process.pid))
-  assert.equal(run('print(h.ensure_args("n", {"AGENTMON_WEB_OPEN": "1"})[-1], h.ensure_args("n", {})[-1])').stdout.trim(), '--open 47311')
+  assert.equal(run('import os\nprint(h.ensure_args("n")[-1])\nos.environ["AGENTMON_WEB_OPEN"] = "1"\nprint(h.ensure_args("n")[-1])').stdout, '47311\n--open\n')
   assert.equal(run('h.on_shutdown()').status, 0)
   assert.ok(existsSync(file), 'another process wrote it')
   writeFileSync(file, 'not json')

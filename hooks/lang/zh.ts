@@ -11,7 +11,7 @@ export const zh: Strings = {
     noBrowser: url => `无法在此处打开浏览器。请自行打开 ${url}。`,
     page: {
       disconnected: '与会话服务器的连接已断开，正在重试…',
-      refused: '此浏览器与 AgentMon 服务器使用不同的账户运行，因此无法读取会话。通过 SSH 时，请用运行服务器的账户登录（Kiro Crew 或 Claude Code）。',
+      refused: '服务器无法确认此浏览器属于你，因此无法读取会话。请用 /agentmon open 打开页面，或通过 SSH 用运行服务器的账户登录（Kiro Crew 或 Claude Code）。',
       noSignal: '无信号',
       kindWaiting: '等待中',
       kindMemory: '记忆',

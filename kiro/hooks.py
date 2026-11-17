@@ -63,10 +63,9 @@ def write_state(pid, port):
     os.replace(tmp, STATE)
 
 
-def ensure_args(node, env=None):
+def ensure_args(node):
     # AGENTMON_WEB_OPEN=1 is `webToken: off` for a gateway with no Claude Code settings: any local process may read the sessions.
-    env = os.environ if env is None else env
-    return [node, str(ROOT / "server" / "web.mjs"), "ensure", str(PORT)] + (["--open"] if env.get("AGENTMON_WEB_OPEN") == "1" else [])
+    return [node, str(ROOT / "server" / "web.mjs"), "ensure", str(PORT)] + (["--open"] if os.environ.get("AGENTMON_WEB_OPEN") == "1" else [])
 
 
 def on_startup(ctx=None):
