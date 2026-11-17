@@ -99,6 +99,28 @@ async function addLog($: EngineInterface, line: Omit<LogLine, 'at'>) {
   await update($, log, list => [...list, { ...line, at }].slice(-50))
 }
 
+// A Stop that has not reached the mod this long after the answer was passed on past it: another mod's `next.to` skips this tier.
+const STOP_WAIT_MS = 5000
+
+// The done gate's verdict on the turn, or nothing when there is nothing to judge: gate off, a light turn, or its subagents still running.
+async function judgeTurn($: EngineInterface, turn: Turn, answer: string) {
+  if (cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return undefined
+  await noteShellEdit($, turn)
+  // A background agent from an earlier turn does not hold every later turn's gate.
+  if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running' && a.startedAt >= turn.startedAt)) return undefined
+  return openGaps($, turn, answer)
+}
+
+// The verdict in the pane, the log and the debug log; `stop` is false when no Stop hook reached the mod, so nothing could be sent back.
+async function recordGate($: EngineInterface, found: { lines: string[]; fix?: string; judged: boolean }, ref: string, isSent: boolean, stop: boolean, stopHook?: boolean) {
+  const t = cfg.t
+  if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref, at: await $.clock.now(), isSent })
+  if (found.judged) await addLog($, { who: t.gateLog.who, what: ref, result: found.lines.length === 0 ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
+  void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook, stop })
+  // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
+  void saveDebugLog($)
+}
+
 let momentCount = 0
 // A moment of the turn that is no call, as a row of its step list: a hook's context, a memory file loaded, a typed command.
 function addMoment($: EngineInterface, actor: Actor, label: string) {
@@ -255,6 +277,9 @@ export const register: Register = on => {
   let isTurnLive = false
   let isCheckQueued = false
   let lastAnswer = ''
+  // Main answers so far, and the one the last Stop hook came for: a Stop another mod passes on past this one never comes.
+  let answers = 0
+  let stopFor = 0
   // The done gate sends a turn back once; set until the person's next prompt.
   let isGateUsed = false
   // The turn under way is one a Stop hook sent back: the same prompt's, so it is no new turn in the counts.
@@ -962,6 +987,24 @@ export const register: Register = on => {
       }
       // Memory files change outside Edit and Write too: Bash, an editor, a git checkout.
       queueMemoryCheck($)
+      answers += 1
+      const answer = answers
+      // shortcut: without the Stop hook the gate can only report, not send the turn back; upgrade if a mod hook can block at turn.complete.
+      if (e.reason === 'answer') $.clock.after(STOP_WAIT_MS, async () => {
+        if (stopFor >= answer || answers !== answer) return
+        stopFor = answer
+        try {
+          const found = await judgeTurn($, turn, lastAnswer)
+          if (found) await recordGate($, found, workRef(), false, false)
+          if (found && found.lines.length === 0 && found.judged) isPassed = true
+          if (isCheckQueued) {
+            isCheckQueued = false
+            await checkNow($, turn, lastAnswer, workRef())
+          }
+        } catch (error) {
+          void debug($, 'gate.fallback', { message: String(error) })
+        }
+      })
     }
     // An answer is followed by a Stop, which runs the check after the gate: both ask Fable, and only one may at a time.
     if (e.agentId === undefined && isCheckQueued && e.reason !== 'answer') {
@@ -973,6 +1016,7 @@ export const register: Register = on => {
 
   // The done gate: before Claude stops, what is visibly unfinished goes back to it, once per prompt.
   on('classic.Stop', async ($, e, next) => {
+    stopFor = answers
     const isQueued = isCheckQueued
     isCheckQueued = false
     let isBlocked = false
@@ -981,20 +1025,13 @@ export const register: Register = on => {
       isBlocked = Boolean(r.block)
       if (r.block) sentBack = t.hookStop
       // Another hook already sends it back: never stack.
-      if (r.block || cfg.advisorMode === 'off' || !listening((await read($, advisor)).isOn)) return r
-      await noteShellEdit($, turn)
-      // A light turn has nothing to gate; while this turn's subagents still run, the work is not over yet.
-      // A background agent from an earlier turn does not hold every later turn's gate.
-      if (!(turn.tools >= MIN_TOOLS_FOR_DONE_CHECK || turn.edited.size > 0 || turn.delegated > 0 || turn.lastCodeEditAt !== undefined) || (await read($, agents)).some(a => a.status === 'running' && a.startedAt >= turn.startedAt)) return r
+      if (r.block) return r
       // Fable looks at the continuation too, so the pane says whether the send-back was answered.
-      const found = await openGaps($, turn, e.last_assistant_message ?? '')
+      const found = await judgeTurn($, turn, e.last_assistant_message ?? '')
+      if (!found) return r
       // A stop that ends a hook-driven continuation is recorded, never sent back again: no loops.
       const isSent = found.lines.length > 0 && !isGateUsed && !e.stop_hook_active
-      if (found.judged) await addNote($, { kind: 'done', ok: found.lines.length === 0, text: found.lines.join('\n'), fix: found.fix, ref: workRef(), at: await $.clock.now(), isSent })
-      if (found.judged) await addLog($, { who: t.gateLog.who, what: workRef(), result: found.lines.length === 0 ? t.gateLog.passed : isSent ? t.gateLog.sent : t.gateLog.open })
-      void debug($, 'gate', { mode: cfg.advisorMode, gaps: found.lines.length, sent: isSent, judged: found.judged, stopHook: e.stop_hook_active })
-      // A turn's last events are saved now, not 10 seconds later: the session may end right after its stop.
-      void saveDebugLog($)
+      await recordGate($, found, workRef(), isSent, true, e.stop_hook_active)
       if (found.lines.length === 0 && found.judged) isPassed = true
       if (isSent) blockAt = turn.tools
       await benchPrompt($, turn, blockAt, isPassed)
