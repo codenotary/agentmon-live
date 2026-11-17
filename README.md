@@ -98,7 +98,7 @@ The [guide](docs/guide.md#web-view) has the rest, including a registry install f
 
 ### Codex
 
-The web view lists every [Codex](https://developers.openai.com/codex) chat on the machine beside your Claude Code sessions: the CLI, `codex exec` and the IDE extension. It reads the session files Codex writes, so this needs nothing installed in Codex: open the web view and the chats are there.
+The web view lists every [Codex](https://developers.openai.com/codex) chat on the machine beside your Claude Code sessions: the CLI, `codex exec` and the IDE extension. It reads the session files Codex writes, so this needs nothing installed in Codex: open the web view and the chats are there. Each chat's context gauge shows Codex's own count against its own window, with each compaction in the log; it is never summed with a Claude Code session's.
 
 <details>
 <summary>Start the web view with Codex: install AgentMon as a Codex plugin</summary>
