@@ -519,3 +519,25 @@ test('a refused call keeps its own time in the step list', async ($, on) => {
   expect(row?.text).toMatch(/git push\s+0\.0s$/)
   await ui.unmount()
 })
+
+test('instruction files no InstructionsLoaded named get their rows from the prompt context, once', async ($, on) => {
+  withOptions(on, { layout: 'classic' })
+  on('classic.InstructionsLoaded', () => ({}))
+  on('prompt.context', (_, e) => ({ blocks: e.blocks }))
+  const clock = await turnWithReads($, on)
+  await $.classic.InstructionsLoaded({ file_path: '/repo/web/CLAUDE.md', memory_type: 'Project', load_reason: 'nested_traversal' })
+  const files = [
+    { path: '/repo/web/CLAUDE.md', kind: 'project', content: '' },
+    { path: '/repo/CLAUDE.local.md', kind: 'local', content: '' },
+    { path: '/repo/docs/rules.md', kind: 'project', content: '', parent: '/repo/CLAUDE.local.md' },
+  ] as const
+  await $.prompt.context({ blocks: [], instructionFiles: files } as never)
+  await $.prompt.context({ blocks: [], instructionFiles: files } as never)
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /Memory\s+repo\/CLAUDE\.local\.md · session start\s/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /Memory\s+docs\/rules\.md · included\s/ })).toBeTruthy()
+  expect(await ui.findAll({ type: 'Text', text: /web\/CLAUDE\.md/ })).toHaveLength(1)
+  expect(await ui.findAll({ type: 'Text', text: /CLAUDE\.local\.md · session start/ })).toHaveLength(1)
+  await ui.unmount()
+})

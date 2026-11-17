@@ -250,6 +250,32 @@ Just ask Claude: *"hide the usage box"*, *"switch AgentMon to German"*, *"turn t
 
 Commands: `/agentmon`, `advisor`, `check`, `open`, `learn`, `memory`, `bench`, `debug`, `clear`.
 
+## Metrics for Grafana and Datadog (early preview)
+
+AgentMon can send numbers from every session it shows, from Claude Code, Codex, Kiro Crew and sandboxes, as OpenTelemetry metrics. They add what Claude Code's own telemetry does not know:
+
+- done gate verdicts
+- check results, stale checks, weakened tests
+- where turn time went
+- failed and denied calls
+- items that need you
+- context taken by MCP tools and memory
+- Codex and Kiro Crew cost
+
+It is off by default and sends numbers only: no prompt, command or path. Turn it on in the `env` block of `~/.claude/settings.json`:
+
+```json
+"env": {
+  "AGENTMON_OTLP": "1",
+  "OTEL_EXPORTER_OTLP_ENDPOINT": "https://otlp-gateway-<zone>.grafana.net/otlp",
+  "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic%20<base64 of instance-id:token>"
+}
+```
+
+For Datadog, point the endpoint at the Datadog Agent's OTLP receiver, `http://localhost:4318`. Import [`docs/grafana/agentmon.json`](docs/grafana/agentmon.json) for a ready dashboard. To try it all locally first, run `docker run -d --name agentmon-lgtm -p 127.0.0.1:3300:3000 -p 127.0.0.1:14318:4318 grafana/otel-lgtm:0.11.10`, then use `http://127.0.0.1:14318` as the endpoint and open Grafana at `http://localhost:3300`.
+
+This is an early preview: metric names and labels may still change. The [guide](docs/guide.md#send-to-datadog-or-grafana-cloud) lists every metric and its labels.
+
 ## More
 
 - [Guide](docs/guide.md): every section of the pane, all commands and options, the done gate, the file-size guide, learning, the debug log and the self benchmark.
