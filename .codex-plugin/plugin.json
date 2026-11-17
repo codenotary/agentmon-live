@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "AgentMon Live",
     "shortDescription": "See what every chat is doing, live",
-    "longDescription": "Starts AgentMon Live's web view with each Codex session. The page at http://127.0.0.1:47311/ lists every Codex chat on this machine: turns with their time split, tool calls, test and build results, files, context and limits. A Stop hook sends Codex back when a check failed or ran before the last edit, and an MCP server draws a status line under the prompt.",
+    "longDescription": "Starts AgentMon Live's web view with each Codex session. The page at http://127.0.0.1:47311/ lists every Codex chat on this machine: turns with their time split, tool calls, test and build results, files, context and limits. A Stop hook sends Codex back when a check failed or ran before the last edit, and an MCP server draws a status line under the prompt and, in a Codex build with the sidebar feature, a pane with charts beside the chat. Its feedback tool makes a prefilled issue link.",
     "developerName": "Codenotary",
     "category": "Developer Tools",
     "capabilities": ["Read"],

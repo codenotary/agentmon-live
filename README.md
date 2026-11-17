@@ -112,7 +112,7 @@ codex plugin add agentmon-live@agentmon-live
 
 Codex runs a plugin's hook only after you trust it: open `/hooks` in Codex and trust AgentMon Live's `SessionStart` and `Stop` hooks, both in [`codex/hooks.json`](codex/hooks.json). The first starts the web view's server, the second is the done gate. Then open `http://127.0.0.1:47311/`.
 
-- **Done gate:** when Codex is about to stop and a test, lint, typecheck or build failed after this turn's last code edit, or ran before it, the `Stop` hook sends Codex back once with what is open.
+- **Done gate:** when Codex is about to stop and a test, lint, typecheck or build failed after this turn's first code edit, or ran before its last one, the `Stop` hook sends Codex back once with what is open.
 - **Status line:** needs Codex 0.171 or later with `[features] tui_extensions_statusline = true` in `~/.codex/config.toml`; then pick AgentMon Live in `/statusline`. The line under the prompt shows open gate items, the latest checks, context and the 5-hour limit.
 - **Pane:** a Codex build with the `tui_extensions_sidebar` feature shows the pane as an AgentMon tab in Codex's sidebar: open items, the running call, checks, recent calls, edited files, context and limits. Stock Codex has no sidebar for plugins; use the web view.
 - **Skill and feedback:** the `agentmon` skill gives the web view's link; the `feedback` tool makes a GitHub issue link you submit yourself.

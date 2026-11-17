@@ -9,6 +9,8 @@ export const PANE_URI = 'ui://agentmon-live/pane'
 const ISSUES = 'https://github.com/codenotary/agentmon-live/issues/new'
 const KINDS = ['problem', 'idea', 'thanks', 'other']
 const MAX_TEXT = 2000
+// Same cap as `hooks/feedback.tsx`: GitHub refuses a longer prefilled body.
+const MAX_ISSUE_BODY = 5000
 const IDLE_MS = 30 * 60_000
 const WEB = 'http://127.0.0.1:47311/'
 
@@ -30,7 +32,7 @@ const TOOLS = [
   {
     name: 'dismiss',
     description: "Puts an open item away in the AgentMon panel. The panel's x key calls it; call it only when the person asks to put an item away.",
-    inputSchema: { type: 'object', properties: { item: { type: 'string', description: 'The item text as the panel shows it.' } }, required: ['item'] },
+    inputSchema: { type: 'object', properties: { chat: { type: 'string', description: 'The Codex chat id.' }, item: { type: 'string', description: 'The item text as the panel gives it.' } }, required: ['chat', 'item'] },
   },
   {
     name: 'feedback',
@@ -55,9 +57,12 @@ export function pickChat(chats, threadId) {
   return chats.map(([, s]) => s).sort((a, b) => (a.turns.at(-1)?.startedAt ?? 0) - (b.turns.at(-1)?.startedAt ?? 0)).at(-1)
 }
 
-export function statusText(snapshot) {
+// An item put away with the panel's x key, per chat. The Stop hook runs apart from this server and still asks once.
+const openGaps = (snapshot, dismissed) => codexGaps(snapshot).filter(g => !dismissed.has(`${snapshot.session.id}\n${g}`))
+
+export function statusText(snapshot, dismissed = new Set()) {
   if (!snapshot) return `AgentMon · no live Codex chat · ${WEB}`
-  const gaps = codexGaps(snapshot)
+  const gaps = openGaps(snapshot, dismissed)
   const checks = snapshot.checks.filter(c => c.result !== 'running').map(c => `${c.kind} ${c.result === 'ok' ? 'ok' : c.result}`)
   const five = snapshot.usage.rate?.find(r => r.kind === 'five_hour')
   return [
@@ -88,11 +93,11 @@ export function paneTree(snapshot, dismissed = new Set()) {
   const web = line({ type: 'link', props: { href: WEB }, children: ['Open the web view'] })
   if (!snapshot) return { type: 'panel', children: [line(paint(undefined, 'AgentMon Live', true)), line('No Codex chat written to in the last 30 minutes.'), web] }
   const out = [line(paint(undefined, 'AgentMon Live', true), paint('blue', ` · ${[snapshot.build, snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' · ')}`))]
-  const gaps = codexGaps(snapshot).filter(g => !dismissed.has(g))
+  const gaps = openGaps(snapshot, dismissed)
   out.push(box('Needs attention', gaps.length === 0 ? [line(paint('green', '✓ nothing open'))] : gaps.slice(0, 5).map(g => line(g.includes(' failed: ') ? paint('red', ' FAILED ', true) : paint('yellow', ' STALE ', true), ` ${one(g)}`)), gaps.length > 0 ? 'red' : 'green'))
   if (gaps.length > 0) {
-    out.push({ type: 'action', key: 'i', label: 'investigate the first item', prompt: `Before you report done, look into this and fix it, or say plainly why not: ${gaps[0]}` })
-    out.push({ type: 'action', key: 'x', label: 'put the first item away', tool: 'dismiss', arguments: { item: gaps[0] } })
+    out.push({ type: 'action', key: 'i', label: 'investigate the first item', prompt: `Before you report done, look into this AgentMon item and fix it, or say plainly why not: "${one(gaps[0], 200)}"` })
+    out.push({ type: 'action', key: 'x', label: 'put the first item away', tool: 'dismiss', arguments: { chat: snapshot.session.id, item: gaps[0] } })
   }
   out.push(box('Now', snapshot.active.length === 0 ? [line(paint('blue', 'idle'))] : snapshot.active.slice(0, 3).map(a => line(paint('yellow', '◉ ', true), paint(undefined, `${a.tool} `, true), one(a.what)))))
   const turn = snapshot.turns.at(-1)
@@ -118,8 +123,8 @@ export function paneTree(snapshot, dismissed = new Set()) {
   if (snapshot.checks.length > 0) out.push(box('Checks', snapshot.checks.slice(-6).map(c => line(c.result === 'ok' ? paint('green', '✓ ') : c.result === 'running' ? paint('yellow', '◉ ') : paint('red', '✗ '), paint(undefined, `${c.kind} `, true), one(c.command, 60)))))
   const recent = snapshot.trace.slice(-RECENT).reverse()
   if (recent.length > 0) out.push(box('Recent calls', recent.map(c => line(paint(c.isFailed ? 'red' : undefined, `${c.tool} `, true), one(c.what, 60)))))
-  const cwd = `${snapshot.session.cwd}/`
-  const edited = snapshot.files.edited.map(f => (f.startsWith(cwd) ? f.slice(cwd.length) : f))
+  const cwd = snapshot.session.cwd ? `${snapshot.session.cwd}/` : undefined
+  const edited = snapshot.files.edited.map(f => (cwd && f.startsWith(cwd) ? f.slice(cwd.length) : f))
   if (edited.length > 0) out.push(box(`Files edited (${edited.length})`, edited.slice(-RECENT).map(f => line(one(f)))))
   const { ctxPct, ctxTokens, ctxWindow, rate = [] } = snapshot.usage
   const gauges = [...(ctxPct === undefined ? [] : [gauge(`context ${ctxPct}% ${Math.round(ctxTokens / 1000)}k/${Math.round(ctxWindow / 1000)}k`, ctxPct)]), ...rate.map(r => gauge(`${r.kind === 'five_hour' ? '5h' : '7d'} ${r.pct}%`, r.pct))]
@@ -143,11 +148,14 @@ export function feedbackLink({ type, text }) {
   if (!said) return 'Not taken: text is required.'
   if ([...said].length > MAX_TEXT) return `Not taken: text takes at most ${MAX_TEXT} characters.`
   const title = [...said.split('\n')[0]].slice(0, 80).join('')
-  const link = `${ISSUES}?${new URLSearchParams({ title, body: `${said}\n\nAgentMon Live · Codex`, labels: type === 'idea' ? 'enhancement' : 'bug' })}`
+  let kept = [...said]
+  // shortcut: a long text is cut to fit the address, as in `hooks/feedback.tsx`; post through the API if whole texts must go.
+  while (new URLSearchParams({ s: kept.join('') }).toString().length > MAX_ISSUE_BODY) kept = kept.slice(0, Math.floor(kept.length * 0.9))
+  const link = `${ISSUES}?${new URLSearchParams({ title, body: `${kept.join('')}\n\nAgentMon Live · Codex`, labels: type === 'idea' ? 'enhancement' : 'bug' })}`
   return `Nothing was sent. Give the person this link; they read the issue and submit it themselves:\n${link}`
 }
 
-// shortcut: put-away items live as long as this server process and apply to every chat; persist them per chat if people restart Codex mid-task.
+// shortcut: put-away items live as long as this server process; persist them if people restart Codex mid-task.
 export function answer(msg, chats, dismissed = new Set()) {
   const { method, params = {} } = msg
   if (method === 'initialize') return { protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: { tools: {}, resources: {} }, serverInfo: { name: 'agentmon-live', version: '1' } }
@@ -158,17 +166,17 @@ export function answer(msg, chats, dismissed = new Set()) {
     const chat = () => pickChat(chats(), threadOf(params._meta))
     if (params.uri === PANE_URI) return { contents: [{ uri: PANE_URI, mimeType: 'application/json', text: JSON.stringify(paneTree(chat(), dismissed)) }] }
     if (params.uri !== STATUSLINE_URI) throw Object.assign(new Error(`unknown resource ${params.uri}`), { code: -32002 })
-    const tree = { type: 'text', children: [statusText(chat())] }
+    const tree = { type: 'text', children: [statusText(chat(), dismissed)] }
     return { contents: [{ uri: STATUSLINE_URI, mimeType: 'application/json', text: JSON.stringify(tree) }] }
   }
   if (method === 'tools/call') {
     const args = params.arguments ?? {}
     if (params.name === 'feedback') return { content: [{ type: 'text', text: feedbackLink(args) }] }
-    if (params.name === 'statusline') return { content: [{ type: 'text', text: statusText(pickChat(chats())) }] }
+    if (params.name === 'statusline') return { content: [{ type: 'text', text: statusText(pickChat(chats()), dismissed) }] }
     if (params.name === 'pane') return { content: [{ type: 'text', text: words(paneTree(pickChat(chats()), dismissed)) }] }
     if (params.name === 'dismiss') {
-      if (typeof args.item !== 'string' || !args.item) return { content: [{ type: 'text', text: 'Not taken: item is required.' }], isError: true }
-      dismissed.add(args.item)
+      if (typeof args.item !== 'string' || !args.item || typeof args.chat !== 'string' || !args.chat) return { content: [{ type: 'text', text: 'Not taken: chat and item are required.' }], isError: true }
+      dismissed.add(`${args.chat}\n${args.item}`)
       return { content: [{ type: 'text', text: 'Put away.' }] }
     }
     throw Object.assign(new Error(`unknown tool ${params.name}`), { code: -32602 })
