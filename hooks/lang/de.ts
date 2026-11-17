@@ -236,6 +236,7 @@ export const de: Strings = {
   gateTitle: 'Fertig-Prüfung · bevor Claude aufhört',
   gatePassed: 'beim letzten Stopp nichts offen',
   gateLeft: 'aufgehört, das blieb offen:',
+  gateNoStop: 'ein anderer Mod hat den Stop-Hook übersprungen: nach der Antwort geprüft, nichts zurückgeschickt',
   gateEarlier: 'früher in dieser Sitzung:',
   gateSent: 'an Claude zurückgegeben:',
   fableSays: text => `Fable, ein prüfendes Modell, das irren kann, sagt: ${text}`,

@@ -243,6 +243,7 @@ const en = {
   gateTitle: 'Done gate · checked before Claude stops',
   gatePassed: 'nothing left open at the last stop',
   gateLeft: 'stopped with this left open:',
+  gateNoStop: 'another mod skipped the Stop hook: checked after the answer, nothing sent back',
   gateEarlier: 'earlier this session:',
   gateSent: 'sent back to Claude:',
   fableSays: (text: string) => `Fable, a reviewing model that may be wrong, says: ${text}`,

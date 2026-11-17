@@ -17,6 +17,14 @@ const OBJECTION = /\b(?:but|however|yet|although|though|except|aber|jedoch|aller
 export type Verdict = { ok: boolean; text: string; fix?: string }
 
 // One Fable call, awaited: undefined when it was not asked (off, busy, budget used) or gave no usable answer.
+// `small` follows the session's small fast model: the one a gateway setup names in the environment, else the `haiku` alias.
+async function advisorModelOf($: EngineInterface): Promise<string> {
+  if (cfg.advisorModel !== 'small') return cfg.advisorModel
+  const small = await $.env.get('ANTHROPIC_SMALL_FAST_MODEL').catch(() => undefined)
+  const haiku = await $.env.get('ANTHROPIC_DEFAULT_HAIKU_MODEL').catch(() => undefined)
+  return small || haiku || 'haiku'
+}
+
 export async function consult($: EngineInterface, question: string, body: string): Promise<Verdict | undefined> {
   const adv = await read($, advisor)
   if (!listening(adv.isOn) || adv.state === 'checking') return undefined
@@ -30,7 +38,7 @@ export async function consult($: EngineInterface, question: string, body: string
   const epoch = adv.epoch ?? 0
   await update($, advisor, a => ({ ...a, calls: a.calls + 1, state: 'checking' as const }))
   const r = await $.model
-    .complete({ model: cfg.advisorModel, effort: 'low', maxTokens: 300, timeoutMs: TIMEOUT_MS, system: cfg.t.advisorSystem, prompt: `${question}\n\n${wrapped}` })
+    .complete({ model: await advisorModelOf($), effort: 'low', maxTokens: 300, timeoutMs: TIMEOUT_MS, system: cfg.t.advisorSystem, prompt: `${question}\n\n${wrapped}` })
     .catch(() => undefined)
   // Tokens spent count even when the answer below is dropped.
   const usage = r?.isAnswered ? r.usage : undefined

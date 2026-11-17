@@ -1197,6 +1197,7 @@ test('a Stop another mod passes on past this one still gets a verdict in the pan
   expect(await ui.find({ type: 'Text', text: /^⚠ stopped with this left open:$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^ {2}- test failed: npm test -- fail$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^↩ sent back to Claude:$/ })).toBeFalsy()
+  expect(await ui.find({ type: 'Text', text: /another mod skipped the Stop hook/ })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -1217,6 +1218,7 @@ test('a Stop that arrives makes the gate send back, with no second verdict after
   const ui = await $.ui.mount(PANE)
   expect(await ui.find({ type: 'Text', text: /^↩ sent back to Claude:$/ })).toBeTruthy()
   expect(await ui.find({ type: 'Text', text: /^⚠ stopped with this left open:$/ })).toBeFalsy()
+  expect(await ui.find({ type: 'Text', text: /another mod skipped the Stop hook/ })).toBeFalsy()
   await ui.unmount()
 })
 
@@ -1258,3 +1260,23 @@ test('after /clear with its SessionStart passed on past this mod, the next promp
   // The check the last session queued is not run on the cleared session's turn.
   expect(prompts).toHaveLength(0)
 })
+
+for (const [env, model] of [[{ ANTHROPIC_SMALL_FAST_MODEL: 'gw-small', ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gw-haiku' }, 'gw-small'], [{ ANTHROPIC_DEFAULT_HAIKU_MODEL: 'gw-haiku' }, 'gw-haiku'], [{}, 'haiku']] as const) {
+  test(`advisorModel small asks ${model}`, async ($, on) => {
+    const clock = mock.clock(on)
+    const models: string[] = []
+    engine(on)
+    on('env.get', (_, e) => ({ value: (env as Record<string, string>)[e.name] }))
+    on('fs.read', (_, e, next) => (e.path.endsWith('/settings.json') ? { value: settingsWith({ advisorModel: 'small' }) } : next(e)))
+    on('model.complete', (_, e) => {
+      models.push(e.model)
+      return { value: { isAnswered: true, text: 'OK', usage: USAGE } }
+    })
+    await start($)
+    await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+    await $.tool.call({ tool: 'Bash', command: 'npm test' })
+    await clock.settle()
+    await $.classic.Stop({ ...STOP })
+    expect(models).toEqual([model])
+  })
+}

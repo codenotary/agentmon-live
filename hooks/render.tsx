@@ -470,6 +470,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           ))}
         </Box>
       )}
+      {verdict?.isNoStop && <Text dimColor>  {t.gateNoStop}</Text>}
       {verdict && (
         <Box gap={1}>
           <Text dimColor>  ↳ {t.ago(secs(verdict.at ?? now))}{verdict.ref ? ` · ${verdict.ref}` : ''}</Text>

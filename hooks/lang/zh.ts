@@ -235,6 +235,7 @@ export const zh: Strings = {
   gateTitle: '完成检查 · Claude 停下之前',
   gatePassed: '上次停下时没有遗留',
   gateLeft: '已停下，仍有遗留：',
+  gateNoStop: '另一个模组跳过了 Stop 钩子：在回答后检查，未退回',
   gateEarlier: '本次会话中更早的结果：',
   gateSent: '已退回给 Claude：',
   fableSays: text => `审阅模型 Fable（可能出错）说：${text}`,

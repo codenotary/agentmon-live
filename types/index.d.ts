@@ -180,7 +180,8 @@ export type LogLine = { at: number; who: string; what: string; result: string; a
 // `ok` is missing on notes kept by older versions, which kept only objections.
 // `ref` names the request a note is about. `text` holds the gaps, one per line; `fix` what would settle them.
 // A done gate result is `done`; `isSent` when it went back to Claude. `check` is the person's own "check now".
-export type Note = { kind: 'done' | 'check'; ok?: boolean; text: string; fix?: string; ref?: string; at?: number; isSent?: boolean }
+// `isNoStop`: the done gate judged the turn without a Stop hook, so nothing could be sent back.
+export type Note = { kind: 'done' | 'check'; ok?: boolean; text: string; fix?: string; ref?: string; at?: number; isSent?: boolean; isNoStop?: true }
 
 export type View = 'git' | 'shell' | 'mcp'
 

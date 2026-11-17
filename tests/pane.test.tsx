@@ -541,3 +541,21 @@ test('instruction files no InstructionsLoaded named get their rows from the prom
   expect(await ui.findAll({ type: 'Text', text: /CLAUDE\.local\.md · session start/ })).toHaveLength(1)
   await ui.unmount()
 })
+
+test('after a session switch the prompt context lists the instruction files again', async ($, on) => {
+  withOptions(on, { layout: 'classic' })
+  let id = 's1'
+  on('session.id', () => ({ value: id }))
+  on('prompt.context', (_, e) => ({ blocks: e.blocks }))
+  const clock = await turnWithReads($, on)
+  const files = [{ path: '/repo/CLAUDE.md', kind: 'project', content: '' }] as const
+  await $.prompt.context({ blocks: [], instructionFiles: files } as never)
+  id = 's2'
+  await $.turn.start({ text: 'next', turnId: 't2' })
+  await $.prompt.context({ blocks: [], instructionFiles: files } as never)
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  // Listed once per session: the second session's row folds into the first one's.
+  expect(await ui.find({ type: 'Text', text: /Memory\s+repo\/CLAUDE\.md · session start\s+×2/ })).toBeTruthy()
+  await ui.unmount()
+})
