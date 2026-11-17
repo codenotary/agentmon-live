@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
 import { codexHome, readCodex } from './codex.mjs'
 import { MAX_SNAPSHOT as MAX_BODY, readSpool } from './spool.mjs'
+import { otlpTarget, postOtlp, toOtlp } from './otlp.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
@@ -43,7 +44,7 @@ const HEADERS = {
 
 // Which server is newer: file times, because a rebuild keeps the version and a total order stops two sessions replacing each other in turn.
 function stampOfFiles() {
-  return Math.max(...['app.html', 'web.mjs', 'kiro.mjs', 'codex.mjs', 'spool.mjs'].map(f => statSync(join(HERE, f)).mtimeMs))
+  return Math.max(...['app.html', 'web.mjs', 'kiro.mjs', 'codex.mjs', 'spool.mjs', 'otlp.mjs'].map(f => statSync(join(HERE, f)).mtimeMs))
 }
 
 // One secret per account, in a file only that account reads: another account's process on this machine can reach the port, not the sessions.
@@ -320,7 +321,7 @@ function serve(port, fixture, isOpen) {
       } catch {
         return reply(res, 400, 'text/plain', 'bad json')
       }
-      sessions.set(id, { json, at: Date.now() })
+      sessions.set(id, { json, at: Date.now(), harness: 'claude' })
       broadcast('snapshot', packed(id, json))
       return reply(res, 204)
     })
@@ -345,7 +346,9 @@ function serve(port, fixture, isOpen) {
   const codexCache = new Map()
   if (isLocked) setInterval(() => {
     const now = Date.now()
-    const live = new Map([...readKiro(kiroHome(), now, kiroIdleMs, kiroCache), ...readCodex(codexHome(), now, kiroIdleMs, codexCache), ...readSpool(spoolDir, now, ttlMs, spoolCache)])
+    const codex = readCodex(codexHome(), now, kiroIdleMs, codexCache)
+    const isCodex = new Set(codex.map(([id]) => id))
+    const live = new Map([...readKiro(kiroHome(), now, kiroIdleMs, kiroCache), ...codex, ...readSpool(spoolDir, now, ttlMs, spoolCache)])
     for (const [slot, until] of wanted) {
       if (until < now) wanted.delete(slot)
       else if (![...live.values()].some(s => s.session.slot === slot)) {
@@ -363,9 +366,16 @@ function serve(port, fixture, isOpen) {
       // A tab that connects in between gets the last one sent: as old as what the other tabs hold.
       const json = isDue ? JSON.stringify(snapshot) : had.json
       if (isDue) broadcast('snapshot', packed(id, json))
-      sessions.set(id, { json, at: now, isKiro: true, mark, sentAt: isDue ? now : had.sentAt })
+      // A spooled session is Claude Code in a VM or a container.
+      const harness = isCodex.has(id) ? 'codex' : snapshot.session?.place ? 'claude' : 'kiro'
+      sessions.set(id, { json, at: now, isKiro: true, mark, sentAt: isDue ? now : had.sentAt, harness })
     }
   }, envMs('AGENTMON_KIRO_POLL_MS', 2000))
+  const otlp = fixture ? undefined : otlpTarget(process.env)
+  const otlpSeen = new Map()
+  if (otlp) setInterval(() => {
+    if (sessions.size) void postOtlp(otlp, toOtlp([...sessions].map(([id, s]) => [id, JSON.parse(s.json), s.harness ?? 'claude']), otlpSeen, Date.now()))
+  }, envMs('AGENTMON_OTLP_MS', 30_000))
   // A named event, not an SSE comment: the page must see it to notice a connection that hangs without closing. Empty data would not dispatch.
   setInterval(() => broadcast('ping', '1'), envMs('AGENTMON_WEB_PING_MS', 15_000))
 

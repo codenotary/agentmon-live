@@ -158,6 +158,50 @@ With no desktop session there, the server still listens on the remote machine, s
 ssh -L 47311:127.0.0.1:47311 <user>@<host>
 ```
 
+### Send to Datadog or Grafana Cloud
+
+The server can send numbers from every session it shows, from Claude Code, Codex, Kiro Crew and sandboxes, as OpenTelemetry metrics (OTLP over HTTP, JSON). It is off by default. Claude Code's own telemetry (`CLAUDE_CODE_ENABLE_TELEMETRY=1`) already sends tokens, cost, lines changed and every tool result; these metrics add what it does not know:
+
+| Metric | Type | Labels | What |
+| --- | --- | --- | --- |
+| `agentmon.turns` | counter | | finished turns |
+| `agentmon.turn.time` | counter, ms | `bucket` | where turn time went: model, tools, approvals, idle |
+| `agentmon.gate.verdicts` | counter | `result` (pass, block), `sent` | done gate results |
+| `agentmon.calls.failed`, `agentmon.calls.denied` | counter | `who` (main, agent) | failed and denied tool calls |
+| `agentmon.check.failed`, `agentmon.check.stale` | gauge, 0 or 1 | `kind` (test, lint, typecheck, build) | last check run, and whether files changed after it |
+| `agentmon.tests.ran`, `agentmon.tests.skipped` | gauge | | from the last test run's summary |
+| `agentmon.tests.weakened` | gauge | | test files edited to take checks out |
+| `agentmon.focus` | gauge | `kind`, `urgent` | Needs attention and Focus items |
+| `agentmon.agents` | gauge | `status` | subagents by state |
+| `agentmon.context.pct`, `agentmon.context.mcp_tokens`, `agentmon.context.memory_tokens` | gauge | | context use, and what MCP tools and memory files take |
+| `agentmon.usage.usd`, `agentmon.usage.tokens`, `agentmon.usage.credits` | gauge | `type` | Codex and Kiro Crew sessions only, which have no exporter of their own |
+
+Each session is a resource with `service.name` `agentmon`, `service.instance.id` and `session.id` both the session's id (the second is the attribute Claude Code's telemetry uses, so the two join; the first keeps sessions apart in Prometheus as `instance`), `agentmon.harness` (claude, codex, kiro), `agentmon.model`, and `agentmon.place` for a sandbox. Counters count from when the server first saw the session. No text leaves your machine: no prompt, command, path, branch or tool input.
+
+Set these in the environment the server starts with, such as the `env` block of `~/.claude/settings.json`; the server reads them when it starts, so stop it (it ends a minute after the last session) or restart your sessions after a change:
+
+```sh
+AGENTMON_OTLP=1
+OTEL_EXPORTER_OTLP_ENDPOINT=...       # the base address; /v1/metrics is added
+OTEL_EXPORTER_OTLP_HEADERS=...        # key=value pairs, comma-separated, values URL-encoded
+```
+
+- **Grafana Cloud:** the endpoint is `https://otlp-gateway-<zone>.grafana.net/otlp`, and the header `Authorization=Basic%20<base64 of instance-id:token>`, both from your stack's OpenTelemetry page.
+- **Datadog:** send to the Datadog Agent's OTLP receiver (`otlp_config.receiver.protocols.http`), `http://localhost:4318`, which needs no header. Datadog's agentless OTLP intake may not take JSON.
+- `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` gives the full address instead. The server sends every 30 seconds while it has a session. An endpoint that is down or slow is skipped silently.
+- Claude Code's own telemetry reads the same `OTEL_EXPORTER_OTLP_*` variables. With `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` for it, set `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` to an HTTP address for AgentMon.
+
+**Dashboard.** `docs/grafana/agentmon.json` is a Grafana dashboard over these metrics: done gate block rate, failing checks, weakened tests, where turn time went, failed and denied calls, checks per session, context use, subagents, and Codex and Kiro Crew cost. In Grafana, **Dashboards › New › Import** it and pick your Prometheus data source; it filters by harness and session. On Prometheus, harness and model sit on `target_info`, which the panels join on `instance`.
+
+To try it on your machine, run Grafana's all-in-one image (Grafana, Prometheus, Tempo, Loki and an OpenTelemetry Collector), then import the dashboard at `http://localhost:3300` (user and password `admin`):
+
+```sh
+docker run -d --name agentmon-lgtm -p 127.0.0.1:3300:3000 -p 127.0.0.1:14318:4318 grafana/otel-lgtm:0.11.10
+# then, for the sessions:
+AGENTMON_OTLP=1
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:14318
+```
+
 ### Debug log
 
 With `debugLog` on, each session writes one file: `<Claude config folder>/agentmon-live/debug/<day>/<session>.log`, the config folder being `CLAUDE_CONFIG_DIR` or `~/.claude`. Every line is a time, an event and its metadata: session start with the options, each turn, each tool call (name, time taken, denied or failed), each done-gate decision, compactions, and hook failures. Prompts, file text and command lines are never written. `/agentmon debug` prints the path of this session's file. Each file keeps the last 3000 lines. At session start the mod deletes log files not written for seven days, through `find` under that debug folder only, and then the empty day folders.
