@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
+import { answer, feedbackLink, PANE_URI, paneMarkdown, pickChat, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
 import { foldRollout, readCodex } from '../../server/codex.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
@@ -128,4 +131,103 @@ test('the Codex plugin carries the plugin version and its hook starts a server f
   assert.ok(existsSync(join(ROOT, file)), file)
   // Codex shows a hook's output to the model, and `ensure` prints the server's key.
   assert.match(hooks.SessionStart[0].hooks[0].command, />\/dev\/null 2>&1 \|\| true$/)
+})
+
+const gated = (checks, editedTimes) => ({ turns: [{ startedAt: 100 }], checks, files: { editedTimes } })
+
+test('the Codex gate sends back a check that failed after this turn\'s edit or ran before its last one, and nothing else', () => {
+  const test = (result, at) => ({ kind: 'test', command: 'npm test', result, at })
+  assert.deepEqual(codexGaps(gated([test('failed', 300)], { '/r/a.ts': 200 })), ['test failed: npm test'])
+  assert.deepEqual(codexGaps(gated([test('ok', 150)], { '/r/a.ts': 200 })), ['test ran before the last edit: npm test'])
+  assert.deepEqual(codexGaps(gated([test('ok', 300)], { '/r/a.ts': 200 })), [])
+  // Failed before the edit: stale, not this turn's failure. An earlier turn's check and a running one do not count.
+  assert.deepEqual(codexGaps(gated([test('failed', 150), test('failed', 50), test('running', 300)], { '/r/a.ts': 200 })), ['test ran before the last edit: npm test'])
+  // Docs only, or no edit this turn: nothing to check.
+  assert.deepEqual(codexGaps(gated([test('failed', 300)], { '/r/README.md': 200, '/r/old.ts': 50 })), [])
+  assert.deepEqual(codexGaps({ turns: [], checks: [], files: {} }), [])
+})
+
+test('the Stop hook answers Codex only with a block, never twice in a row, and the fixture chat passes', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentmon-gate-'))
+  const file = join(dir, 'rollout.jsonl')
+  writeFileSync(file, ROLLOUT)
+  assert.equal(stopAnswer({ transcript_path: file }, NOW), undefined)
+  const edited = `${ROLLOUT}${JSON.stringify({ timestamp: '2026-11-10T10:01:25.000Z', type: 'event_msg', payload: { type: 'item_completed', item: { type: 'FileChange', changes: { '/home/dev/github/demo/src/c.ts': { type: 'update' } }, status: 'completed' } } })}\n`
+  writeFileSync(file, edited)
+  assert.deepEqual(stopAnswer({ transcript_path: file }, NOW), { decision: 'block', reason: 'Before you report done, this looks unfinished:\n- test ran before the last edit: npm test\n\nFinish it, or say plainly why not.' })
+  assert.equal(stopAnswer({ transcript_path: file, stop_hook_active: true }, NOW), undefined)
+  // Run as Codex runs it: bad input lets Codex stop.
+  const run = input => spawnSync(process.execPath, [join(ROOT, 'codex/gate.mjs')], { input, encoding: 'utf8' })
+  assert.deepEqual([run('not json').status, run('not json').stdout], [0, ''])
+  assert.equal(run(JSON.stringify({ transcript_path: join(dir, 'none') })).stdout, '')
+})
+
+test('the MCP server lists a statusline tool Codex can find and reads the line as a UI tree', () => {
+  const chats = () => [['a', gated([{ kind: 'test', command: 'npm test', result: 'failed', at: 300 }], { '/r/a.ts': 200 })]].map(([id, s]) => [id, { ...s, usage: { ctxPct: 25, rate: [{ kind: 'five_hour', pct: 12 }] } }])
+  const { tools } = answer({ method: 'tools/list' }, chats)
+  assert.deepEqual(tools.find(t => t.name === 'statusline')._meta['openai/ui'].entrypoints, [{ type: 'statusline', resourceUri: STATUSLINE_URI }])
+  const { contents: [c] } = answer({ method: 'resources/read', params: { uri: STATUSLINE_URI } }, chats)
+  assert.equal(c.mimeType, 'application/json')
+  assert.deepEqual(JSON.parse(c.text), { type: 'text', children: ['AgentMon · 1 open · test failed · ctx 25% · 5h 12% · http://127.0.0.1:47311/'] })
+  assert.match(statusText(undefined), /no live Codex chat/)
+  assert.throws(() => answer({ method: 'resources/read', params: { uri: 'ui://other' } }, chats), /unknown resource/)
+  assert.throws(() => answer({ method: 'nope' }, chats), /method not found/)
+})
+
+test('the chat the status line shows is the one Codex names, else the one with the latest turn', () => {
+  const at = startedAt => ({ turns: [{ startedAt }] })
+  const chats = [['a', at(5)], ['b', at(9)], ['c', at(1)]]
+  assert.equal(pickChat(chats, 'c'), chats[2][1])
+  assert.equal(pickChat(chats, undefined), chats[1][1])
+  assert.equal(pickChat([], undefined), undefined)
+})
+
+test('feedback makes a link the person submits and sends nothing', () => {
+  const said = feedbackLink({ type: 'idea', text: 'Show approvals\nfor Codex' })
+  const url = new URL(said.split('\n').at(-1))
+  assert.deepEqual([url.searchParams.get('title'), url.searchParams.get('labels')], ['Show approvals', 'enhancement'])
+  assert.match(said, /^Nothing was sent/)
+  assert.match(feedbackLink({ type: 'rant', text: 'x' }), /^Not taken/)
+  assert.match(feedbackLink({ type: 'idea', text: ' ' }), /^Not taken/)
+})
+
+test('the MCP server answers JSON-RPC over stdio and skips notifications', () => {
+  const lines = [{ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } }, { jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 2, method: 'resources/read', params: { uri: STATUSLINE_URI } }]
+  const dir = mkdtempSync(join(tmpdir(), 'agentmon-mcp-'))
+  const run = spawnSync(process.execPath, [join(ROOT, 'codex/mcp.mjs'), 'serve'], { input: lines.map(l => JSON.stringify(l)).join('\n') + '\n', encoding: 'utf8', env: { ...process.env, CODEX_HOME: join(dir, 'none') } })
+  const replies = run.stdout.trim().split('\n').map(l => JSON.parse(l))
+  assert.deepEqual(replies.map(r => r.id), [1, 2])
+  assert.equal(replies[0].result.serverInfo.name, 'agentmon-live')
+  assert.match(JSON.parse(replies[1].result.contents[0].text).children[0], /no live Codex chat/)
+})
+
+test('the Codex plugin declares the MCP server, skills and Stop hook it ships', () => {
+  const plugin = JSON.parse(readFileSync(join(ROOT, '.codex-plugin/plugin.json'), 'utf8'))
+  const server = plugin.mcpServers['agentmon-live']
+  assert.ok(existsSync(join(ROOT, server.cwd, server.args[0])))
+  assert.ok(existsSync(join(ROOT, plugin.skills, 'agentmon/SKILL.md')))
+  const { hooks } = JSON.parse(readFileSync(join(ROOT, plugin.hooks), 'utf8'))
+  const [, file] = hooks.Stop[0].hooks[0].command.match(/PLUGIN_ROOT\}\/(\S+?)"/)
+  assert.ok(existsSync(join(ROOT, file)), file)
+})
+
+test('the pane is Markdown for the chat Codex names, with no running clock', () => {
+  const s = foldRollout(entries, NOW).snapshot
+  const pane = paneMarkdown(s)
+  assert.match(pane, /^\*\*AgentMon Live\*\* · Codex · 0\.166\.0 · gpt-6\.1-sol medium\n/)
+  assert.match(pane, /### Now\n- running shell `npm run lint`/)
+  assert.match(pane, /### Turn 2\n> run it again\n/)
+  assert.match(pane, /### Files edited \(2\)\n- `src\/a\.ts`\n- `src\/b\.ts`/)
+  assert.equal(paneMarkdown(foldRollout(entries, NOW + 60_000).snapshot), pane)
+  assert.match(paneMarkdown(undefined), /No Codex chat/)
+  assert.doesNotMatch(paneMarkdown({ ...s, active: [{ tool: 'shell', what: 'echo `x`\nrm' }] }), /`x`/)
+  const { contents: [c] } = answer({ method: 'resources/read', params: { uri: PANE_URI, _meta: { 'com.openai/codex-sidebar-state': { thread: { id: SID } } } } }, () => [['other', { ...s, turns: [{ startedAt: NOW }] }], [SID, s]])
+  assert.deepEqual([c.mimeType, c.text], ['text/markdown', pane])
+  assert.equal(answer({ method: 'tools/list' }, () => []).tools.find(t => t.name === 'pane')._meta['openai/ui'].entrypoints[0].type, 'sidebar')
+})
+
+test('the chat on screen comes from either surface\'s state in the read', () => {
+  assert.equal(threadOf({ 'com.openai/codex-statusline-state': { thread: { id: 'a' } } }), 'a')
+  assert.equal(threadOf({ 'com.openai/codex-sidebar-state': { thread: { id: 'b' } } }), 'b')
+  assert.equal(threadOf(undefined), undefined)
 })

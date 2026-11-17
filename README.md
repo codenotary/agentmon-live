@@ -110,11 +110,16 @@ codex plugin marketplace add codenotary/agentmon-live
 codex plugin add agentmon-live@agentmon-live
 ```
 
-Codex runs a plugin's hook only after you trust it: open `/hooks` in Codex and trust AgentMon Live's `SessionStart` hook. It is one line in [`codex/hooks.json`](codex/hooks.json) that starts the web view's server. Then open `http://127.0.0.1:47311/`.
+Codex runs a plugin's hook only after you trust it: open `/hooks` in Codex and trust AgentMon Live's `SessionStart` and `Stop` hooks, both in [`codex/hooks.json`](codex/hooks.json). The first starts the web view's server, the second is the done gate. Then open `http://127.0.0.1:47311/`.
+
+- **Done gate:** when Codex is about to stop and a test, lint, typecheck or build failed after this turn's last code edit, or ran before it, the `Stop` hook sends Codex back once with what is open.
+- **Status line:** needs Codex 0.171 or later with `[features] tui_extensions_statusline = true` in `~/.codex/config.toml`; then pick AgentMon Live in `/statusline`. The line under the prompt shows open gate items, the latest checks, context and the 5-hour limit.
+- **Pane:** a Codex build with the `tui_extensions_sidebar` feature shows the pane as an AgentMon tab in Codex's sidebar: open items, the running call, checks, recent calls, edited files, context and limits. Stock Codex has no sidebar for plugins; use the web view.
+- **Skill and feedback:** the `agentmon` skill gives the web view's link; the `feedback` tool makes a GitHub issue link you submit yourself.
 
 - **What you see:** turns with their time split, tool calls with duration and result, files read and edited, prompts and answers, tokens, the context gauge and your 5-hour and weekly limits.
 - **Verification:** the last test, lint, typecheck and build command of the chat, each ok, failed or unknown.
-- **What stays empty:** approvals, subagent cards, cost in dollars, the done gate and learning. The pane is part of Claude Code.
+- **What stays empty:** approvals, subagent cards, cost in dollars and learning. The pane is part of Claude Code.
 - **To remove it:** `codex plugin remove agentmon-live@agentmon-live`.
 
 The [guide](docs/guide.md#web-view) has the rest.
