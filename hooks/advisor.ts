@@ -16,7 +16,6 @@ const OBJECTION = /\b(?:but|however|yet|although|though|except|aber|jedoch|aller
 
 export type Verdict = { ok: boolean; text: string; fix?: string }
 
-// One Fable call, awaited: undefined when it was not asked (off, busy, budget used) or gave no usable answer.
 // `small` follows the session's small fast model: the one a gateway setup names in the environment, else the `haiku` alias.
 async function advisorModelOf($: EngineInterface): Promise<string> {
   if (cfg.advisorModel !== 'small') return cfg.advisorModel
@@ -25,6 +24,7 @@ async function advisorModelOf($: EngineInterface): Promise<string> {
   return small || haiku || 'haiku'
 }
 
+// One Fable call, awaited: undefined when it was not asked (off, busy, budget used) or gave no usable answer.
 export async function consult($: EngineInterface, question: string, body: string): Promise<Verdict | undefined> {
   const adv = await read($, advisor)
   if (!listening(adv.isOn) || adv.state === 'checking') return undefined
