@@ -1219,3 +1219,42 @@ test('a Stop that arrives makes the gate send back, with no second verdict after
   expect(await ui.find({ type: 'Text', text: /^⚠ stopped with this left open:$/ })).toBeFalsy()
   await ui.unmount()
 })
+
+test('a Stop slower than the wait does not judge the answer a second time', async ($, on) => {
+  const clock = mock.clock(on)
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts)
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test -- fail' })
+  await clock.settle()
+  await $.turn.complete({ answer: 'All done.', durationMs: 1000, isAborted: false, turnId: 'm1', reason: 'answer' })
+  await clock.advance(6000)
+  await clock.settle()
+  const late = await $.classic.Stop({ ...STOP })
+  expect(late.block).toBe(undefined)
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /^⚠ stopped with this left open:$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^earlier this session:$/ })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('after /clear with its SessionStart passed on past this mod, the next prompt still starts afresh', async ($, on) => {
+  const clock = mock.clock(on)
+  let id = 'sess-1'
+  const prompts: string[] = []
+  engine(on)
+  fable(on, prompts)
+  on('session.id', () => ({ value: id }))
+  await start($)
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/src/parser.ts', old_string: 'a', new_string: 'b' })
+  await clock.settle()
+  await $.command.run({ ...TYPED, command: 'agentmon', args: 'check' })
+  id = 'sess-2'
+  await $.turn.start({ text: 'hello', turnId: 'm2' })
+  await clock.advance(1000)
+  await clock.settle()
+  // The check the last session queued is not run on the cleared session's turn.
+  expect(prompts).toHaveLength(0)
+})
