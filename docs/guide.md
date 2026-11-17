@@ -160,7 +160,7 @@ ssh -L 47311:127.0.0.1:47311 <user>@<host>
 
 ### Send to Datadog or Grafana Cloud
 
-The server can send numbers from every session it shows, from Claude Code, Codex, Kiro Crew and sandboxes, as OpenTelemetry metrics (OTLP over HTTP, JSON). It is off by default. Claude Code's own telemetry (`CLAUDE_CODE_ENABLE_TELEMETRY=1`) already sends tokens, cost, lines changed and every tool result; these metrics add what it does not know:
+Early preview: metric names and labels may still change. The server can send numbers from every session it shows, from Claude Code, Codex, Kiro Crew and sandboxes, as OpenTelemetry metrics (OTLP over HTTP, JSON). It is off by default. Claude Code's own telemetry (`CLAUDE_CODE_ENABLE_TELEMETRY=1`) already sends tokens, cost, lines changed and every tool result; these metrics add what it does not know:
 
 | Metric | Type | Labels | What |
 | --- | --- | --- | --- |
