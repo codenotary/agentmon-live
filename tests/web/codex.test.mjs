@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
-import { answer, feedbackLink, PANE_URI, paneMarkdown, pickChat, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
+import { answer, feedbackLink, PANE_URI, paneTree, pickChat, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
 import { foldRollout, readCodex } from '../../server/codex.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
@@ -211,18 +211,23 @@ test('the Codex plugin declares the MCP server, skills and Stop hook it ships', 
   assert.ok(existsSync(join(ROOT, file)), file)
 })
 
-test('the pane is Markdown for the chat Codex names, with no running clock', () => {
+test('the pane is a coloured UI tree for the chat Codex names, within Codex limits and with no running clock', () => {
   const s = foldRollout(entries, NOW).snapshot
-  const pane = paneMarkdown(s)
-  assert.match(pane, /^\*\*AgentMon Live\*\* · Codex · 0\.166\.0 · gpt-6\.1-sol medium\n/)
-  assert.match(pane, /### Now\n- running shell `npm run lint`/)
-  assert.match(pane, /### Turn 2\n> run it again\n/)
-  assert.match(pane, /### Files edited \(2\)\n- `src\/a\.ts`\n- `src\/b\.ts`/)
-  assert.equal(paneMarkdown(foldRollout(entries, NOW + 60_000).snapshot), pane)
-  assert.match(paneMarkdown(undefined), /No Codex chat/)
-  assert.doesNotMatch(paneMarkdown({ ...s, active: [{ tool: 'shell', what: 'echo `x`\nrm' }] }), /`x`/)
+  const tree = paneTree(s)
+  const words = n => (typeof n === 'string' ? n : n.children.map(words).join(''))
+  const nodes = n => (typeof n === 'string' ? 1 : 1 + n.children.reduce((a, c) => a + nodes(c), 0))
+  const text = words(tree)
+  assert.match(text, /^AgentMon Live · Codex · 0\.166\.0 · gpt-6\.1-sol · medium\n/)
+  assert.match(text, /● NOW\n◉ shell npm run lint\n/)
+  assert.match(text, /● TURN 2\n› run it again\n/)
+  assert.match(text, /● FILES EDITED \(2\)\nsrc\/a\.ts\nsrc\/b\.ts\n/)
+  assert.deepEqual(paneTree(foldRollout(entries, NOW + 60_000).snapshot), tree)
+  assert.match(words(paneTree(undefined)), /No Codex chat/)
+  assert.match(words(paneTree({ ...s, active: [{ tool: 'shell', what: 'echo x\nrm' }] })), /◉ shell echo x rm\n/)
+  const busy = { ...s, trace: Array.from({ length: 50 }, () => ({ tool: 'shell', what: 'x'.repeat(500) })), checks: Array.from({ length: 50 }, () => ({ kind: 'test', result: 'failed', command: 'y'.repeat(500), at: NOW })), files: { ...s.files, edited: Array.from({ length: 50 }, (_, i) => `f${i}`.repeat(50)) } }
+  assert.ok(nodes(paneTree(busy)) <= 256 && Buffer.byteLength(words(paneTree(busy))) <= 16 * 1024)
   const { contents: [c] } = answer({ method: 'resources/read', params: { uri: PANE_URI, _meta: { 'com.openai/codex-sidebar-state': { thread: { id: SID } } } } }, () => [['other', { ...s, turns: [{ startedAt: NOW }] }], [SID, s]])
-  assert.deepEqual([c.mimeType, c.text], ['text/markdown', pane])
+  assert.deepEqual([c.mimeType, JSON.parse(c.text)], ['application/json', tree])
   assert.equal(answer({ method: 'tools/list' }, () => []).tools.find(t => t.name === 'pane')._meta['openai/ui'].entrypoints[0].type, 'sidebar')
 })
 

@@ -23,7 +23,7 @@ const TOOLS = [
   {
     name: 'pane',
     title: 'AgentMon',
-    description: "The AgentMon Live pane for the current Codex chat, as Markdown: open done-gate items, the running call, checks, recent calls, edited files, context and limits. Codex's sidebar reads it; nothing to call by hand.",
+    description: "The AgentMon Live pane for the current Codex chat, as a coloured UI tree: open done-gate items, the running call, checks, recent calls, edited files, context and limits. Codex's sidebar reads it; nothing to call by hand.",
     inputSchema: { type: 'object', properties: {} },
     _meta: { 'openai/ui': { entrypoints: [{ type: 'sidebar', resourceUri: PANE_URI }] } },
   },
@@ -65,35 +65,65 @@ export function statusText(snapshot) {
   ].filter(Boolean).join(' · ')
 }
 
-// Inline code that cannot be closed early by the text it shows.
-const code = text => `\`${String(text).replace(/[`\n\r]/g, ' ').slice(0, 120)}\``
 const secs = ms => `${Math.round(ms / 1000)}s`
 const RECENT = 8
+const BAR = 16
+// Codex's UI tree, the status line's format: coloured text, at most 256 nodes and 16 KiB of text.
+const paint = (color, text, bold) => ({ type: 'text', props: { ...(color ? { color } : {}), ...(bold ? { weight: 'bold' } : {}) }, children: [text] })
+const one = (text, n = 80) => String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
+const head = (title, color = 'cyan') => paint(color, `\n● ${title.toUpperCase()}\n`, true)
+// A bar in eighths of a cell on a shaded track, as the Claude Code pane draws them.
+function bar(part, color) {
+  const eighths = Math.round(Math.max(0, Math.min(1, part)) * BAR * 8)
+  const full = `${'█'.repeat(Math.floor(eighths / 8))}${eighths % 8 ? ' ▏▎▍▌▋▊▉'[eighths % 8] : ''}`
+  return [paint(color, full), paint('blue', '░'.repeat(BAR - [...full].length))]
+}
+const level = pct => (pct >= 85 ? 'red' : pct >= 60 ? 'yellow' : 'green')
+const meter = (label, pct, note = '') => [`${label} `, ...bar(pct / 100, level(pct)), ` ${pct}%${note}\n`]
 
-// The pane holds no running clock: Codex redraws the sidebar whenever this text changes.
-export function paneMarkdown(snapshot) {
-  if (!snapshot) return `**AgentMon Live**\n\nNo Codex chat written to in the last 30 minutes.\n\n[Open the web view](${WEB})\n`
-  const out = [`**AgentMon Live** · ${snapshot.build} · ${[snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' ')}`, '']
+// The pane holds no running clock: Codex redraws the sidebar whenever this tree changes.
+export function paneTree(snapshot) {
+  const out = [paint(undefined, 'AgentMon Live', true)]
+  if (!snapshot) return { type: 'text', children: [...out, '\n\nNo Codex chat written to in the last 30 minutes.\n\n', { type: 'link', props: { href: WEB }, children: ['Open the web view'] }] }
+  out.push(paint('blue', ` · ${[snapshot.build, snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' · ')}\n`))
   const gaps = codexGaps(snapshot)
-  out.push('### Needs attention', ...(gaps.length > 0 ? gaps.map(g => `- ${g.replace(/: (.*)$/, (_, c) => `: ${code(c)}`)}`) : ['Nothing open.']), '')
-  out.push('### Now', ...(snapshot.active.length > 0 ? snapshot.active.map(a => `- running ${a.tool} ${code(a.what)}`) : ['Idle.']), '')
+  out.push(head('Needs attention', gaps.length > 0 ? 'red' : 'green'))
+  if (gaps.length === 0) out.push(paint('green', '✓ nothing open\n'))
+  for (const g of gaps.slice(0, 5)) out.push(g.includes(' failed: ') ? paint('red', ' FAILED ', true) : paint('yellow', ' STALE ', true), ` ${one(g)}\n`)
+  out.push(head('Now'))
+  if (snapshot.active.length === 0) out.push(paint('blue', 'idle\n'))
+  for (const a of snapshot.active.slice(0, 3)) out.push(paint('yellow', '◉ ', true), paint(undefined, `${a.tool} `, true), `${one(a.what)}\n`)
   const turn = snapshot.turns.at(-1)
   if (turn) {
-    out.push(`### Turn ${snapshot.turns.length}`, `> ${String(turn.prompt ?? '').split('\n')[0].slice(0, 200)}`, '')
-    if (!turn.isLive) out.push(Object.entries(turn.buckets).sort((a, b) => b[1] - a[1]).map(([k, ms]) => `${k} ${secs(ms)}`).join(' · '), '')
+    out.push(head(`Turn ${snapshot.turns.length}`), paint('magenta', `› ${one(String(turn.prompt ?? '').split('\n')[0], 120)}\n`))
+    const spent = Object.entries(turn.isLive ? {} : turn.buckets).sort((a, b) => b[1] - a[1]).slice(0, 6)
+    const most = Math.max(1, ...spent.map(([, ms]) => ms))
+    for (const [k, ms] of spent) out.push(`${k} `, ...bar(ms / most, 'cyan'), ` ${secs(ms)}\n`)
   }
-  if (snapshot.checks.length > 0) out.push('### Checks', ...snapshot.checks.map(c => `- ${c.kind} ${c.result === 'ok' ? 'ok' : c.result} ${code(c.command)}`), '')
+  if (snapshot.checks.length > 0) {
+    out.push(head('Checks'))
+    for (const c of snapshot.checks.slice(-6)) out.push(c.result === 'ok' ? paint('green', '✓ ') : c.result === 'running' ? paint('yellow', '◉ ') : paint('red', '✗ '), paint(undefined, `${c.kind} `, true), `${one(c.command, 60)}\n`)
+  }
   const recent = snapshot.trace.slice(-RECENT).reverse()
-  if (recent.length > 0) out.push('### Recent calls', ...recent.map(c => `- ${c.isFailed ? 'failed ' : ''}${c.tool} ${code(c.what)}`), '')
+  if (recent.length > 0) {
+    out.push(head('Recent calls'))
+    for (const c of recent) out.push(paint(c.isFailed ? 'red' : undefined, `${c.tool} `, true), `${one(c.what, 60)}\n`)
+  }
   const cwd = `${snapshot.session.cwd}/`
   const edited = snapshot.files.edited.map(f => (f.startsWith(cwd) ? f.slice(cwd.length) : f))
-  if (edited.length > 0) out.push(`### Files edited (${edited.length})`, ...edited.slice(-RECENT).map(f => `- ${code(f)}`), '')
+  if (edited.length > 0) out.push(head(`Files edited (${edited.length})`), `${edited.slice(-RECENT).map(f => one(f)).join('\n')}\n`)
   const { ctxPct, ctxTokens, ctxWindow, rate = [] } = snapshot.usage
-  const limits = [ctxPct === undefined ? '' : `context ${ctxPct}% (${Math.round(ctxTokens / 1000)}k of ${Math.round(ctxWindow / 1000)}k)`, ...rate.map(r => `${r.kind === 'five_hour' ? '5h' : '7d'} ${r.pct}%`)].filter(Boolean)
-  if (limits.length > 0) out.push('### Context and limits', limits.join(' · '), '')
-  out.push(`[Open the web view](${WEB})`, '')
-  return out.join('\n')
+  if (ctxPct !== undefined || rate.length > 0) {
+    out.push(head('Context and limits'))
+    if (ctxPct !== undefined) out.push(...meter('context', ctxPct, ` ${Math.round(ctxTokens / 1000)}k/${Math.round(ctxWindow / 1000)}k`))
+    for (const r of rate) out.push(...meter(r.kind === 'five_hour' ? '5h' : '7d', r.pct))
+  }
+  out.push('\n', { type: 'link', props: { href: WEB }, children: ['Open the web view'] })
+  return { type: 'text', children: out }
 }
+
+// The tree's words alone, for a model that calls the tool.
+const words = node => (typeof node === 'string' ? node : node.children.map(words).join(''))
 
 export function feedbackLink({ type, text }) {
   const said = String(text ?? '').trim()
@@ -110,10 +140,10 @@ export function answer(msg, chats) {
   if (method === 'initialize') return { protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: { tools: {}, resources: {} }, serverInfo: { name: 'agentmon-live', version: '1' } }
   if (method === 'ping') return {}
   if (method === 'tools/list') return { tools: TOOLS }
-  if (method === 'resources/list') return { resources: [{ uri: STATUSLINE_URI, name: 'statusline', mimeType: 'application/json' }, { uri: PANE_URI, name: 'pane', mimeType: 'text/markdown' }] }
+  if (method === 'resources/list') return { resources: [{ uri: STATUSLINE_URI, name: 'statusline', mimeType: 'application/json' }, { uri: PANE_URI, name: 'pane', mimeType: 'application/json' }] }
   if (method === 'resources/read') {
     const chat = () => pickChat(chats(), threadOf(params._meta))
-    if (params.uri === PANE_URI) return { contents: [{ uri: PANE_URI, mimeType: 'text/markdown', text: paneMarkdown(chat()) }] }
+    if (params.uri === PANE_URI) return { contents: [{ uri: PANE_URI, mimeType: 'application/json', text: JSON.stringify(paneTree(chat())) }] }
     if (params.uri !== STATUSLINE_URI) throw Object.assign(new Error(`unknown resource ${params.uri}`), { code: -32002 })
     const tree = { type: 'text', children: [statusText(chat())] }
     return { contents: [{ uri: STATUSLINE_URI, mimeType: 'application/json', text: JSON.stringify(tree) }] }
@@ -122,7 +152,7 @@ export function answer(msg, chats) {
     const args = params.arguments ?? {}
     if (params.name === 'feedback') return { content: [{ type: 'text', text: feedbackLink(args) }] }
     if (params.name === 'statusline') return { content: [{ type: 'text', text: statusText(pickChat(chats())) }] }
-    if (params.name === 'pane') return { content: [{ type: 'text', text: paneMarkdown(pickChat(chats())) }] }
+    if (params.name === 'pane') return { content: [{ type: 'text', text: words(paneTree(pickChat(chats()))) }] }
     throw Object.assign(new Error(`unknown tool ${params.name}`), { code: -32602 })
   }
   throw Object.assign(new Error(`method not found: ${method}`), { code: -32601 })
