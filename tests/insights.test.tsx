@@ -389,6 +389,30 @@ test('a prompt that corrects an edit turn counts; two in a row bring the redo hi
   await again.unmount()
 })
 
+test('after a session switch the first correction-like prompt is no correction of the old session', async ($, on) => {
+  const clock = mock.clock(on)
+  let id = 's1'
+  engine(on)
+  on('session.id', () => ({ value: id }))
+  on('tool.call', () => ({ result: {}, text: 'ok' }))
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const turn = async (text: string, turnId: string) => {
+    await $.turn.start({ text, turnId })
+    await $.tool.call({ tool: 'Edit', file_path: '/repo/src/a.ts', old_string: 'a', new_string: 'b' })
+    await clock.settle()
+    await $.turn.complete({ answer: 'done', durationMs: 1000, isAborted: false, turnId, reason: 'answer' })
+    await clock.settle()
+  }
+  await turn('fix the parser', 'm1')
+  await turn('still failing', 'm2')
+  // A /clear whose SessionStart another mod passed on: only the id shows it.
+  id = 's2'
+  await turn("that didn't work either", 'm3')
+  const ui = await $.ui.mount(PANE)
+  expect(await ui.find({ type: 'Text', text: /corrections in a row/ })).toBeFalsy()
+  await ui.unmount()
+})
+
 test('the same error behind different calls is a loop too', async ($, on) => {
   const clock = mock.clock(on)
   engine(on)
