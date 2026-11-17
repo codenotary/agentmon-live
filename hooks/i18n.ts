@@ -18,6 +18,7 @@ const en = {
     noBrowser: (url: string) => `Could not open a browser here. Open ${url} yourself.`,
     page: {
       disconnected: 'Disconnected from the session server. Trying again…',
+      refused: 'This browser runs as another account than the AgentMon server, so it may not read the sessions. Over SSH, log in as the account that runs the server (Kiro Crew or Claude Code).',
       noSignal: 'no signal',
       kindWaiting: 'Waiting',
       kindMemory: 'Memory',

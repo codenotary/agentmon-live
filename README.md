@@ -137,7 +137,7 @@ The pane needs the Claude Code terminal. The web view does not: any Claude Code 
 2. Run Claude Code as you do, for example `claude -p "..."`. The plugin starts the server and posts the session. There is nothing to set.
 3. Open `http://127.0.0.1:47311/` in a browser. On Linux and macOS you type nothing more. On Windows an address typed by hand shows no sessions: it needs the one-time code from `/agentmon open`, or `webToken: off`, which lets any local process read your sessions.
 
-On another machine, forward the port under the same number and open the same address: `ssh -L 47311:127.0.0.1:47311 <host>`.
+On another machine, forward the port under the same number and open the same address: `ssh -L 47311:127.0.0.1:47311 <user>@<host>`, where `<user>` is the account that runs Claude Code or Kiro Crew there.
 
 - **A session shows only while it runs.** The server stops a minute after the last one ends.
 - **A run of a few seconds with no tool call** can end before its first post and never show.

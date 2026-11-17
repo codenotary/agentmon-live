@@ -3,6 +3,7 @@ import type { WebSnapshot } from '../../types/index'
 // With no session there are no labels, and an older session's lack the newest; a test holds this to the English the mod sends.
 export const PAGE_EN = {
   "disconnected": "Disconnected from the session server. Trying again…",
+  "refused": "This browser runs as another account than the AgentMon server, so it may not read the sessions. Over SSH, log in as the account that runs the server (Kiro Crew or Claude Code).",
   "noSignal": "no signal",
   "kindWaiting": "Waiting",
   "kindMemory": "Memory",
