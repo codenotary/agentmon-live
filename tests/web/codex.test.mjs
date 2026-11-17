@@ -75,6 +75,15 @@ test('the end of a turn closes the call it cut off, and a count without limits k
   assert.deepEqual(s.usage.rate.map(r => r.kind), ['five_hour', 'seven_day'])
 })
 
+test('a compaction logs a row, and the context is the newest count after it', () => {
+  const stamp = sec => new Date(Date.parse('2026-11-10T10:00:00Z') + sec * 1000).toISOString()
+  const count = used => ({ timestamp: stamp(86), type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: {}, last_token_usage: { total_tokens: used }, model_context_window: 200000 } } })
+  const more = [count(180000), { timestamp: stamp(86), type: 'event_msg', payload: { type: 'context_compacted' } }, count(30000)]
+  const s = foldRollout([...entries, ...more], NOW).snapshot
+  assert.deepEqual(s.log.filter(r => r.what === 'context compacted').map(r => r.who), ['main session'])
+  assert.equal(s.usage.ctxPct, 15)
+})
+
 test('a failed script fails its call, and an empty rollout still folds', () => {
   const failed = entries.map(e => (e.payload.call_id === 'call_2' && e.payload.output ? { ...e, payload: { ...e.payload, output: 'Script failed\nWall time 0.0 seconds\n' } } : e))
   assert.equal(foldRollout(failed, NOW).snapshot.trace[1].isFailed, true)

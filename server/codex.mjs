@@ -89,6 +89,7 @@ export function foldRollout(entries, now) {
       if (prompt !== undefined) say(at, prompt)
       prompt = undefined
     } else if (p.type === 'user_message') say(at, String(p.message ?? ''))
+    else if (p.type === 'context_compacted') emit('context/compacted', at)
     else if (p.type === 'item_completed') {
       const item = p.item ?? {}
       // What a script ran is reported before its output; it belongs to the newest call still open.

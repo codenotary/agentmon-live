@@ -250,6 +250,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
       if (ask && d.decision === 'rejected') ask.call ? rejected.add(ask.call.id) : ask.calls.forEach(c => unsure.add(c.id))
       if (ask) settle(ask, at, turn)
     }
+    else if (e.type === 'context/compacted') snap.log.push({ at, who: WHO, what: 'context compacted', result: '' })
     else if (e.type === 'subagent/spawned') {
       const card = { id: String(d.agent_id), type: String(d.agent || 'subagent'), model: String(d.model ?? ''), effort: '', task: cut(String(d.task ?? '').split('\n')[0]), status: 'running', files: 0, tools: 0, input: 0, output: 0, startedAt: at, prompt: mask(String(d.task ?? '')).slice(0, ANSWER_CUT), callId: [...open.keys()].at(-1) }
       agents.set(card.id, card)
