@@ -900,6 +900,8 @@ test('a view table filters, groups, folds, sorts and cuts its rows', () => {
   assert.deepEqual(grouped, [['haiku', 2, 0.4, 9], ['opus', 2, 0.4, 5]])
   // Numbers that only round alike are groups of their own.
   assert.equal(queryRows({ list: [{ n: 0.004 }, { n: 0.001 }] }, { rows: '/list', group: '/n' }, [{ label: 'n' }]).length, 2)
+  // Rows with no value keep their order among themselves.
+  assert.deepEqual(queryRows({ list: [{ id: 'a' }, { id: 'b', n: 1 }, { id: 'c' }] }, { rows: '/list', sort: '/n', desc: true }, [{ label: 'id', field: '/id' }]), [['b'], ['a'], ['c']])
   // A record reads as key and value rows.
   assert.deepEqual(queryRows(AGENTS, { rows: '/edits', sort: '/value', desc: true }, [{ label: 'File', field: '/key' }, { label: 'Edits', field: '/value' }]), [['a.ts', 4], ['b.ts', 1]])
   assert.deepEqual(queryRows(AGENTS, { rows: '/missing' }, cols), [])
@@ -940,6 +942,8 @@ test('view bars are name and value rows, largest first', () => {
   assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/edits' }), [['a.ts', 4], ['b.ts', 1]])
   assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/agents', group: '/model', value: '/tools', agg: 'sum' }), [['haiku', 10], ['opus', 7]])
   assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/agents', group: '/status' }), [['done', 3], ['running', 1]])
+  // A grouped bar goes by its group: a `name` meant for the rows finds nothing in a group.
+  assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/agents', group: '/status', name: '/model' }), [['done', 3], ['running', 1]])
   assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/agents', name: '/model', value: '/usd', max: 1 }), [['opus', 0.4]])
 })
 

@@ -22,7 +22,7 @@ import { Empty } from './ui/Panel.tsx'
 import { toneVar } from './ui/Pill.tsx'
 import { Ruler, ShareBar } from './ui/Ruler.tsx'
 import { Sparkline } from './ui/Sparkline.tsx'
-import { barRows, formatValue, pctOf, pick, queryRows, statValue, toneOf } from './view.ts'
+import { barRows, formatValue, isNumber, pctOf, pick, queryRows, statValue, toneOf } from './view.ts'
 
 type Props = { s: WebSnapshot; l: Labels; p: Page; events: FeedEvent[]; trend: Trend | undefined }
 
@@ -43,8 +43,7 @@ const PANEL: Record<ViewPanel, (x: Props) => ReactNode> = {
   Log: x => <Log s={x.s} l={x.l} />,
 }
 
-const numbers = (v: unknown, field: string | undefined) => (Array.isArray(v) ? v.map(x => (field ? pick(x, field) : x)).filter((n): n is number => typeof n === 'number' && Number.isFinite(n)) : [])
-const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const numbers = (v: unknown, field: string | undefined) => (Array.isArray(v) ? v.map(x => (field ? pick(x, field) : x)).filter(isNumber) : [])
 
 const Kids = ({ list, x }: { list: ViewBlock[]; x: Props }) => <>{list.map((c, i) => <Block key={i} b={c} x={x} />)}</>
 const Labeled = ({ label, children }: { label: string; children: ReactNode }) => (

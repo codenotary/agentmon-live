@@ -44,7 +44,7 @@ A view is a JSON file in `~/.claude/agentmon-live/views/<name>.json`. The name i
 - `{ "type": "Text", "text": "..." }`.
 - `{ "type": "Stat", "label": "...", "value": "<pointer>", "format": "usd" | "count" | "dur" | "pct" | "time" }`. `count` of a list is its length; `dur` takes milliseconds; `time` takes a timestamp and adds the date when it is not today's. Over a list, add `"agg"` (`sum`, `avg`, `min`, `max`, `count`), `"field"` (the number in each row) and optionally `"where"`. `"foot"` is a line below the number. `"warnAt"` and `"badAt"` colour the number from those values on.
 - `{ "type": "Table", "label": "...", "rows": "<pointer>", "columns": [{ "label": "...", "field": "<pointer inside each row>", "format": "..." }] }`, at most 8 columns. Prefer it over `List`.
-- `{ "type": "Bars", "label": "...", "rows": "<pointer>", "name": "<pointer>", "value": "<pointer>", "format": "..." }`: each row's share of the total, largest first. For a record, leave `name` and `value` out.
+- `{ "type": "Bars", "label": "...", "rows": "<pointer>", "name": "<pointer>", "value": "<pointer>", "format": "..." }`: each row's share of the total, largest first. For a record, leave `name` and `value` out. With `group`, the bar is the group and `name` is not read.
 - `{ "type": "Gauge", "label": "...", "value": "<pointer>" }` for a percent; with `"max"` for any number against its top. `Meter` takes the same fields and draws a track. Both take `warnAt` and `badAt`.
 - `{ "type": "Sparkline", "label": "...", "points": "<pointer to a list>", "field": "<pointer to a number in each item>", "format": "..." }`.
 - `{ "type": "List", "label": "...", "items": "<pointer to a list>", "field": "<pointer inside each item>", "max": 10 }`: one value per row.
