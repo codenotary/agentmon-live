@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
 import { answer, dur, feedbackLink, isNewer, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
-import { foldRollout, readCodex } from '../../server/codex.mjs'
+import { foldRollout, readCodex, withAgents } from '../../server/codex.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -314,4 +314,41 @@ test('the panel marks a check the way the gate judges it, whatever its command s
   const stale = words(paneTree({ ...s, files: edits, checks: [{ kind: 'test', result: 'ok', command: 'echo " failed: "', at: since + 3 }] }))
   assert.match(stale, / STALE  test ran before the last edit/)
   assert.match(stale, /↻ test stale since the last edit · /)
+})
+
+test('a subagent draws inside the chat that started it: a card, its own calls on its lane, and none of the history it copied', () => {
+  const home = mkdtempSync(join(tmpdir(), 'agentmon-codex-'))
+  const day = join(home, 'sessions/2026/11/10')
+  mkdirSync(day, { recursive: true })
+  const line = (time, type, payload) => JSON.stringify({ timestamp: `2026-11-10T10:${time}.000Z`, type, payload })
+  const spawn = [
+    line('00:40', 'response_item', { type: 'function_call', name: 'spawn_agent', call_id: 'sp1', arguments: JSON.stringify({ task_name: 'price_agent', message: 'gAAAAencrypted' }) }),
+    line('00:41', 'response_item', { type: 'function_call_output', call_id: 'sp1', output: '{"task_name":"/root/price_agent"}' }),
+  ]
+  const parent = [...ROLLOUT.trim().split('\n'), ...spawn]
+  const meta = line('00:40', 'session_meta', { id: 'kid', cwd: '/home/dev/github/demo', parent_thread_id: SID, agent_nickname: 'Einstein', agent_path: '/root/price_agent', subagent_history_start_ordinal: parent.length + 1 })
+  const own = [
+    line('00:42', 'event_msg', { type: 'task_started' }),
+    line('00:43', 'response_item', { type: 'custom_tool_call', name: 'exec', call_id: 'k1', input: 'tools.exec({"cmd":"curl -s prices"})' }),
+    line('00:50', 'response_item', { type: 'custom_tool_call_output', call_id: 'k1', output: 'ok' }),
+    line('00:55', 'event_msg', { type: 'task_complete', duration_ms: 13_000 }),
+  ]
+  writeFileSync(join(day, `rollout-2026-11-10T10-00-00-${SID}.jsonl`), `${parent.join('\n')}\n`)
+  writeFileSync(join(day, 'rollout-2026-11-10T10-00-40-kid.jsonl'), `${[meta, ...parent, ...own].join('\n')}\n`)
+  const cache = new Map()
+  const chats = readCodex(home, NOW, 60_000, cache)
+  const kid = chats.find(([id]) => id === 'kid')[1]
+  assert.deepEqual([kid.turns.length, kid.trace.map(c => c.what)], [1, ['curl -s prices']])
+
+  const [[id, s], ...rest] = withAgents(chats, cache)
+  assert.deepEqual([id, rest], [SID, []])
+  const [card] = s.agents
+  assert.deepEqual({ ...card, model: undefined }, { id: 'kid', type: 'price_agent', model: undefined, effort: '', task: 'Einstein', status: 'done', files: 0, tools: 1, input: 0, output: 0, startedAt: Date.parse('2026-11-10T10:00:42Z'), endedAt: Date.parse('2026-11-10T10:00:55Z'), callId: 'sp1' })
+  assert.deepEqual(s.trace.filter(c => c.agentId).map(c => [c.who, c.what]), [['price_agent', 'curl -s prices']])
+  assert.equal(s.trace.find(c => c.id === 'sp1').what, 'price_agent')
+  assert.deepEqual(s.log.filter(l => l.agentId).map(l => l.result), ['started', 'done'])
+  // Gone idle, its card stays with the parent; with no parent listed, it is a chat of its own.
+  const alone = chats.filter(([x]) => x === SID)
+  assert.deepEqual(withAgents(alone, cache)[0][1].agents.map(a => a.id), ['kid'])
+  assert.deepEqual(withAgents([['kid', kid]], cache).map(([x]) => x), ['kid'])
 })

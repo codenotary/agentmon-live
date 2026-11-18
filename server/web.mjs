@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { envMs, kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
-import { codexHome, readCodex } from './codex.mjs'
+import { codexHome, readCodex, withAgents } from './codex.mjs'
 import { MAX_SNAPSHOT as MAX_BODY, readSpool } from './spool.mjs'
 import { otlpTarget, postOtlp, toOtlp } from './otlp.mjs'
 
@@ -373,7 +373,7 @@ function serve(port, fixture, isOpen) {
   const codexCache = new Map()
   if (isLocked) setInterval(() => {
     const now = Date.now()
-    const codex = readCodex(codexHome(), now, kiroIdleMs, codexCache)
+    const codex = withAgents(readCodex(codexHome(), now, kiroIdleMs, codexCache), codexCache)
     const isCodex = new Set(codex.map(([id]) => id))
     const live = new Map([...readKiro(kiroHome(), now, kiroIdleMs, kiroCache), ...codex, ...readSpool(spoolDir, now, ttlMs, spoolCache)])
     for (const [slot, until] of wanted) {

@@ -13,12 +13,21 @@ const WINDOW = { 300: 'five_hour', 10080: 'seven_day' }
 const DAY_MS = 86_400_000
 // What Codex answers when it hands a script back with its command still running.
 const RUNNING = 'Script running'
+const AGENT_CALLS = new Set(['spawn_agent', 'followup_task', 'send_message'])
+const KEEP_TRACE = 500
 const textOf = content => (Array.isArray(content) ? content.map(c => c?.text ?? '').join('') : String(content ?? ''))
 
 // The model's call is a script around `tools.<name>(…)`: the command or the patched files are what the page shows.
 // shortcut: the first `tools.<name>` in the script names the call, even in a comment; parse the script when chats show wrong labels.
 function callOf(input, name) {
   const script = String(input ?? '')
+  // An agent's message is encrypted in the rollout: the agent it names is what there is to show.
+  if (AGENT_CALLS.has(name)) {
+    try {
+      const args = JSON.parse(script)
+      return { tool: name, what: String(args.task_name ?? args.target ?? '') }
+    } catch {}
+  }
   const tool = script.match(/tools\.(\w+)/)?.[1] ?? String(name || 'tool')
   if (tool === 'apply_patch') return { tool, kind: 'edit', what: [...script.matchAll(/\*\*\* (?:Add|Update|Delete) File: ([^\\\n"]+)/g)].map(m => m[1]).join(' ') }
   const command = script.match(/\bcmd"?\s*:\s*("(?:[^"\\]|\\.)*")/)?.[1]
@@ -29,9 +38,12 @@ function callOf(input, name) {
 }
 
 // The rollout as crew-log entries, so one fold serves both; entry types this does not know are skipped, since the format is Codex's own and changes.
-// shortcut: no approvals and no subagent cards, the rollout names neither; a subagent's chat is its own rollout, lists as its own session and names its parent.
-export function foldRollout(entries, now) {
-  const meta = entries.find(e => e.type === 'session_meta')?.payload ?? {}
+// shortcut: no approvals, the rollout does not name them. A subagent's chat is its own rollout and names its parent; `withAgents` draws it inside the parent.
+export function foldRollout(all, now) {
+  const meta = all.find(e => e.type === 'session_meta')?.payload ?? {}
+  // A subagent's rollout opens with a copy of its parent's chat; its own part starts at this entry.
+  const start = Number(meta.subagent_history_start_ordinal)
+  const entries = meta.parent_thread_id && start > 0 ? all.slice(start) : all
   const out = [{ type: 'session', id: meta.id, cwd: meta.cwd }]
   const emit = (type, time, data = {}) => out.push({ type, time, data })
   const text = new Map()
@@ -137,7 +149,7 @@ export function foldRollout(entries, now) {
   const { snapshot } = folded
   snapshot.build = `Codex${meta.cli_version ? ` · ${meta.cli_version}` : ''}`
   // A subagent's chat is its own rollout; the parent's id and the agent's name tie it to the chat that started it.
-  if (meta.parent_thread_id) Object.assign(snapshot.session, { parent: String(meta.parent_thread_id), agent: String(meta.agent_nickname ?? meta.agent_path ?? 'agent') })
+  if (meta.parent_thread_id) Object.assign(snapshot.session, { parent: String(meta.parent_thread_id), agent: String(meta.agent_nickname ?? meta.agent_path ?? 'agent'), task: String(meta.agent_path ?? '').split('/').at(-1) })
   snapshot.main.effort = effort
   snapshot.usage.rate = rate
   // The fold takes the context at a turn's end; the rollout has it after every model call.
@@ -159,5 +171,46 @@ export function readCodex(home, now, idleMs, cache = new Map()) {
       for (const name of readdirSync(dir)) if (/^rollout-.*\.jsonl$/.test(name)) files.add(join(dir, name))
     } catch {}
   }
-  return pollLogs(files, now, idleMs, cache, hit => foldRollout(hit.entries, now))
+  return pollLogs(files, now, idleMs, cache, hit => {
+    const folded = foldRollout(hit.entries, now)
+    // Kept past the subagent's idle end, so its parent still shows it as done.
+    if (folded.snapshot.session.parent) hit.kept = { snapshot: folded.snapshot, isLive: folded.isLive }
+    return folded
+  })
+}
+
+// The chats with each subagent drawn inside its parent, as a Claude Code session draws its own: a card, a lane of calls, its edits. A subagent whose parent is not listed stays a chat of its own.
+export function withAgents(chats, cache) {
+  const ids = new Set(chats.map(([id]) => id))
+  const kids = [...cache.values()].flatMap(hit => (hit.kept?.snapshot && ids.has(hit.kept.snapshot.session.parent) ? [hit.kept] : []))
+  return chats.flatMap(([id, s]) => {
+    if (ids.has(s.session.parent)) return []
+    const mine = kids.filter(k => k.snapshot.session.parent === id)
+    return [[id, mine.length ? adopt(s, mine) : s]]
+  })
+}
+
+function adopt(parent, kids) {
+  const s = { ...parent, agents: [...parent.agents], trace: [...parent.trace], log: [...parent.log], active: [...parent.active], files: { ...parent.files, editedTimes: { ...parent.files.editedTimes } }, insights: { ...parent.insights, tokens: { ...parent.insights.tokens }, edits: { ...parent.insights.edits } } }
+  for (const { snapshot: k, isLive } of kids) {
+    const id = k.session.id
+    const type = k.session.task || k.session.agent
+    const turns = k.turns.filter(t => t.startedAt > 0)
+    const startedAt = turns[0]?.startedAt ?? k.now
+    const last = turns.at(-1)
+    const endedAt = isLive || !last ? undefined : last.startedAt + last.wallMs
+    const spawn = parent.trace.find(c => c.tool === 'spawn_agent' && c.what === type)
+    const { mainIn: input, mainOut: output } = k.insights.tokens
+    s.agents.push({ id, type, model: k.main.model, effort: k.main.effort ?? '', task: k.session.agent, status: isLive ? 'running' : 'done', files: k.files.edited.length, tools: k.trace.length, input, output, startedAt, ...(endedAt === undefined ? {} : { endedAt }), ...(spawn ? { callId: spawn.id } : {}) })
+    s.trace.push(...k.trace.map(c => ({ ...c, who: type, agentId: id })))
+    s.log.push({ at: startedAt, who: type, what: k.session.agent, result: 'started', agentId: id }, ...(endedAt === undefined ? [] : [{ at: endedAt, who: type, what: k.session.agent, result: 'done', agentId: id }]))
+    if (isLive) s.active.push({ id, who: type, tool: 'subagent', what: k.session.agent, startedAt, agentId: id }, ...k.active.map(c => ({ ...c, who: type, agentId: id })))
+    for (const [path, at] of Object.entries(k.files.editedTimes)) recordEdit(s, path, at)
+    s.insights.tokens.agentsIn += input
+    s.insights.tokens.agentsOut += output
+  }
+  s.trace = s.trace.sort((a, b) => a.at - b.at).slice(-KEEP_TRACE)
+  s.log.sort((a, b) => a.at - b.at)
+  s.files.edited = Object.keys(s.files.editedTimes)
+  return s
 }
