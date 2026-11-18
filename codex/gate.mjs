@@ -10,7 +10,8 @@ const DOC = /\.(md|mdx|markdown|txt|rst|adoc)$/i
 
 // shortcut: failed and stale checks only, not the coverage, claim, todo and subagent gaps of `doneGaps` in `hooks/gate.ts`; port them when Codex chats need them.
 // shortcut: a path's last edit stands in for the turn's first, so a failure between two edits of one file counts as old; keep edit times per call if that lets work through.
-export function codexGaps(snapshot) {
+// Each open item with the check it is about, so the panel marks a check the way the gate judges it.
+export function gapChecks(snapshot) {
   const since = snapshot.turns.at(-1)?.startedAt
   if (since === undefined) return []
   const edits = Object.entries(snapshot.files.editedTimes ?? {}).flatMap(([path, at]) => (at >= since && !DOC.test(path) ? [at] : []))
@@ -19,10 +20,12 @@ export function codexGaps(snapshot) {
   const last = Math.max(...edits)
   return snapshot.checks.flatMap(c => {
     if (c.at < since || c.result === 'running') return []
-    if (c.result === 'failed' && c.at > first) return [`${c.kind} failed: ${c.command}`]
-    return last > c.at ? [`${c.kind} ran before the last edit: ${c.command}`] : []
+    if (c.result === 'failed' && c.at > first) return [{ check: c, isFailed: true, text: `${c.kind} failed: ${c.command}` }]
+    return last > c.at ? [{ check: c, isFailed: false, text: `${c.kind} ran before the last edit: ${c.command}` }] : []
   })
 }
+
+export const codexGaps = snapshot => gapChecks(snapshot).map(g => g.text)
 
 export function stopAnswer(hook, now) {
   // Codex is already going on because of this gate: a second block could loop.

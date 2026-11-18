@@ -380,6 +380,12 @@ export function toolText(home, slot) {
   return text
 }
 
+// A time from the environment in milliseconds, or the fallback when it is unset or not a positive number.
+export function envMs(name, fallback) {
+  const n = Number(process.env[name])
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
 // A chat that crashed never writes `session/closed`, so one outside a turn leaves the list after `idleMs` without a write.
 // One poll over session logs, for every reader. `fold(hit)` gets `{ entries }`, which stay until the log grows, and gives `{ snapshot, isClosed, isLive }`; what it puts in `hit.kept` outlives them.
 export function pollLogs(files, now, idleMs, cache, fold) {
