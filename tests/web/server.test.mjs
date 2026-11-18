@@ -558,14 +558,14 @@ test('on macOS the peer of a connection is the process lsof lists holding it fro
   assert.equal(uidFromLsof('', 100, pair), undefined)
 })
 
-test('Kiro Crew\'s gateway reaches the page and the sessions under /api/, only with its signature for this app', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'agentmon-kiro-proxy-'))
-  mkdirSync(join(home, 'apps', 'agentmon-live'), { recursive: true })
+test('Kiro Crew\'s gateway reaches the page and the sessions under /api/, through the relay and only with its signature for this app', async () => {
+  const { relay } = await import('../../server/web.mjs')
   const secret = 'cd'.repeat(32)
-  writeFileSync(join(home, 'apps', 'agentmon-live', '.app_secret'), `${secret}\n`)
+  process.env.KIROCREW_PROXY_SECRET = `${secret}\n`
   // No account check passes here: what lets the gateway in is its signature.
-  startServer(47490, { KIROCREW_HOME: home, AGENTMON_WEB_NO_UID: '1' })
-  await waitUp(47490)
+  const upstream = startServer(47640, { AGENTMON_WEB_NO_UID: '1' })
+  await waitUp(47640)
+  const gate = relay(47660, 47640)
   const empty = createHash('sha256').update('').digest('hex')
   let n = 0
   const signed = (method, target, { ts = Math.floor(Date.now() / 1000), nonce = (++n).toString(16).padStart(32, '0'), key = secret } = {}) => ({
@@ -573,24 +573,67 @@ test('Kiro Crew\'s gateway reaches the page and the sessions under /api/, only w
     'x-kirocrew-proxy-v2': `${ts}:${createHmac('sha256', key).update(`v2:${ts}:${nonce}:${method}:${target}:${empty}`).digest('hex')}`,
     origin: 'https://gateway.example.ts.net',
   })
-  const page = await raw(47490, '/api/', { headers: signed('GET', '/api/') })
-  assert.equal(page.status, 200)
-  assert.match(page.headers['content-security-policy'], /frame-ancestors 'self'/)
-  assert.equal((await raw(47490, '/api/app.js', { headers: signed('GET', '/api/app.js') })).status, 200)
-  const { boot } = JSON.parse((await raw(47490, '/health')).text)
-  const entered = await raw(47490, '/api/enter', { method: 'POST', headers: signed('POST', '/api/enter') })
-  assert.equal(entered.status, 200)
-  assert.equal(JSON.parse(entered.text).pass, passFor(47490, boot))
-  const once = signed('GET', '/api/health')
-  assert.equal((await raw(47490, '/api/health', { headers: once })).status, 200)
-  assert.equal((await raw(47490, '/api/health', { headers: once })).status, 403, 'a nonce counts once')
-  assert.equal((await raw(47490, '/api/health')).status, 403)
-  assert.equal((await raw(47490, '/api/health', { headers: signed('GET', '/api/health', { key: 'ef'.repeat(32) }) })).status, 403)
-  assert.equal((await raw(47490, '/api/health', { headers: signed('GET', '/api/health', { ts: Math.floor(Date.now() / 1000) - 120 }) })).status, 403)
-  assert.equal((await raw(47490, '/api/health', { headers: signed('GET', '/api/other') })).status, 403)
-  assert.equal((await raw(47490, '/api/enter', { method: 'POST', headers: { ...signed('POST', '/api/enter'), 'content-type': 'text/plain' }, body: 'x' })).status, 403)
-  // Without the gateway nothing changed: this account's check still decides.
-  assert.equal((await raw(47490, '/enter', { method: 'POST', headers: { origin: 'http://127.0.0.1:47490' } })).status, 403)
+  try {
+    assert.equal((await raw(47660, '/health')).status, 200)
+    const page = await raw(47660, '/api/', { headers: signed('GET', '/api/') })
+    assert.equal(page.status, 200)
+    assert.match(page.headers['content-security-policy'], /frame-ancestors 'self'/)
+    assert.equal((await raw(47660, '/api/app.js', { headers: signed('GET', '/api/app.js') })).status, 200)
+    const { boot } = JSON.parse((await raw(47640, '/health')).text)
+    const entered = await raw(47660, '/api/enter', { method: 'POST', headers: signed('POST', '/api/enter') })
+    assert.equal(entered.status, 200)
+    const { pass } = JSON.parse(entered.text)
+    assert.equal(pass, passFor(47640, boot))
+    const events = await new Promise((resolve, reject) => {
+      const target = `/api/events?p=${pass}`
+      const req = request({ host: '127.0.0.1', port: 47660, path: target, headers: signed('GET', target) }, res => {
+        res.on('data', d => {
+          req.destroy()
+          resolve(String(d))
+        })
+      })
+      req.on('error', reject)
+      req.end()
+    })
+    assert.match(events, /event: build/)
+    const once = signed('GET', '/api/health')
+    assert.equal((await raw(47660, '/api/health', { headers: once })).status, 200)
+    assert.equal((await raw(47660, '/api/health', { headers: once })).status, 403, 'a nonce counts once')
+    assert.equal((await raw(47660, '/api/health')).status, 403)
+    assert.equal((await raw(47660, '/api/health', { headers: signed('GET', '/api/health', { key: 'ef'.repeat(32) }) })).status, 403)
+    assert.equal((await raw(47660, '/api/health', { headers: signed('GET', '/api/health', { ts: Math.floor(Date.now() / 1000) - 120 }) })).status, 403)
+    assert.equal((await raw(47660, '/api/health', { headers: signed('GET', '/api/other') })).status, 403)
+    assert.equal((await raw(47660, '/api/enter', { method: 'POST', headers: { ...signed('POST', '/api/enter'), 'content-type': 'text/plain' }, body: 'x' })).status, 403)
+    // The server itself takes /api/ only from the relay, whatever the gateway's headers say.
+    assert.equal((await raw(47640, '/api/', { headers: signed('GET', '/api/') })).status, 403)
+    // Without the gateway nothing changed: this account's check still decides.
+    assert.equal((await raw(47640, '/enter', { method: 'POST', headers: { origin: 'http://127.0.0.1:47640' } })).status, 403)
+    upstream.kill()
+    await new Promise(done => upstream.once('exit', done))
+    assert.equal((await raw(47660, '/api/', { headers: signed('GET', '/api/') })).status, 502)
+    // A program that only says it is ours, and holds no secret, gets no visitor: what it answers would run in the dashboard's origin.
+    const fake = createServer((req, res) => res.end(req.url === '/health' ? JSON.stringify({ name: 'agentmon-live', stamp: 1, isLocked: true, boot: 'b' }) : '<script>steal()</script>'))
+    await new Promise(done => fake.listen(47640, '127.0.0.1', done))
+    try {
+      const got = await raw(47660, '/api/', { headers: signed('GET', '/api/') })
+      assert.equal(got.status, 502)
+      assert.doesNotMatch(got.text, /steal/)
+    } finally {
+      fake.close()
+    }
+  } finally {
+    delete process.env.KIROCREW_PROXY_SECRET
+    gate.closeAllConnections()
+    gate.close()
+  }
+})
+
+test('without the lock, /api/ takes no request a browser sent', async () => {
+  const child = spawn(process.execPath, [WEB, 'serve', '47680', '--open'], { env: process.env, stdio: 'ignore' })
+  children.push(child)
+  await waitUp(47680)
+  assert.equal((await raw(47680, '/api/enter', { method: 'POST', headers: { origin: 'https://evil.example' } })).status, 403)
+  assert.equal((await raw(47680, '/api/enter', { method: 'POST' })).status, 200)
 })
 
 test('the views folder is sent on connect and again when a file changes', async () => {
