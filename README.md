@@ -97,9 +97,11 @@ The [guide](docs/guide.md#web-view) has the rest, including a registry install f
 </details>
 
 <details>
-<summary>Kiro Crew on another machine: over SSH</summary>
+<summary>Kiro Crew on another machine: Tailscale, a phone, SSH</summary>
 
-Forward both ports and log in as the account that runs Kiro Crew there: `ssh -L 5476:127.0.0.1:5476 -L 47311:127.0.0.1:47311 <user>@<host>`. The server only lets in a browser of its own account, so from any other login the tab says it may not read the sessions. If Kiro Crew runs as a service of its own account, set `AGENTMON_WEB_UIDS=<id -u of your login>` in its environment; in a container, `AGENTMON_WEB_OPEN=1` turns the check off, and any local process can then read the sessions. Restart Kiro Crew and stop a running server (`pkill -f 'web.mjs serve'`) for either to take effect.
+The tab loads through Kiro Crew's own address, so it works wherever the Kiro Crew dashboard opens: over Tailscale, on a phone, or over SSH with only the dashboard's port forwarded (`ssh -L 5476:127.0.0.1:5476 <user>@<host>`). It shows the sessions to whoever Kiro Crew lets into its dashboard, invited members of a shared crew included.
+
+The web view on its own, `http://127.0.0.1:47311/`, lets in only a browser of the account that runs it. From another machine, forward that port too and log in as the account that runs Kiro Crew; from any other login the page says it may not read the sessions. If Kiro Crew runs as a service of its own account, set `AGENTMON_WEB_UIDS=<id -u of your login>` in its environment; in a container, `AGENTMON_WEB_OPEN=1` turns the check off, and any local process can then read the sessions. Restart Kiro Crew and stop a running server (`pkill -f 'web.mjs serve'`) for either to take effect.
 
 </details>
 

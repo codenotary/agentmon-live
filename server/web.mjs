@@ -134,6 +134,27 @@ function reply(res, status, type, body, extra = {}) {
 
 const forbid = res => reply(res, 403, 'text/plain', 'forbidden')
 
+// Kiro Crew's gateway hands its dashboard's visitors on to this app under /api/, each request signed with the app's secret and a fresh nonce.
+// shortcut: only bodiless requests pass, which is all the page sends; hash the body when a proxied request carries one.
+const EMPTY_SHA = createHash('sha256').update('').digest('hex')
+const KEEP_NONCES = 1000
+export function isKiroProxy(req, seen, now = Date.now()) {
+  const [ts, mac] = String(req.headers['x-kirocrew-proxy-v2'] ?? '').split(':')
+  const nonce = String(req.headers['x-kirocrew-proxy-nonce'] ?? '')
+  if (!/^\d+$/.test(ts) || !/^[0-9a-f]{32}$/.test(nonce) || Math.abs(now / 1000 - Number(ts)) > 60 || seen.has(nonce)) return false
+  if (Number(req.headers['content-length'] ?? 0) > 0 || req.headers['transfer-encoding']) return false
+  let secret
+  try {
+    secret = readFileSync(join(kiroHome(), 'apps', NAME, '.app_secret'), 'utf8').trim()
+  } catch {
+    return false
+  }
+  if (!secret || !isSame(mac, sign(secret, `v2:${ts}:${nonce}:${req.method}:${req.url}:${EMPTY_SHA}`))) return false
+  if (seen.size >= KEEP_NONCES) seen.delete(seen.values().next().value)
+  seen.add(nonce)
+  return true
+}
+
 // A session and a browser tab each reach the server by these names only: a rebound domain carries its own.
 function isOurHost(host, port) {
   return host === `127.0.0.1:${port}` || host === `localhost:${port}`
@@ -166,7 +187,7 @@ function serve(port, fixture, isOpen) {
     return true
   }
   const isSessionWrite = (req, res) => isWriteAllowed(req) && isSession(req, res)
-  const isReader = (req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
+  const isReader = (req, query = '') => !isLocked || req.isProxied || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
   const uids = allowedUids(process.env.AGENTMON_WEB_UIDS, process.getuid?.())
   const isAllowedUser = async req => {
     const uid = await peerUid(req.socket)
@@ -204,14 +225,19 @@ function serve(port, fixture, isOpen) {
 
   if (fixture) sessions.set('fixture', { json: JSON.stringify(JSON.parse(readFileSync(fixture, 'utf8'))), at: Infinity })
 
+  const nonces = new Set()
   const server = createServer((req, res) => {
     if (!isOurHost(req.headers.host, port)) return forbid(res)
-    const [path, query = ''] = (req.url ?? '/').split('?')
+    // The gateway already let this visitor into its dashboard; that is the check here.
+    req.isProxied = (req.url ?? '').startsWith('/api/')
+    if (req.isProxied && !isKiroProxy(req, nonces)) return forbid(res)
+    const [path, query = ''] = (req.isProxied ? req.url.slice('/api'.length) : (req.url ?? '/')).split('?')
+    const isOwn = req.isProxied || isOwnPage(req, port)
 
     if (req.method === 'GET') {
       if (path === '/') {
         // Kiro Crew's own page may show this one in a tab, while its gateway runs; no other page may.
-        const frames = fixture ? [] : (kiroHost()?.origins ?? [])
+        const frames = req.isProxied ? ["'self'"] : fixture ? [] : (kiroHost()?.origins ?? [])
         return reply(res, 200, 'text/html; charset=utf-8', page, frames.length ? { 'content-security-policy': HEADERS['content-security-policy'].replace("frame-ancestors 'none'", `frame-ancestors ${frames.join(' ')}`) } : {})
       }
       if (path === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, pid: process.pid, sessions: sessions.size, stamp, isLocked, boot }))
@@ -249,12 +275,12 @@ function serve(port, fixture, isOpen) {
 
     // A tab asks for its pass: given to a browser of this account, or for the one-time code in the address a session handed out.
     if (path === '/enter' && req.method === 'POST') {
-      if (!isOwnPage(req, port)) return forbid(res)
+      if (!isOwn) return forbid(res)
       const code = String(req.headers['x-agentmon-code'] ?? '')
       const isInvited = tickets.get(code) > Date.now()
       tickets.delete(code)
       const enter = () => reply(res, 200, 'application/json', JSON.stringify({ pass }))
-      if (!isLocked || isInvited) return enter()
+      if (!isLocked || isInvited || req.isProxied) return enter()
       return void isAllowedUser(req).then(ok => (ok ? enter() : forbid(res))).catch(() => res.destroy())
     }
     // A session asks what the browser must open. Where the kernel names the account behind a connection, the plain address does; elsewhere it carries a code.
@@ -274,7 +300,7 @@ function serve(port, fixture, isOpen) {
 
     const asked = path.match(/^\/pane\/([\w-]{1,80})\/(open|close)$/)
     if (asked && req.method === 'POST') {
-      if (!isOwnPage(req, port) || !isReader(req, query)) return forbid(res)
+      if (!isOwn || !isReader(req, query)) return forbid(res)
       if (!sessions.has(asked[1])) return reply(res, 404, 'text/plain', 'not found')
       paneRequests.set(asked[1], asked[2] === 'open')
       return reply(res, 204)
@@ -282,7 +308,7 @@ function serve(port, fixture, isOpen) {
     // Kiro Crew's tab names the chat beside it, so an idle or closed one is listed too while the tab shows it.
     const wants = path.match(/^\/kiro\/([\w-]{1,80})$/)
     if (wants && req.method === 'POST') {
-      if (!isOwnPage(req, port) || !isReader(req, query)) return forbid(res)
+      if (!isOwn || !isReader(req, query)) return forbid(res)
       wanted.delete(wants[1])
       if (wanted.size >= KEEP_WANTED) wanted.delete(wanted.keys().next().value)
       wanted.set(wants[1], Date.now() + KIRO_WANT_MS)
@@ -522,7 +548,9 @@ const isMain = () => {
 if (isMain()) {
   const [mode, arg, ...flags] = process.argv.slice(2)
   const isOpen = flags.includes('--open')
-  if (mode === 'serve') serve(Number(arg), flags[0] === '--fixture' ? flags[1] : undefined, isOpen)
+  // Kiro Crew starts an app's backend with no arguments and the port in PORT.
+  if (mode === undefined && process.env.PORT) serve(Number(process.env.PORT), undefined, process.env.AGENTMON_WEB_OPEN === '1')
+  else if (mode === 'serve') serve(Number(arg), flags[0] === '--fixture' ? flags[1] : undefined, isOpen)
   else if (mode === 'ensure') process.exit(await ensure(Number(arg), isOpen))
   else if (mode === 'open') process.exit(await open(arg))
   else process.exit(2)

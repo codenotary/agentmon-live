@@ -6,6 +6,8 @@ const FIXTURE_SERVER = 'http://127.0.0.1:47390'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Relative, so the page also works where Kiro Crew's gateway serves it, under /apps/agentmon-live/api/.
+  base: './',
   build: {
     target: 'es2022',
     cssMinify: true,

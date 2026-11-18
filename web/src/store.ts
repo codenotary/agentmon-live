@@ -194,7 +194,7 @@ let askedAt = 0
 function askSlot(): void {
   if (!tabSlot || !pass) return
   askedAt = Date.now()
-  void fetch(`/kiro/${encodeURIComponent(tabSlot)}`, { method: 'POST', headers: { 'x-agentmon-pass': pass } }).catch(() => undefined)
+  void fetch(`kiro/${encodeURIComponent(tabSlot)}`, { method: 'POST', headers: { 'x-agentmon-pass': pass } }).catch(() => undefined)
 }
 const readSlot = () => {
   const slot = new URLSearchParams(location.hash.slice(1)).get('kiro')
@@ -244,7 +244,7 @@ function received(id: string, snapshot: WebSnapshot, age = 0): void {
 
 // The session applies it within a second and says so in its next snapshot, which moves the button.
 export function requestPane(id: string, isOpen: boolean): void {
-  void fetch(`/pane/${encodeURIComponent(id)}/${isOpen ? 'open' : 'close'}`, { method: 'POST', headers: { 'x-agentmon-pass': pass } }).catch(() => undefined)
+  void fetch(`pane/${encodeURIComponent(id)}/${isOpen ? 'open' : 'close'}`, { method: 'POST', headers: { 'x-agentmon-pass': pass } }).catch(() => undefined)
 }
 
 // What lets this tab read: the server gives it to a browser of its own account, or for the one-time code in the address a session opened.
@@ -253,7 +253,7 @@ let pass = ''
 async function enter(): Promise<void> {
   const code = new URLSearchParams(location.search).get('c')
   if (code) history.replaceState(null, '', location.pathname + location.hash)
-  const r = await fetch('/enter', { method: 'POST', headers: code ? { 'x-agentmon-code': code } : {} }).catch(() => undefined)
+  const r = await fetch('enter', { method: 'POST', headers: code ? { 'x-agentmon-code': code } : {} }).catch(() => undefined)
   // A server that cannot be reached is down, not refusing.
   const isRefused = r?.status === 403
   if (isRefused !== state.isRefused) set({ isRefused })
@@ -267,7 +267,7 @@ export function connect(): void {
   let build: string | undefined
   let lastEventAt = Date.now()
   const open = () => {
-    const events = new EventSource(`/events?p=${encodeURIComponent(pass)}`)
+    const events = new EventSource(`events?p=${encodeURIComponent(pass)}`)
     const seen = () => {
       lastEventAt = Date.now()
     }
