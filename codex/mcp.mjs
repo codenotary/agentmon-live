@@ -295,8 +295,8 @@ export function serve(input = process.stdin, output = process.stdout) {
     } catch {
       return
     }
-    // A notification has no id and gets no reply.
-    if (msg.id === undefined) return
+    // A notification has no id and gets no reply; a line that is not an object is no message.
+    if (typeof msg !== 'object' || msg === null || msg.id === undefined) return
     let reply
     try {
       reply = { jsonrpc: '2.0', id: msg.id, result: answer(msg, chats, dismissed, found) }

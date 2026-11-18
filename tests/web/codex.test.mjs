@@ -288,3 +288,9 @@ test('a newer release shows on top with a link, and only a newer one counts', ()
   assert.deepEqual([isNewer('0.51.0', '0.50.3'), isNewer('0.50.3', '0.50.3'), isNewer('0.9.0', '0.50.3'), isNewer('x', '0.1.0')], [true, false, false, false])
   assert.ok(answer({ method: 'tools/list' }, () => []).tools.some(t => t.name === 'web'))
 })
+
+test('the MCP server outlives a line that is not a message', () => {
+  const input = ['null', '7', '{"jsonrpc":"2.0","id":1,"method":"ping"}', ''].join('\n')
+  const r = spawnSync(process.execPath, [join(ROOT, 'codex/mcp.mjs'), 'serve'], { input, encoding: 'utf8', env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }, timeout: 10_000 })
+  assert.deepEqual(JSON.parse(r.stdout), { jsonrpc: '2.0', id: 1, result: {} })
+})
