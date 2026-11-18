@@ -26,7 +26,7 @@ export function readViews(dir) {
   for (const file of names) {
     const name = file.slice(0, -5)
     if (!NAME.test(name)) {
-      views.push({ name, error: 'name must be a-z, 0-9 and -, at most 40' })
+      views.push({ name: file, error: 'name must be a-z, 0-9 and -, at most 40' })
       continue
     }
     try {

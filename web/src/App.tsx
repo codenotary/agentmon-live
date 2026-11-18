@@ -149,6 +149,8 @@ export function App() {
   // The view's colours as a sheet of their own, after the page's, so they win and the auto theme still follows the system.
   const css = themeCss(view?.theme)
   useEffect(() => {
+    // No view colours, no sheet: a browser without constructed sheets still draws the page.
+    if (!css) return
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(css)
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]

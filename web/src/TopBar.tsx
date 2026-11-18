@@ -73,13 +73,14 @@ function SessionPicker({ s, p, sessions }: { s: WebSnapshot; p: Page; sessions: 
   )
 }
 
-const DEFAULT_ITEM = 'agentmon-default'
+// Not a view name: those are a-z, 0-9 and -.
+const DEFAULT_ITEM = '(default)'
 
 // Shown once Claude wrote a view: the default page, then each file; a broken one says why instead of switching.
 function ViewPicker({ p }: { p: Page }) {
   const st = useStore()
   // A view whose file is gone draws the default page, and the menu says so.
-  const value = st.views.views.some(v => v.name === st.viewName) ? st.viewName : DEFAULT_ITEM
+  const value = st.views.views.some(v => v.name === st.viewName && !v.error) ? st.viewName : DEFAULT_ITEM
   return (
     <Select.Root value={value} onValueChange={name => chooseView(name === DEFAULT_ITEM ? '' : name, p.viewBroken)}>
       <Select.Trigger className="select-trigger" aria-label={p.views} title={p.views} data-testid="view-picker">
