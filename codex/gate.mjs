@@ -3,6 +3,7 @@ import { readFileSync, realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { foldRollout } from '../server/codex.mjs'
+import { lines } from '../server/kiro.mjs'
 
 // Same list as `DOC_TYPES` in `hooks/gate.ts`, which Node cannot load: prose cannot break a check.
 const DOC = /\.(md|mdx|markdown|txt|rst|adoc)$/i
@@ -26,14 +27,7 @@ export function codexGaps(snapshot) {
 export function stopAnswer(hook, now) {
   // Codex is already going on because of this gate: a second block could loop.
   if (hook.stop_hook_active || !hook.transcript_path) return undefined
-  const entries = readFileSync(hook.transcript_path, 'utf8').split('\n').flatMap(l => {
-    try {
-      return [JSON.parse(l)]
-    } catch {
-      return []
-    }
-  })
-  const gaps = codexGaps(foldRollout(entries, now).snapshot)
+  const gaps = codexGaps(foldRollout(lines(readFileSync(hook.transcript_path, 'utf8')), now).snapshot)
   if (gaps.length === 0) return undefined
   return { decision: 'block', reason: `Before you report done, this looks unfinished:\n${gaps.map(g => `- ${g}`).join('\n')}\n\nFinish it, or say plainly why not.` }
 }

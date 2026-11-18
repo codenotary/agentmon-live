@@ -13,7 +13,9 @@ const KINDS = ['problem', 'idea', 'thanks', 'other']
 const MAX_TEXT = 2000
 // Same cap as `hooks/feedback.tsx`: GitHub refuses a longer prefilled body.
 const MAX_ISSUE_BODY = 5000
-const IDLE_MS = 30 * 60_000
+// The server's window for a quiet Codex chat, and its override.
+const IDLE_MS = Number(process.env.AGENTMON_KIRO_IDLE_MS) > 0 ? Number(process.env.AGENTMON_KIRO_IDLE_MS) : 30 * 60_000
+// shortcut: the server moves to the next port when another program holds this one, and these links then lead nowhere; have the server record its port if that happens.
 const WEB = 'http://127.0.0.1:47311/'
 const RELEASES = 'https://api.github.com/repos/codenotary/agentmon-live/releases/latest'
 const RELEASE_MS = 3_600_000
