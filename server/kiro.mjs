@@ -128,6 +128,28 @@ export const lines = text => text.split('\n').flatMap(line => {
   }
 })
 
+// Dollars per million tokens: input, cache read, output. The longest key the model's name starts with wins, as in agentmon-core.
+// shortcut: list prices copied from agentmon-core's pricing.json of 2026-11, normal-context rates only (long-context tiers past 272k per request are not applied); copy again when a model or price arrives.
+const PRICES = {
+  'gpt-5': [1.25, 0.125, 10], 'gpt-5-mini': [0.25, 0.025, 2], 'gpt-5-nano': [0.05, 0.005, 0.4],
+  'gpt-5.2': [1.75, 0.175, 14], 'gpt-5.3-codex': [1.75, 0.175, 14],
+  'gpt-5.4': [2.5, 0.25, 15], 'gpt-5.4-mini': [0.75, 0.075, 4.5], 'gpt-5.4-nano': [0.2, 0.02, 1.25],
+  'gpt-5.5': [5, 0.5, 30],
+  'gpt-5.6': [5, 0.4, 30], 'gpt-5.6-terra': [2, 0.2, 12], 'gpt-5.6-luna': [0.2, 0.02, 1.2], 'gpt-5.6-sol': [4, 0.4, 20],
+  'gpt-6-sol': [2, 0.2, 10], 'gpt-6.1-sol': [2, 0.1, 10], 'gpt-6-astra': [10, 1, 50], 'gpt-6-luna': [0.1, 0.01, 0.5],
+  o3: [2, 0.5, 8], 'o3-mini': [1.1, 0.55, 4.4], 'o4-mini': [1.1, 0.275, 4.4],
+  // No cache rate: agentmon-core bills these models' cached input at nothing.
+  'gpt-5-pro': [15, 0, 120], 'gpt-5.2-pro': [21, 0, 168], 'gpt-5.4-pro': [30, 0, 180], 'gpt-5.5-pro': [30, 0, 180], 'o3-pro': [20, 0, 80],
+}
+
+// What a turn's tokens cost at list price; undefined for a model the table does not know.
+export function priceUsd(model, tokens) {
+  const key = Object.keys(PRICES).filter(k => String(model ?? '').startsWith(k)).sort((a, b) => b.length - a.length)[0]
+  if (!key) return undefined
+  const [input, read, output] = PRICES[key]
+  return ((Number(tokens.input) || 0) * input + (Number(tokens.cache_read) || 0) * read + (Number(tokens.output) || 0) * output) / 1e6
+}
+
 // Entry types this does not know are skipped: the crew log adds types and asks its readers to ignore them.
 // `editsOf(card)` gives the files a subagent wrote, `[{ path, at }]`: its own chat is not in this log.
 export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) {
@@ -203,6 +225,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
       if (d.model) snap.main.model = String(d.model)
       credits += Number(d.credits) || 0
       const k = d.tokens ?? {}
+      snap.usage.usd += priceUsd(snap.main.model, k) ?? 0
       snap.insights.tokens.mainIn += (Number(k.input) || 0) + (Number(k.cache_read) || 0) + (Number(k.cache_write) || 0)
       snap.insights.tokens.mainOut += Number(k.output) || 0
       snap.insights.tokens.mainCached += Number(k.cache_read) || 0

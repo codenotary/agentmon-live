@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
 import { answer, dur, feedbackLink, isNewer, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
 import { foldRollout, readCodex, withAgents } from '../../server/codex.mjs'
+import { priceUsd } from '../../server/kiro.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -59,7 +60,18 @@ test('files, tokens, context and limits come from what Codex reports', () => {
   assert.deepEqual(s.files.edited, ['/home/dev/github/demo/src/a.ts', '/home/dev/github/demo/src/b.ts'])
   assert.deepEqual(s.files.read, ['/home/dev/github/demo/src/a.ts'])
   assert.deepEqual(s.insights.tokens, { mainIn: 1000, mainOut: 50, mainCached: 600, agentsIn: 0, agentsOut: 0 })
-  assert.deepEqual(s.usage, { rate: [{ kind: 'five_hour', pct: 12, resetsAt: 1794400000000 }, { kind: 'seven_day', pct: 40, resetsAt: 1794900000000 }], usd: 0, ctxTokens: 50000, ctxWindow: 200000, ctxPct: 25 })
+  const { usd, ...usage } = s.usage
+  assert.deepEqual(usage, { rate: [{ kind: 'five_hour', pct: 12, resetsAt: 1794400000000 }, { kind: 'seven_day', pct: 40, resetsAt: 1794900000000 }], ctxTokens: 50000, ctxWindow: 200000, ctxPct: 25 })
+  // gpt-6.1-sol at list price: 400 fresh input, 600 cached, 50 output.
+  assert.ok(Math.abs(usd - (400 * 2 + 600 * 0.1 + 50 * 10) / 1e6) < 1e-12, String(usd))
+})
+
+test('a turn is priced by the longest model name its model starts with, and an unknown model costs nothing', () => {
+  const tokens = { input: 1e6, cache_read: 1e6, output: 1e6 }
+  assert.equal(priceUsd('gpt-5.6-terra', tokens), 2 + 0.2 + 12)
+  assert.equal(priceUsd('gpt-5.1-codex-max', tokens), 1.25 + 0.125 + 10)
+  assert.equal(priceUsd('gpt-5.5-pro', tokens), 30 + 0 + 180)
+  assert.equal(priceUsd('claude-opus-5-5', tokens), undefined)
 })
 
 test('the end of a turn closes the call it cut off, and a count without limits keeps the last ones', () => {
@@ -329,8 +341,10 @@ test('a subagent draws inside the chat that started it: a card, its own calls an
   const meta = line('00:40', 'session_meta', { id: 'kid', cwd: '/home/dev/github/demo', parent_thread_id: SID, agent_nickname: 'Einstein', agent_path: '/root/price_agent', subagent_history_start_ordinal: parent.length + 1 })
   const own = [
     line('01:05', 'event_msg', { type: 'task_started' }),
+    line('01:05', 'turn_context', { model: 'gpt-5' }),
     line('01:06', 'response_item', { type: 'custom_tool_call', name: 'exec', call_id: 'k1', input: 'tools.exec({"cmd":"npm test"})' }),
     line('01:10', 'response_item', { type: 'custom_tool_call_output', call_id: 'k1', output: 'ok' }),
+    line('01:11', 'event_msg', { type: 'token_count', info: { total_token_usage: { input_tokens: 1000, cached_input_tokens: 0, output_tokens: 100 } } }),
     line('01:12', 'event_msg', { type: 'task_complete', duration_ms: 7_000 }),
   ]
   writeFileSync(join(day, `rollout-2026-11-10T10-00-00-${SID}.jsonl`), `${parent.join('\n')}\n`)
@@ -340,10 +354,15 @@ test('a subagent draws inside the chat that started it: a card, its own calls an
   const kid = chats.find(([id]) => id === 'kid')[1]
   assert.deepEqual([kid.turns.length, kid.trace.map(c => c.what)], [1, ['npm test']])
 
+  const parentUsd = chats.find(([x]) => x === SID)[1].usage.usd
   const [[id, s], ...rest] = withAgents(chats, cache)
   assert.deepEqual([id, rest], [SID, []])
+  // Its cost joins the parent's, which nothing else lists now; the parent's own snapshot keeps its own.
+  assert.ok(Math.abs(s.usage.usd - parentUsd - kid.usage.usd) < 1e-12)
+  assert.ok(kid.usage.usd > 0)
+  assert.equal(chats.find(([x]) => x === SID)[1].usage.usd, parentUsd)
   const [card] = s.agents
-  assert.deepEqual({ ...card, model: undefined }, { id: 'kid', type: 'price_agent', model: undefined, effort: '', task: 'Einstein', status: 'done', files: 0, tools: 1, input: 0, output: 0, startedAt: Date.parse('2026-11-10T10:01:05Z'), endedAt: Date.parse('2026-11-10T10:01:12Z'), callId: 'sp1' })
+  assert.deepEqual({ ...card, model: undefined }, { id: 'kid', type: 'price_agent', model: undefined, effort: '', task: 'Einstein', status: 'done', files: 0, tools: 1, input: kid.insights.tokens.mainIn, output: 100, startedAt: Date.parse('2026-11-10T10:01:05Z'), endedAt: Date.parse('2026-11-10T10:01:12Z'), callId: 'sp1' })
   assert.deepEqual(s.trace.filter(c => c.agentId).map(c => [c.who, c.what]), [['price_agent', 'npm test']])
   // The parent's test failed at 10:01:02; the subagent's later run is the one that counts.
   assert.deepEqual(s.checks.map(c => [c.kind, c.who, c.result]), [['test', 'price_agent', 'ok']])
