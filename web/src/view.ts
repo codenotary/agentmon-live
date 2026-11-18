@@ -1,7 +1,6 @@
 import type { ViewBlock, ViewFormat, ViewList, ViewPanel, ViewSection, WebView } from '../../types/index'
 import { dur, kilo, usdText } from './format.ts'
 
-export const BUILT_IN = ['overview', 'calls', 'verification', 'agents', 'files', 'log'] as const
 export const PANELS: readonly ViewPanel[] = ['Instruments', 'Flow', 'Waterfall', 'TurnClock', 'Events', 'Running', 'Steps', 'Calls', 'Insights', 'Checks', 'Tasks', 'Agents', 'Files', 'Log']
 // The colour tokens of `theme.css`; a test holds this list to that file.
 export const TOKENS: readonly string[] = ['--page', '--surface', '--surface-1', '--surface-2', '--surface-3', '--header', '--line', '--line-soft', '--line-input', '--ink', '--heading', '--ink-2', '--ink-3', '--signal', '--signal-bright', '--signal-soft', '--good', '--warn', '--bad', '--good-soft', '--warn-soft', '--bad-soft', '--info', '--info-line', '--ramp-1', '--ramp-2', '--ramp-3', '--ramp-4', '--ramp-5', '--ramp-other']

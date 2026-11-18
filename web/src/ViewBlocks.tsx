@@ -40,19 +40,27 @@ const PANEL: Record<ViewPanel, (x: Props) => ReactNode> = {
 
 const numbers = (v: unknown, field: string | undefined) => (Array.isArray(v) ? v.map(x => (field ? pick(x, field) : x)).filter((n): n is number => typeof n === 'number' && Number.isFinite(n)) : [])
 
+const Kids = ({ list, x }: { list: ViewBlock[]; x: Props }) => <>{list.map((c, i) => <Block key={i} b={c} x={x} />)}</>
+const Labeled = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div className="panel flex min-w-0 flex-col gap-2 p-5">
+    <span className="kpi-label">{label}</span>
+    {children}
+  </div>
+)
+
 // A view's blocks, drawn from the catalog only; every text from the file goes in as React text.
 function Block({ b, x }: { b: ViewBlock; x: Props }): ReactNode {
   if ('panel' in b) return PANEL[b.panel](x)
   switch (b.type) {
     case 'Row':
-      return <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(min(220px,100%),1fr))]">{b.children.map((c, i) => <Block key={i} b={c} x={x} />)}</div>
+      return <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(min(220px,100%),1fr))]"><Kids list={b.children} x={x} /></div>
     case 'Column':
-      return <div className="flex min-w-0 flex-col gap-4">{b.children.map((c, i) => <Block key={i} b={c} x={x} />)}</div>
+      return <div className="flex min-w-0 flex-col gap-4"><Kids list={b.children} x={x} /></div>
     case 'Card':
       return (
         <section className="panel flex min-w-0 flex-col gap-3 p-5" aria-label={b.title || undefined}>
           {b.title ? <h3 className="font-display text-base font-bold text-heading">{b.title}</h3> : null}
-          {b.children.map((c, i) => <Block key={i} b={c} x={x} />)}
+          <Kids list={b.children} x={x} />
         </section>
       )
     case 'Text':
@@ -62,20 +70,10 @@ function Block({ b, x }: { b: ViewBlock; x: Props }): ReactNode {
     case 'List': {
       const list = pick(x.s, b.items)
       const rows = Array.isArray(list) ? list.slice(0, b.max).map(item => formatValue(b.field ? pick(item, b.field) : item, undefined)) : []
-      return (
-        <div className="panel flex min-w-0 flex-col gap-2 p-5">
-          <span className="kpi-label">{b.label}</span>
-          {rows.length ? <ul className="flex flex-col gap-1 font-mono text-xs text-ink-2">{rows.map((r, i) => <li key={i} className="truncate">{r}</li>)}</ul> : <Empty text="—" />}
-        </div>
-      )
+      return <Labeled label={b.label}>{rows.length ? <ul className="flex flex-col gap-1 font-mono text-xs text-ink-2">{rows.map((r, i) => <li key={i} className="truncate">{r}</li>)}</ul> : <Empty text="—" />}</Labeled>
     }
     case 'Sparkline':
-      return (
-        <div className="panel flex min-w-0 flex-col gap-2 p-5">
-          <span className="kpi-label">{b.label}</span>
-          <Sparkline points={numbers(pick(x.s, b.points), b.field)} label={b.label} />
-        </div>
-      )
+      return <Labeled label={b.label}><Sparkline points={numbers(pick(x.s, b.points), b.field)} label={b.label} /></Labeled>
   }
 }
 

@@ -4,6 +4,7 @@ import type { Call, ViewList, WebSnapshot } from '../../types/index'
 import { keepEvents, keptEvents } from './events.ts'
 import { DEFAULT_VIEW } from './flow.ts'
 import { parseIds } from './format.ts'
+import { fill } from './kpi.ts'
 import { currentOf, sessionOfSlot, silentIds, withLive, withoutSessions, withSnapshot, type SessionState } from './sessions.ts'
 
 export { currentOf }
@@ -158,6 +159,12 @@ export function setTheme(theme: Theme): void {
 export function setView(viewName: string): void {
   save(VIEW_KEY, viewName)
   set({ viewName })
+}
+// A broken file says why instead of switching.
+export function chooseView(name: string, broken: string): void {
+  const error = state.views.views.find(v => v.name === name)?.error
+  if (error) notify(fill(broken, { error }), true)
+  else setView(name)
 }
 // A choice made in chat wins when it changes; until then a reload keeps this tab's own.
 let serverActive: string | undefined

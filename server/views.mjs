@@ -1,22 +1,18 @@
-import { closeSync, constants, fstatSync, openSync, readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+import { withFile } from './spool.mjs'
 
 export const MAX_VIEW = 64 * 1024
 const KEEP_VIEWS = 64
 const NAME = /^[a-z0-9-]{1,40}$/
 
-// A link is not followed and a pipe does not block, as in the spool folder.
-function readSmall(path) {
-  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
-  try {
-    const stat = fstatSync(fd)
+const readSmall = path =>
+  withFile(path, (fd, stat) => {
     if (!stat.isFile()) throw new Error('not a file')
     if (stat.size > MAX_VIEW) throw new Error(`larger than ${MAX_VIEW / 1024} KB`)
     return readFileSync(fd, 'utf8')
-  } finally {
-    closeSync(fd)
-  }
-}
+  })
 
 // The views Claude wrote to this folder, and the one chosen from chat. A broken file is listed with its error, so the page can say what is wrong. The page checks each view's shape.
 export function readViews(dir) {

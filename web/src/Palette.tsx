@@ -6,7 +6,7 @@ import { sessionNames } from './format.ts'
 import { fill } from './kpi.ts'
 import type { Page } from './labels.ts'
 import { jumpTo, type Section } from './Nav.tsx'
-import { notify, pick, requestPane, set, setTheme, setView, useStore } from './store.ts'
+import { chooseView, notify, pick, requestPane, set, setTheme, setView, useStore } from './store.ts'
 
 export async function copyText(text: string, done: string): Promise<void> {
   try {
@@ -45,7 +45,7 @@ export function Palette({ s, p, sections }: { s: WebSnapshot | undefined; p: Pag
         {st.views.views.length ? (
           <Command.Group heading={p.views}>
             <Command.Item value={`view ${p.viewDefault}`} onSelect={run(() => setView(''))}><LayoutGrid size={14} aria-hidden />{p.viewDefault}</Command.Item>
-            {st.views.views.map(v => <Command.Item key={v.name} value={`view ${v.name}`} onSelect={run(() => (v.error ? notify(fill(p.viewBroken, { error: v.error }), true) : setView(v.name)))}><LayoutGrid size={14} aria-hidden />{fill(p.viewName, { name: v.name })}{v.error ? <span className="ml-auto text-bad">!</span> : null}</Command.Item>)}
+            {st.views.views.map(v => <Command.Item key={v.name} value={`view ${v.name}`} onSelect={run(() => chooseView(v.name, p.viewBroken))}><LayoutGrid size={14} aria-hidden />{fill(p.viewName, { name: v.name })}{v.error ? <span className="ml-auto text-bad">!</span> : null}</Command.Item>)}
           </Command.Group>
         ) : null}
         <Command.Group heading={p.jumpTo}>

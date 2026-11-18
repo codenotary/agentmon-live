@@ -5,7 +5,7 @@ import type { WebSnapshot } from '../../types/index'
 import { dur, sessionNames, stateOf, time } from './format.ts'
 import { fill } from './kpi.ts'
 import { labelsOf, type Page } from './labels.ts'
-import { hasNoSignal, notify, pick, requestPane, set, setTheme, setView, useClock, useStore, type State, type Theme } from './store.ts'
+import { chooseView, hasNoSignal, pick, requestPane, set, setTheme, useClock, useStore, type State, type Theme } from './store.ts'
 
 const NEXT: Record<Theme, Theme> = { auto: 'dark', dark: 'light', light: 'auto' }
 
@@ -78,13 +78,10 @@ const DEFAULT_ITEM = 'agentmon-default'
 // Shown once Claude wrote a view: the default page, then each file; a broken one says why instead of switching.
 function ViewPicker({ p }: { p: Page }) {
   const st = useStore()
-  const choose = (name: string) => {
-    const error = st.views.views.find(v => v.name === name)?.error
-    if (error) notify(fill(p.viewBroken, { error }), true)
-    else setView(name === DEFAULT_ITEM ? '' : name)
-  }
+  // A view whose file is gone draws the default page, and the menu says so.
+  const value = st.views.views.some(v => v.name === st.viewName) ? st.viewName : DEFAULT_ITEM
   return (
-    <Select.Root value={st.viewName || DEFAULT_ITEM} onValueChange={choose}>
+    <Select.Root value={value} onValueChange={name => chooseView(name === DEFAULT_ITEM ? '' : name, p.viewBroken)}>
       <Select.Trigger className="select-trigger" aria-label={p.views} title={p.views} data-testid="view-picker">
         <span className="truncate"><Select.Value /></span>
         <Select.Icon><ChevronDown size={14} className="flex-none text-ink-3" aria-hidden /></Select.Icon>
