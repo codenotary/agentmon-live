@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
-import { answer, feedbackLink, isNewer, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
+import { answer, dur, feedbackLink, isNewer, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
 import { foldRollout, readCodex } from '../../server/codex.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
@@ -228,7 +228,7 @@ test('the pane is a panel of text, charts and keys for the chat Codex names, wit
   assert.match(text, /Insights\nWhere 14s over 2 turns went\nmodel 69% · 10s\n/)
   assert.ok(JSON.stringify(panel).includes('"type":"pie"'))
   assert.match(text, /Session log · 2 turns\n#2 running › run it again\n#1 14s › fix the failing test\n   ↳ Fixed\.\n/)
-  assert.ok(panel.children.some(n => n.type === 'action' && n.key === 'w' && n.tool === 'web'))
+  assert.ok(panel.children.some(n => n.type === 'action' && n.key === 'w' && n.url === 'http://127.0.0.1:47311/'))
   assert.deepEqual(paneTree(foldRollout(entries, NOW + 20_000).snapshot), panel)
   assert.match(words(paneTree(undefined)), /No Codex chat/)
   assert.match(words(paneTree({ ...s, active: [{ tool: 'shell', what: 'echo x\nrm' }] })), /◉ shell echo x rm\n/)
@@ -286,11 +286,32 @@ test('a newer release shows on top with a link, and only a newer one counts', ()
   const s = foldRollout(entries, NOW).snapshot
   assert.match(words(paneTree(s, new Set(), { release: { version: '9.0.0', url: 'https://example.com/r' } })), /^AgentMon Live[^\n]*\n[^\n]*\n↑ AgentMon Live 9\.0\.0 is out · what changed\n/)
   assert.deepEqual([isNewer('0.51.0', '0.50.3'), isNewer('0.50.3', '0.50.3'), isNewer('0.9.0', '0.50.3'), isNewer('x', '0.1.0')], [true, false, false, false])
-  assert.ok(answer({ method: 'tools/list' }, () => []).tools.some(t => t.name === 'web'))
 })
 
 test('the MCP server outlives a line that is not a message', () => {
   const input = ['null', '7', '{"jsonrpc":"2.0","id":1,"method":"ping"}', ''].join('\n')
   const r = spawnSync(process.execPath, [join(ROOT, 'codex/mcp.mjs'), 'serve'], { input, encoding: 'utf8', env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }, timeout: 10_000 })
   assert.deepEqual(JSON.parse(r.stdout), { jsonrpc: '2.0', id: 1, result: {} })
+})
+
+test('a subagent that went idle stays listed, and times round to whole seconds', () => {
+  const s = foldRollout(entries, NOW).snapshot
+  const child = { ...s, session: { id: 'child', parent: SID, agent: 'Darwin' }, active: [] }
+  const found = {}
+  const read = chats => words(JSON.parse(answer({ method: 'resources/read', params: { uri: PANE_URI, _meta: { 'com.openai/codex-sidebar-state': { thread: { id: SID } } } } }, () => chats, new Set(), found).contents[0].text))
+  assert.match(read([[SID, s], ['child', child]]), /Agents \(1\)\n✓ Darwin/)
+  assert.match(read([[SID, s]]), /Agents \(1\)\n✓ Darwin/)
+  assert.deepEqual([dur(119_700), dur(59_600), dur(8_400)], ['2m00s', '1m00s', '8s'])
+})
+
+test('the panel marks a check the way the gate judges it, whatever its command says', () => {
+  const s = foldRollout(entries, NOW).snapshot
+  const since = s.turns.at(-1).startedAt
+  const edits = { ...s.files, editedTimes: { 'src/a.ts': since + 1, 'src/b.ts': since + 5 } }
+  const failed = words(paneTree({ ...s, files: edits, checks: [{ kind: 'test', result: 'failed', command: 'npm test', at: since + 3 }] }))
+  assert.match(failed, / FAILED  test failed: npm test\n/)
+  assert.match(failed, /✗ test npm test\n/)
+  const stale = words(paneTree({ ...s, files: edits, checks: [{ kind: 'test', result: 'ok', command: 'echo " failed: "', at: since + 3 }] }))
+  assert.match(stale, / STALE  test ran before the last edit/)
+  assert.match(stale, /↻ test stale since the last edit · /)
 })

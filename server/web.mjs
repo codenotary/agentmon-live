@@ -5,7 +5,7 @@ import { createServer, get, request } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
+import { envMs, kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
 import { codexHome, readCodex } from './codex.mjs'
 import { MAX_SNAPSHOT as MAX_BODY, readSpool } from './spool.mjs'
 import { otlpTarget, postOtlp, toOtlp } from './otlp.mjs'
@@ -120,11 +120,6 @@ export function uidFromLsof(text, selfPid, pair) {
     else if (line === `n${pair}` && pid !== selfPid && uid !== undefined) return uid
   }
   return undefined
-}
-
-function envMs(name, fallback) {
-  const n = Number(process.env[name])
-  return Number.isFinite(n) && n > 0 ? n : fallback
 }
 
 function reply(res, status, type, body, extra = {}) {
