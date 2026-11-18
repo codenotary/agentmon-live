@@ -237,6 +237,7 @@ function adopt(parent, kids) {
     for (const c of k.checks) if (!(s.checks.find(x => x.kind === c.kind)?.at >= c.at)) putCheck(s, { ...c, who: type })
     s.insights.tokens.agentsIn += input
     s.insights.tokens.agentsOut += output
+    s.usage = { ...s.usage, usd: s.usage.usd + (k.usage?.usd ?? 0) }
   }
   s.trace = s.trace.sort((a, b) => a.at - b.at).slice(-KEEP)
   s.log = s.log.sort((a, b) => a.at - b.at).slice(-KEEP)
