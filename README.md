@@ -63,6 +63,8 @@ Claude Code when done.
 
 The web view lists every open [Kiro Crew](https://kiro.dev) chat beside your Claude Code sessions, whatever harness the chat runs on (kiro-cli, Claude Code, Codex and the others). It reads the log Kiro Crew writes, so this needs nothing installed in Kiro Crew: open the web view and the chats are there.
 
+**Kiro Crew on another machine:** forward both ports and log in as the account that runs Kiro Crew there: `ssh -L 5476:127.0.0.1:5476 -L 47311:127.0.0.1:47311 <user>@<host>`. The server only lets in a browser of its own account, so from any other login the tab says it may not read the sessions. If Kiro Crew runs as a service of its own account, set `AGENTMON_WEB_UIDS=<id -u of your login>` in its environment; in a container, `AGENTMON_WEB_OPEN=1` turns the check off, and any local process can then read the sessions. Restart Kiro Crew and stop a running server (`pkill -f 'web.mjs serve'`) for either to take effect.
+
 <details>
 <summary>A tab beside the chat: install AgentMon as a Kiro Crew app</summary>
 
@@ -90,7 +92,6 @@ Then turn it on in Kiro Crew:
 - **What you see:** turns with their time split, tool calls with duration and result, waiting approvals and time blocked on you, subagents and the files they wrote, events and insights, the task list, the context gauge, prompts and answers. kiro-cli reports credits, so the cost tile reads **Credits** and tokens stay empty.
 - **Verification:** the last test, lint, typecheck and build command of the chat, each ok, failed or unknown. Kiro Crew's log holds no output, so there are no test counts.
 - **What stays empty:** the done gate, Focus and learning. Those come from the plugin inside a Claude Code session.
-- **Kiro Crew on another machine:** forward both ports and log in as the account that runs Kiro Crew there: `ssh -L 5476:127.0.0.1:5476 -L 47311:127.0.0.1:47311 <user>@<host>`. The server only lets in a browser of its own account, so from any other login the tab says it may not read the sessions. If Kiro Crew runs as a service of its own account, set `AGENTMON_WEB_UIDS=<id -u of your login>` in its environment; in a container, `AGENTMON_WEB_OPEN=1` turns the check off, and any local process can then read the sessions. Restart Kiro Crew and stop a running server (`pkill -f 'web.mjs serve'`) for either to take effect.
 - **To remove it:** `kirocrew app uninstall agentmon-live`.
 
 The [guide](docs/guide.md#web-view) has the rest, including a registry install from Kiro Crew's settings.
