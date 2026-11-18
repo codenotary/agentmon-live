@@ -1,8 +1,8 @@
 // Kiro Crew mounts this as a side-panel tab and as a page. React comes from Kiro Crew's page, so there is nothing to build.
 import { createElement, useEffect, useState } from 'react'
 
-// shortcut: the server moves to the next port when another program holds this one, and the tab then stays empty; read the port from the app's route if that happens.
-const URL = 'http://127.0.0.1:47311/'
+// Through Kiro Crew's own address, so the tab also works on a phone or another machine that reaches the gateway.
+const URL = '/apps/agentmon-live/api/'
 
 // shortcut: Kiro Crew's address names the open chat in `?sid=`, which is not a published contract; without it the page shows its last pick.
 const chatOf = () => new URLSearchParams(location.search).get('sid') ?? ''

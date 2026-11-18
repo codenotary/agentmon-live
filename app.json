@@ -12,6 +12,10 @@
   "tags": ["agents", "observability", "dashboard", "monitoring", "terminal"],
   "platform": { "os": ["macos", "linux"] },
   "backend": {
+    "entryPoint": "server/web.mjs",
+    "type": "node",
+    "port": "47311",
+    "healthCheck": "/health",
     "hooks": {
       "on_startup": "kiro.hooks:on_startup",
       "on_shutdown": "kiro.hooks:on_shutdown"

@@ -73,6 +73,10 @@ test('the Kiro Crew app names files that exist and carries the plugin version', 
   assert.equal(app.version, JSON.parse(readFileSync(join(ROOT, '.claude-plugin/plugin.json'), 'utf8')).version)
   for (const hook of Object.values(app.backend.hooks)) assert.ok(existsSync(join(ROOT, `${hook.split(':')[0].replaceAll('.', '/')}.py`)), hook)
   for (const entry of [app.ui.entry, ...app.contributes.panelTabs.map(t => t.entry)]) assert.ok(existsSync(join(ROOT, 'ui', entry)), entry)
+  // The gateway adopts the server the hook started on this port, and proxies the tab to it.
+  assert.ok(existsSync(join(ROOT, app.backend.entryPoint)), app.backend.entryPoint)
+  assert.match(readFileSync(join(ROOT, 'kiro/hooks.py'), 'utf8'), new RegExp(`^PORT = ${app.backend.port}$`, 'm'))
+  assert.match(readFileSync(join(ROOT, 'ui/panel.mjs'), 'utf8'), new RegExp(`'/apps/${app.name}/api/'`))
   // Kiro Crew's store and library show these from the repo; a path that moved leaves a blank card.
   for (const art of [app.iconPath, app.heroImage, ...app.screenshots]) assert.ok(existsSync(join(ROOT, art)), art)
 })
@@ -93,4 +97,10 @@ test('the start hook writes the host file and the stop hook removes only its own
   writeFileSync(file, 'not json')
   assert.equal(run('h.on_shutdown()').status, 0)
   rmSync(file)
+})
+
+test('started as Kiro Crew starts a backend, with no arguments and PORT set, the server serves', async () => {
+  const port = 47491
+  children.push(spawn(process.execPath, [join(ROOT, 'server/web.mjs')], { env: { ...process.env, PORT: String(port), AGENTMON_WEB_OPEN: '1', AGENTMON_KIRO_FILE: join(dir, 'none.json'), KIROCREW_HOME: join(dir, 'none'), CODEX_HOME: join(dir, 'none') }, stdio: 'ignore' }))
+  assert.ok(await until(async () => (await get(port, '/health').catch(() => undefined))?.statusCode === 200), 'no server')
 })

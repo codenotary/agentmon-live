@@ -384,7 +384,10 @@ test('the built files are the set one build made', () => {
 test('the page loads nothing from another origin and stays small', () => {
   for (const file of ['app.html', 'app.js', 'vendor.js']) assert.doesNotMatch(readFileSync(join(ROOT, 'server', file), 'utf8'), /<(script|link|img)\b[^>]*\b(src|href)="(https?:)?\/\/|@import\s+url\(/, file)
   assert.doesNotMatch(readFileSync(join(ROOT, 'server/app.css'), 'utf8'), /@import\s+url\(|url\((https?:)?\/\//)
-  for (const file of BUILT) assert.ok(page.includes(`"/${file}"`), file)
+  // Relative, so the page also loads under Kiro Crew's /apps/agentmon-live/api/.
+  for (const file of BUILT) assert.ok(page.includes(`"./${file}"`), file)
+  assert.doesNotMatch(readFileSync(join(ROOT, 'server/app.js'), 'utf8'), /["`]\/(enter|events|kiro\/|pane\/)/)
+  assert.doesNotMatch(readFileSync(join(ROOT, 'server/app.css'), 'utf8'), /url\(\//)
   const total = ['app.html', 'app.js', 'vendor.js', 'app.css'].reduce((n, f) => n + statSync(join(ROOT, 'server', f)).size, 0)
   assert.ok(total < 800 * 1024, `${total} bytes`)
 })

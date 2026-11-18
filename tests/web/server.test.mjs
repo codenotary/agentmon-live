@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { createHmac } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { connect } from 'node:net'
-import { cpSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer, request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -556,4 +556,39 @@ test('on macOS the peer of a connection is the process lsof lists holding it fro
   assert.equal(uidFromLsof(lsof(server, [300, 501, '127.0.0.1:47999->127.0.0.1:52000']), 100, pair), undefined)
   assert.equal(uidFromLsof('lsof: status error\n', 100, pair), undefined)
   assert.equal(uidFromLsof('', 100, pair), undefined)
+})
+
+test('Kiro Crew\'s gateway reaches the page and the sessions under /api/, only with its signature for this app', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'agentmon-kiro-proxy-'))
+  mkdirSync(join(home, 'apps', 'agentmon-live'), { recursive: true })
+  const secret = 'cd'.repeat(32)
+  writeFileSync(join(home, 'apps', 'agentmon-live', '.app_secret'), `${secret}\n`)
+  // No account check passes here: what lets the gateway in is its signature.
+  startServer(47490, { KIROCREW_HOME: home, AGENTMON_WEB_NO_UID: '1' })
+  await waitUp(47490)
+  const empty = createHash('sha256').update('').digest('hex')
+  let n = 0
+  const signed = (method, target, { ts = Math.floor(Date.now() / 1000), nonce = (++n).toString(16).padStart(32, '0'), key = secret } = {}) => ({
+    'x-kirocrew-proxy-nonce': nonce,
+    'x-kirocrew-proxy-v2': `${ts}:${createHmac('sha256', key).update(`v2:${ts}:${nonce}:${method}:${target}:${empty}`).digest('hex')}`,
+    origin: 'https://gateway.example.ts.net',
+  })
+  const page = await raw(47490, '/api/', { headers: signed('GET', '/api/') })
+  assert.equal(page.status, 200)
+  assert.match(page.headers['content-security-policy'], /frame-ancestors 'self'/)
+  assert.equal((await raw(47490, '/api/app.js', { headers: signed('GET', '/api/app.js') })).status, 200)
+  const { boot } = JSON.parse((await raw(47490, '/health')).text)
+  const entered = await raw(47490, '/api/enter', { method: 'POST', headers: signed('POST', '/api/enter') })
+  assert.equal(entered.status, 200)
+  assert.equal(JSON.parse(entered.text).pass, passFor(47490, boot))
+  const once = signed('GET', '/api/health')
+  assert.equal((await raw(47490, '/api/health', { headers: once })).status, 200)
+  assert.equal((await raw(47490, '/api/health', { headers: once })).status, 403, 'a nonce counts once')
+  assert.equal((await raw(47490, '/api/health')).status, 403)
+  assert.equal((await raw(47490, '/api/health', { headers: signed('GET', '/api/health', { key: 'ef'.repeat(32) }) })).status, 403)
+  assert.equal((await raw(47490, '/api/health', { headers: signed('GET', '/api/health', { ts: Math.floor(Date.now() / 1000) - 120 }) })).status, 403)
+  assert.equal((await raw(47490, '/api/health', { headers: signed('GET', '/api/other') })).status, 403)
+  assert.equal((await raw(47490, '/api/enter', { method: 'POST', headers: { ...signed('POST', '/api/enter'), 'content-type': 'text/plain' }, body: 'x' })).status, 403)
+  // Without the gateway nothing changed: this account's check still decides.
+  assert.equal((await raw(47490, '/enter', { method: 'POST', headers: { origin: 'http://127.0.0.1:47490' } })).status, 403)
 })
