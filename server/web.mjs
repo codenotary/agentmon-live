@@ -1,6 +1,6 @@
 import { execFile, spawn, spawnSync } from 'node:child_process'
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, linkSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, get, request } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -51,8 +51,12 @@ function stampOfFiles() {
 // One secret per account, in a file only that account reads: another account's process on this machine can reach the port, not the sessions.
 // It never leaves this file and the processes that read it: `ensure` and the server prove to each other that they hold it, and what a session or a tab sends is made for one server run or cannot be turned back into it.
 // The same file whatever CLAUDE_CONFIG_DIR says, so sessions with different ones still share a server.
+// With the Kiro Crew app it sits in the app's data folder, which the app's `credentialMasks` hides from Kiro Crew's sandbox; the app's start hook puts it there.
+// shortcut: the folder is found from KIROCREW_HOME, not from Kiro Crew's own data home; ask the gateway for it if Kiro Crew ever relocates it on its own.
+const kiroToken = () => join(kiroHome(), 'apps', NAME, 'data', 'web.token')
 function readToken() {
-  const path = process.env.AGENTMON_WEB_TOKEN_FILE || join(stateDir(), 'web.token')
+  const kiro = kiroToken()
+  const path = process.env.AGENTMON_WEB_TOKEN_FILE || (existsSync(kiro) ? kiro : join(stateDir(), 'web.token'))
   const read = () => {
     try {
       return readFileSync(path, 'utf8').trim()
@@ -60,6 +64,8 @@ function readToken() {
       return ''
     }
   }
+  // Never written here: in the sandbox that file is a mask, and a second name for it would unmask nothing but refuse every sandboxed start.
+  if (path === kiro && !TOKEN.test(read())) throw new Error(`no secret readable in ${path}`)
   if (!TOKEN.test(read())) {
     mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
     // Put in place whole: of two servers starting together, the second reads the first one's, never a half-written one.
@@ -130,7 +136,7 @@ function reply(res, status, type, body, extra = {}) {
 
 const forbid = res => reply(res, 403, 'text/plain', 'forbidden')
 
-// Kiro Crew's gateway hands its dashboard's visitors on to this app under /api/, each request signed with the app's secret and a fresh nonce.
+// Kiro Crew's gateway hands its dashboard's visitors on to the backend it spawned under /api/, each request signed with the app's secret and a fresh nonce.
 // shortcut: only bodiless requests pass, which is all the page sends; hash the body when a proxied request carries one.
 const EMPTY_SHA = createHash('sha256').update('').digest('hex')
 const KEEP_NONCES = 1000
@@ -139,12 +145,7 @@ export function isKiroProxy(req, seen, now = Date.now()) {
   const nonce = String(req.headers['x-kirocrew-proxy-nonce'] ?? '')
   if (!/^\d+$/.test(ts) || !/^[0-9a-f]{32}$/.test(nonce) || Math.abs(now / 1000 - Number(ts)) > 60 || seen.has(nonce)) return false
   if (Number(req.headers['content-length'] ?? 0) > 0 || req.headers['transfer-encoding']) return false
-  let secret
-  try {
-    secret = readFileSync(join(kiroHome(), 'apps', NAME, '.app_secret'), 'utf8').trim()
-  } catch {
-    return false
-  }
+  const secret = (process.env.KIROCREW_PROXY_SECRET ?? '').trim()
   if (!secret || !isSame(mac, sign(secret, `v2:${ts}:${nonce}:${req.method}:${req.url}:${EMPTY_SHA}`))) return false
   if (seen.size >= KEEP_NONCES) seen.delete(seen.values().next().value)
   seen.add(nonce)
@@ -175,6 +176,7 @@ function serve(port, fixture, isOpen) {
   const [boot, key, mark] = [16, 32, 32].map(n => randomBytes(n).toString('hex'))
   // What a tab keeps: good for this port and this run only, so a pass a tab sends to a program that took the port later opens no other run; no way back to the secret.
   const pass = isLocked ? sign(token, `browser:${port}:${boot}`) : ''
+  const relayProof = isLocked ? sign(token, `relay:${port}:${boot}`) : ''
   const tickets = new Map()
   const isSession = (req, res) => {
     if (!isLocked) return true
@@ -225,12 +227,12 @@ function serve(port, fixture, isOpen) {
 
   if (fixture) sessions.set('fixture', { json: JSON.stringify(JSON.parse(readFileSync(fixture, 'utf8'))), at: Infinity })
 
-  const nonces = new Set()
   const server = createServer((req, res) => {
     if (!isOurHost(req.headers.host, port)) return forbid(res)
-    // The gateway already let this visitor into its dashboard; that is the check here.
+    // The relay checked the gateway's signature, and the gateway already let this visitor into its dashboard.
     req.isProxied = (req.url ?? '').startsWith('/api/')
-    if (req.isProxied && !isKiroProxy(req, nonces)) return forbid(res)
+    // Without a lock, no proof to ask for: a browser always sends Origin on a POST, and the relay never does.
+    if (req.isProxied && (isLocked ? !isSame(req.headers['x-agentmon-relay'], relayProof) : req.headers.origin !== undefined)) return forbid(res)
     const [path, query = ''] = (req.isProxied ? req.url.slice('/api'.length) : (req.url ?? '/')).split('?')
     const isOwn = req.isProxied || isOwnPage(req, port)
 
@@ -486,6 +488,8 @@ async function ensure(startPort, isOpen) {
   }
   // Older files, or these files serving with no checks to a session that wants them; a session with `webToken: off` uses a checking server, so two settings never take turns replacing it.
   const isOlder = found => found.state === 'ours' && (found.stamp < mine || (found.stamp === mine && !found.isLocked && !isOpen))
+  // A secret that cannot be read here (Kiro Crew's sandbox masks it) proves nothing to any server, and starts none that could run.
+  if (!isOpen && !secret()) return 1
   for (let port = startPort; port < startPort + PORT_TRIES; port += 1) {
     let found = await probe(port)
     // shortcut: an older session that finds the port free in this gap can win it; the next ensure from a newer session replaces that server.
@@ -517,6 +521,52 @@ async function ensure(startPort, isOpen) {
     }
   }
   return 1
+}
+
+// Kiro Crew's backend: its sandbox hides the crew log, so it hands the tab on to the server outside it, which the app's hook started.
+// shortcut: the relay never starts that server itself, since one started in the sandbox cannot see the crew log; the hook or a Claude Code session starts it.
+export function relay(port, upstream = 47311) {
+  const nonces = new Set()
+  // The first server from `upstream` on that proves it holds the account's secret: any program can say it is ours, and what it answers runs in the dashboard's origin.
+  // shortcut: a server without the lock proves nothing, so it counts only when the gateway set AGENTMON_WEB_OPEN=1 for the relay too.
+  const find = async token => {
+    for (let at = upstream; at < upstream + PORT_TRIES; at += 1) {
+      const found = await probe(at)
+      if (found.state !== 'ours') continue
+      if (found.isLocked ? await handshake(at, found.boot, token) : process.env.AGENTMON_WEB_OPEN === '1') return { port: at, boot: found.boot }
+    }
+    return undefined
+  }
+  let up
+  const server = createServer(async (req, res) => {
+    if (req.method === 'GET' && req.url === '/health') return reply(res, 200, 'application/json', JSON.stringify({ name: NAME, relay: upstream }))
+    if (!(req.url ?? '').startsWith('/api/') || !isKiroProxy(req, nonces)) return forbid(res)
+    const down = () => {
+      up = undefined
+      if (!res.headersSent) reply(res, 502, 'text/plain', "AgentMon Live's server is not running")
+    }
+    try {
+      const token = readToken()
+      up ??= await find(token)
+      if (!up) return down()
+      const headers = { host: `127.0.0.1:${up.port}`, 'x-agentmon-relay': sign(token, `relay:${up.port}:${up.boot}`) }
+      for (const name of ['accept', 'content-type']) if (req.headers[name]) headers[name] = req.headers[name]
+      const out = request({ host: '127.0.0.1', port: up.port, path: req.url, method: req.method, headers, agent: false }, answer => {
+        if (answer.statusCode === 403) up = undefined
+        res.writeHead(answer.statusCode, answer.headers)
+        answer.pipe(res)
+      })
+      out.on('error', down)
+      res.on('close', () => out.destroy())
+      out.end()
+    } catch {
+      down()
+    }
+    return undefined
+  })
+  server.on('error', () => process.exit(1))
+  server.listen(port, '127.0.0.1')
+  return server
 }
 
 // An SSH shell has no DISPLAY even when the person has a desktop session on this machine; systemd knows that session's.
@@ -553,7 +603,7 @@ if (isMain()) {
   const [mode, arg, ...flags] = process.argv.slice(2)
   const isOpen = flags.includes('--open')
   // Kiro Crew starts an app's backend with no arguments and the port in PORT.
-  if (mode === undefined && process.env.PORT) serve(Number(process.env.PORT), undefined, process.env.AGENTMON_WEB_OPEN === '1')
+  if (mode === undefined && process.env.PORT) relay(Number(process.env.PORT))
   else if (mode === 'serve') serve(Number(arg), flags[0] === '--fixture' ? flags[1] : undefined, isOpen)
   else if (mode === 'ensure') process.exit(await ensure(Number(arg), isOpen))
   else if (mode === 'open') process.exit(await open(arg))

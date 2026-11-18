@@ -1,6 +1,6 @@
 {
   "name": "agentmon-live",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "displayName": "AgentMon Live",
   "iconPath": ".claude-plugin/icon.png",
   "heroImage": "docs/kiro/hero.png",
@@ -11,10 +11,11 @@
   "minKiroCrewVersion": "0.12.0",
   "tags": ["agents", "observability", "dashboard", "monitoring", "terminal"],
   "platform": { "os": ["macos", "linux"] },
+  "credentialMasks": ["web.token"],
   "backend": {
     "entryPoint": "server/web.mjs",
     "type": "node",
-    "port": "47311",
+    "port": "auto",
     "healthCheck": "/health",
     "hooks": {
       "on_startup": "kiro.hooks:on_startup",

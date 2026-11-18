@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -73,9 +73,9 @@ test('the Kiro Crew app names files that exist and carries the plugin version', 
   assert.equal(app.version, JSON.parse(readFileSync(join(ROOT, '.claude-plugin/plugin.json'), 'utf8')).version)
   for (const hook of Object.values(app.backend.hooks)) assert.ok(existsSync(join(ROOT, `${hook.split(':')[0].replaceAll('.', '/')}.py`)), hook)
   for (const entry of [app.ui.entry, ...app.contributes.panelTabs.map(t => t.entry)]) assert.ok(existsSync(join(ROOT, 'ui', entry)), entry)
-  // The gateway adopts the server the hook started on this port, and proxies the tab to it.
   assert.ok(existsSync(join(ROOT, app.backend.entryPoint)), app.backend.entryPoint)
-  assert.match(readFileSync(join(ROOT, 'kiro/hooks.py'), 'utf8'), new RegExp(`^PORT = ${app.backend.port}$`, 'm'))
+  // The gateway spawns no backend on a fixed port outside 9100-9200; the relay it spawns reaches the hook's server on 47311.
+  assert.equal(app.backend.port, 'auto')
   assert.match(readFileSync(join(ROOT, 'ui/panel.mjs'), 'utf8'), new RegExp(`'/apps/${app.name}/api/'`))
   // Kiro Crew's store and library show these from the repo; a path that moved leaves a blank card.
   for (const art of [app.iconPath, app.heroImage, ...app.screenshots]) assert.ok(existsSync(join(ROOT, art)), art)
@@ -99,8 +99,47 @@ test('the start hook writes the host file and the stop hook removes only its own
   rmSync(file)
 })
 
-test('started as Kiro Crew starts a backend, with no arguments and PORT set, the server serves', async () => {
+test('started as Kiro Crew starts a backend, with no arguments and PORT set, the relay serves', async () => {
   const port = 47491
-  children.push(spawn(process.execPath, [join(ROOT, 'server/web.mjs')], { env: { ...process.env, PORT: String(port), AGENTMON_WEB_OPEN: '1', AGENTMON_KIRO_FILE: join(dir, 'none.json'), KIROCREW_HOME: join(dir, 'none'), CODEX_HOME: join(dir, 'none') }, stdio: 'ignore' }))
+  children.push(spawn(process.execPath, [join(ROOT, 'server/web.mjs')], { env: { ...process.env, PORT: String(port) }, stdio: 'ignore' }))
   assert.ok(await until(async () => (await get(port, '/health').catch(() => undefined))?.statusCode === 200), 'no server')
+})
+
+test('the start hook moves the web view\'s secret into the masked data folder, keeping its value', { skip: spawnSync('python3', ['--version']).status !== 0 }, () => {
+  const home = mkdtempSync(join(dir, 'token-'))
+  const data = join(home, 'data')
+  const run = code => spawnSync('python3', ['-c', `import importlib.util\nspec = importlib.util.spec_from_file_location('h', ${JSON.stringify(join(ROOT, 'kiro/hooks.py'))})\nh = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(h)\n${code}`], { env: { ...process.env, AGENTMON_KIRO_FILE: join(home, 'kiro.json') }, encoding: 'utf8' })
+  const old = 'ab'.repeat(32)
+  writeFileSync(join(home, 'web.token'), old)
+  assert.equal(run(`h.place_token(${JSON.stringify(data)})`).status, 0)
+  assert.equal(readFileSync(join(data, 'web.token'), 'utf8'), old)
+  assert.equal(statSync(join(data, 'web.token')).mode & 0o777, 0o600)
+  assert.equal(existsSync(join(home, 'web.token')), false, 'the copy the sandbox can read is gone')
+  writeFileSync(join(data, 'web.token'), 'cd'.repeat(32))
+  run(`h.place_token(${JSON.stringify(data)})`)
+  assert.equal(readFileSync(join(data, 'web.token'), 'utf8'), 'cd'.repeat(32), 'a placed secret stays')
+  rmSync(join(data, 'web.token'))
+  run(`h.place_token(${JSON.stringify(data)})`)
+  assert.match(readFileSync(join(data, 'web.token'), 'utf8'), /^[0-9a-f]{64}$/)
+})
+
+test('with the app\'s secret in place, sessions use it and leave none in ~/.claude; a masked one starts nothing', () => {
+  const home = mkdtempSync(join(dir, 'home-'))
+  const crew = join(home, '.kiro', 'crew')
+  const data = join(crew, 'apps', 'agentmon-live', 'data')
+  mkdirSync(data, { recursive: true })
+  const env = { ...process.env, HOME: home, KIROCREW_HOME: crew, CODEX_HOME: join(home, 'none'), AGENTMON_KIRO_FILE: join(home, 'none.json'), AGENTMON_WEB_IDLE_MS: '300', AGENTMON_WEB_SWEEP_MS: '50' }
+  delete env.AGENTMON_WEB_TOKEN_FILE
+  const legacy = join(home, '.claude', 'agentmon-live', 'web.token')
+  // In the sandbox the file is there but reads empty.
+  writeFileSync(join(data, 'web.token'), '')
+  const begun = Date.now()
+  assert.equal(spawnSync(process.execPath, [join(ROOT, 'server/web.mjs'), 'ensure', '47496'], { env, encoding: 'utf8' }).status, 1)
+  assert.ok(Date.now() - begun < 2000, 'gives up at once, with no server started to wait for')
+  assert.equal(existsSync(legacy), false)
+  writeFileSync(join(data, 'web.token'), 'ef'.repeat(32))
+  const ok = spawnSync(process.execPath, [join(ROOT, 'server/web.mjs'), 'ensure', '47496'], { env, encoding: 'utf8' })
+  assert.equal(ok.status, 0, ok.stderr)
+  assert.match(ok.stdout, /"port":47496/)
+  assert.equal(existsSync(legacy), false)
 })
