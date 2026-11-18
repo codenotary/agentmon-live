@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
-import { answer, feedbackLink, isNewer, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
+import { answer, dur, feedbackLink, isNewer, opener, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
 import { foldRollout, readCodex } from '../../server/codex.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
@@ -293,4 +293,15 @@ test('the MCP server outlives a line that is not a message', () => {
   const input = ['null', '7', '{"jsonrpc":"2.0","id":1,"method":"ping"}', ''].join('\n')
   const r = spawnSync(process.execPath, [join(ROOT, 'codex/mcp.mjs'), 'serve'], { input, encoding: 'utf8', env: { ...process.env, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' }, timeout: 10_000 })
   assert.deepEqual(JSON.parse(r.stdout), { jsonrpc: '2.0', id: 1, result: {} })
+})
+
+test('a subagent that went idle stays listed, times round to whole seconds, and each platform has its opener', () => {
+  const s = foldRollout(entries, NOW).snapshot
+  const child = { ...s, session: { id: 'child', parent: SID, agent: 'Darwin' }, active: [] }
+  const found = {}
+  const read = chats => words(JSON.parse(answer({ method: 'resources/read', params: { uri: PANE_URI, _meta: { 'com.openai/codex-sidebar-state': { thread: { id: SID } } } } }, () => chats, new Set(), found).contents[0].text))
+  assert.match(read([[SID, s], ['child', child]]), /Agents \(1\)\n✓ Darwin/)
+  assert.match(read([[SID, s]]), /Agents \(1\)\n✓ Darwin/)
+  assert.deepEqual([dur(119_700), dur(59_600), dur(8_400)], ['2m00s', '1m00s', '8s'])
+  assert.deepEqual([opener('darwin')[0], opener('win32')[0], opener('linux')[0]], ['open', 'cmd', 'xdg-open'])
 })

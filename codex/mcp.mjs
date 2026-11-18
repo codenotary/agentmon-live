@@ -104,7 +104,11 @@ const level = pct => (pct >= 85 ? 'red' : pct >= 60 ? 'yellow' : 'green')
 const gauge = (label, pct) => ({ type: 'gauge', label, ratio: pct / 100, color: level(pct) })
 const KIND_COLORS = ['cyan', 'magenta', 'yellow', 'green', 'blue', 'red']
 
-const dur = ms => (ms >= 60_000 ? `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s` : secs(ms))
+// Rounded to whole seconds first, so no time reads `1m60s`.
+export const dur = ms => {
+  const s = Math.round(ms / 1000)
+  return s >= 60 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s` : `${s}s`
+}
 const pie = buckets => {
   const total = Object.values(buckets).reduce((n, ms) => n + ms, 0)
   // A slice under 1% is not drawn: it would read as 0%.
@@ -129,7 +133,7 @@ export function paneTree(snapshot, dismissed = new Set(), { chats = [], release 
   out.push(box('Now', snapshot.active.length === 0 ? [line(paint('blue', 'idle'))] : snapshot.active.slice(0, 3).map(a => line(paint('yellow', '◉ ', true), paint(undefined, `${a.tool} `, true), one(a.what)))))
   const agents = chats.map(([, s]) => s).filter(s => s.session.parent === snapshot.session.id)
   if (agents.length > 0) {
-    out.push(box(`Agents (${agents.length})`, agents.flatMap(a => {
+    out.push(box(`Agents (${agents.length})`, agents.slice(-RECENT).flatMap(a => {
       const doing = a.active[0]
       const last = doing ?? a.trace.at(-1)
       return [
@@ -238,9 +242,20 @@ function watchRelease(found) {
   setInterval(look, RELEASE_MS).unref()
 }
 
+export const opener = platform => (platform === 'darwin' ? ['open', [WEB]] : platform === 'win32' ? ['cmd', ['/c', 'start', '', WEB]] : ['xdg-open', [WEB]])
+
 function openWeb() {
-  const [cmd, args] = process.platform === 'darwin' ? ['open', [WEB]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', WEB]] : ['xdg-open', [WEB]]
+  const [cmd, args] = opener(process.platform)
   spawn(cmd, args, { detached: true, stdio: 'ignore' }).on('error', () => {}).unref()
+}
+
+// A subagent's chat leaves the list once idle, while its parent still works: the last snapshot seen of each stays.
+// shortcut: kept for the life of this server process and never dropped; prune by age if a server outlives thousands of subagents.
+function withSeen(all, found) {
+  found.agents ??= new Map()
+  for (const [id, s] of all) if (s.session.parent) found.agents.set(id, s)
+  const live = new Set(all.map(([id]) => id))
+  return [...[...found.agents].filter(([id]) => !live.has(id)), ...all]
 }
 
 export function answer(msg, chats, dismissed = new Set(), found = {}) {
@@ -253,7 +268,7 @@ export function answer(msg, chats, dismissed = new Set(), found = {}) {
     const chat = () => pickChat(chats(), threadOf(params._meta))
     if (params.uri === PANE_URI) {
       const all = chats()
-      const tree = paneTree(pickChat(all, threadOf(params._meta)), dismissed, { chats: all, release: found.release })
+      const tree = paneTree(pickChat(all, threadOf(params._meta)), dismissed, { chats: withSeen(all, found), release: found.release })
       return { contents: [{ uri: PANE_URI, mimeType: 'application/json', text: JSON.stringify(tree) }] }
     }
     if (params.uri !== STATUSLINE_URI) throw Object.assign(new Error(`unknown resource ${params.uri}`), { code: -32002 })
@@ -266,7 +281,7 @@ export function answer(msg, chats, dismissed = new Set(), found = {}) {
     if (params.name === 'statusline') return { content: [{ type: 'text', text: statusText(pickChat(chats(), threadOf(params._meta)), dismissed) }] }
     if (params.name === 'pane') {
       const all = chats()
-      return { content: [{ type: 'text', text: words(paneTree(pickChat(all, threadOf(params._meta)), dismissed, { chats: all, release: found.release })) }] }
+      return { content: [{ type: 'text', text: words(paneTree(pickChat(all, threadOf(params._meta)), dismissed, { chats: withSeen(all, found), release: found.release })) }] }
     }
     if (params.name === 'web') {
       openWeb()
