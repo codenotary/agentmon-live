@@ -254,7 +254,9 @@ async function enter(): Promise<void> {
   const code = new URLSearchParams(location.search).get('c')
   if (code) history.replaceState(null, '', location.pathname + location.hash)
   const r = await fetch('/enter', { method: 'POST', headers: code ? { 'x-agentmon-code': code } : {} }).catch(() => undefined)
-  if (r && (r.status === 403) !== state.isRefused) set({ isRefused: r.status === 403 })
+  // A server that cannot be reached is down, not refusing.
+  const isRefused = r?.status === 403
+  if (isRefused !== state.isRefused) set({ isRefused })
   if (r?.ok) {
     pass = ((await r.json()) as { pass: string }).pass
     save(PASS_KEY, pass)
