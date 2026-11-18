@@ -184,7 +184,7 @@ export function App() {
       <div className="flex flex-col lg:flex-row">
       {sections.length ? <Nav sections={sections} label={p.jumpTo} /> : null}
       <main className="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-[26px] pb-10 sm:px-8" data-no-signal={isStopped || undefined}>
-        {st.isDown ? <div className="panel !border-bad bg-bad-soft px-3.5 py-2.5 text-[13px] text-bad" role="status">{p.disconnected}{s ? <> <LastUpdate s={s} p={p} className="lg:hidden" /></> : null}</div> : null}
+        {st.isDown ? <div className="panel !border-bad bg-bad-soft px-3.5 py-2.5 text-[13px] text-bad" role="status">{st.isRefused ? p.refused : p.disconnected}{s ? <> <LastUpdate s={s} p={p} className="lg:hidden" /></> : null}</div> : null}
         {s && !st.isDown && isStopped ? <div className="panel flex flex-wrap items-center gap-x-3 gap-y-1 !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status" data-testid="silent-banner">{p.sessionSilent} <LastUpdate s={s} p={p} className="lg:hidden" /><button type="button" className="ml-auto underline" data-testid="dismiss" onClick={() => dismiss(s.session.id)}>{p.dismiss}</button></div> : null}
         {s && !isCurrent ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status">{p.update}</div> : null}
         {!s && !st.isDown ? <Standby text={p.noSessions} /> : null}

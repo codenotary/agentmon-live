@@ -115,7 +115,7 @@ export function mask(s) {
 }
 // Log text goes to the page masked; the first cut keeps the scan cheap on a large input.
 export const cut = text => mask(String(text ?? '').slice(0, 2000)).slice(0, CUT)
-const lines = text => text.split('\n').flatMap(line => {
+export const lines = text => text.split('\n').flatMap(line => {
   // The last line may be half written, and the crew log's own rule is to skip a line that does not parse.
   try {
     return line.trim() ? [JSON.parse(line)] : []

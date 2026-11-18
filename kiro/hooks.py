@@ -63,6 +63,11 @@ def write_state(pid, port):
     os.replace(tmp, STATE)
 
 
+def ensure_args(node):
+    # AGENTMON_WEB_OPEN=1 is `webToken: off` for a gateway with no Claude Code settings: any local process may read the sessions.
+    return [node, str(ROOT / "server" / "web.mjs"), "ensure", str(PORT)] + (["--open"] if os.environ.get("AGENTMON_WEB_OPEN") == "1" else [])
+
+
 def on_startup(ctx=None):
     log = getattr(ctx, "logger", None)
     try:
@@ -73,7 +78,7 @@ def on_startup(ctx=None):
                 log.warning("AgentMon Live: no node found; install Node.js and enable the app again")
             return
         # Not waited for: the gateway's event loop runs this hook, and `ensure` can take seconds when it replaces an older server.
-        subprocess.Popen([node, str(ROOT / "server" / "web.mjs"), "ensure", str(PORT)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        subprocess.Popen(ensure_args(node), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         if log:
             log.info("AgentMon Live: web view asked for on http://127.0.0.1:%s", PORT)
     except Exception as error:  # Kiro Crew must start whatever happens here.

@@ -90,6 +90,7 @@ Then turn it on in Kiro Crew:
 - **What you see:** turns with their time split, tool calls with duration and result, waiting approvals and time blocked on you, subagents and the files they wrote, events and insights, the task list, the context gauge, prompts and answers. kiro-cli reports credits, so the cost tile reads **Credits** and tokens stay empty.
 - **Verification:** the last test, lint, typecheck and build command of the chat, each ok, failed or unknown. Kiro Crew's log holds no output, so there are no test counts.
 - **What stays empty:** the done gate, Focus and learning. Those come from the plugin inside a Claude Code session.
+- **Kiro Crew on another machine:** forward both ports and log in as the account that runs Kiro Crew there: `ssh -L 5476:127.0.0.1:5476 -L 47311:127.0.0.1:47311 <user>@<host>`. The server only lets in a browser of its own account, so from any other login the tab says it may not read the sessions. If Kiro Crew runs as a service of its own account, set `AGENTMON_WEB_UIDS=<id -u of your login>` in its environment; in a container, `AGENTMON_WEB_OPEN=1` turns the check off, and any local process can then read the sessions. Restart Kiro Crew and stop a running server (`pkill -f 'web.mjs serve'`) for either to take effect.
 - **To remove it:** `kirocrew app uninstall agentmon-live`.
 
 The [guide](docs/guide.md#web-view) has the rest, including a registry install from Kiro Crew's settings.
@@ -110,11 +111,16 @@ codex plugin marketplace add codenotary/agentmon-live
 codex plugin add agentmon-live@agentmon-live
 ```
 
-Codex runs a plugin's hook only after you trust it: open `/hooks` in Codex and trust AgentMon Live's `SessionStart` hook. It is one line in [`codex/hooks.json`](codex/hooks.json) that starts the web view's server. Then open `http://127.0.0.1:47311/`.
+Codex runs a plugin's hook only after you trust it: open `/hooks` in Codex and trust AgentMon Live's `SessionStart` and `Stop` hooks, both in [`codex/hooks.json`](codex/hooks.json). The first starts the web view's server, the second is the done gate. Then open `http://127.0.0.1:47311/`.
+
+- **Done gate:** when Codex is about to stop and a test, lint, typecheck or build failed after this turn's first code edit, or ran before its last one, the `Stop` hook sends Codex back once with what is open.
+- **Status line:** needs Codex 0.171 or later with `[features] tui_extensions_statusline = true` in `~/.codex/config.toml`; then pick AgentMon Live in `/statusline`. The line under the prompt shows open gate items, the latest checks, context and the 5-hour limit.
+- **Pane:** a Codex build with the `tui_extensions_sidebar` feature shows the pane as an AgentMon tab in Codex's sidebar: open items, the running call, subagents, changes and checks, insights with a pie of where the time went, recent calls, context and limits, a session log, and `w` to open the web view. Stock Codex has no sidebar for plugins; use the web view.
+- **Skill and feedback:** the `agentmon` skill gives the web view's link; the `feedback` tool makes a GitHub issue link you submit yourself.
 
 - **What you see:** turns with their time split, tool calls with duration and result, files read and edited, prompts and answers, tokens, the context gauge and your 5-hour and weekly limits.
 - **Verification:** the last test, lint, typecheck and build command of the chat, each ok, failed or unknown.
-- **What stays empty:** approvals, subagent cards, cost in dollars, the done gate and learning. The pane is part of Claude Code.
+- **What stays empty:** approvals, subagent cards, cost in dollars and learning. The pane is part of Claude Code.
 - **To remove it:** `codex plugin remove agentmon-live@agentmon-live`.
 
 The [guide](docs/guide.md#web-view) has the rest.
@@ -132,7 +138,7 @@ The pane needs the Claude Code terminal. The web view does not: any Claude Code 
 2. Run Claude Code as you do, for example `claude -p "..."`. The plugin starts the server and posts the session. There is nothing to set.
 3. Open `http://127.0.0.1:47311/` in a browser. On Linux and macOS you type nothing more. On Windows an address typed by hand shows no sessions: it needs the one-time code from `/agentmon open`, or `webToken: off`, which lets any local process read your sessions.
 
-On another machine, forward the port under the same number and open the same address: `ssh -L 47311:127.0.0.1:47311 <host>`.
+On another machine, forward the port under the same number and open the same address: `ssh -L 47311:127.0.0.1:47311 <user>@<host>`, where `<user>` is the account that runs Claude Code or Kiro Crew there.
 
 - **A session shows only while it runs.** The server stops a minute after the last one ends.
 - **A run of a few seconds with no tool call** can end before its first post and never show.

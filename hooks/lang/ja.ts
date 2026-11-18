@@ -11,6 +11,7 @@ export const ja: Strings = {
     noBrowser: url => `ここではブラウザーを開けませんでした。${url} を手動で開いてください。`,
     page: {
       disconnected: 'セッションサーバーとの接続が切れました。再試行しています…',
+      refused: 'サーバーはこのブラウザーがあなたのものか判断できないため、セッションを読めません。/agentmon open でページを開くか、SSH ではサーバーを動かしているアカウント（Kiro Crew または Claude Code）でログインしてください。',
       noSignal: '信号なし',
       kindWaiting: '待機中',
       kindMemory: 'メモリ',

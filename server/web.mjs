@@ -105,6 +105,11 @@ async function peerUid(socket) {
   return undefined
 }
 
+// The server's own account, and those named in AGENTMON_WEB_UIDS, such as the SSH login on a box where Kiro Crew runs as a service.
+export function allowedUids(text, own) {
+  return new Set([own, ...String(text ?? '').split(',').map(s => s.trim()).filter(s => /^\d+$/.test(s)).map(Number)])
+}
+
 // macOS has no /proc: lsof lists each process (`p`, `u`) and its sockets (`n`); the peer is the one holding this connection from the other end, never just a socket on the same port.
 export function uidFromLsof(text, selfPid, pair) {
   let pid
@@ -162,9 +167,10 @@ function serve(port, fixture, isOpen) {
   }
   const isSessionWrite = (req, res) => isWriteAllowed(req) && isSession(req, res)
   const isReader = (req, query = '') => !isLocked || isSame(req.headers['x-agentmon-pass'] ?? new URLSearchParams(query).get('p'), pass)
-  const isSameUser = async req => {
+  const uids = allowedUids(process.env.AGENTMON_WEB_UIDS, process.getuid?.())
+  const isAllowedUser = async req => {
     const uid = await peerUid(req.socket)
-    return uid !== undefined && uid === process.getuid()
+    return uid !== undefined && uids.has(uid)
   }
   // In memory, so a plugin update that removes this folder leaves a running server whole.
   const page = readFileSync(join(HERE, 'app.html'))
@@ -249,14 +255,14 @@ function serve(port, fixture, isOpen) {
       tickets.delete(code)
       const enter = () => reply(res, 200, 'application/json', JSON.stringify({ pass }))
       if (!isLocked || isInvited) return enter()
-      return void isSameUser(req).then(ok => (ok ? enter() : forbid(res))).catch(() => res.destroy())
+      return void isAllowedUser(req).then(ok => (ok ? enter() : forbid(res))).catch(() => res.destroy())
     }
     // A session asks what the browser must open. Where the kernel names the account behind a connection, the plain address does; elsewhere it carries a code.
     // shortcut: that code shows in the opener's arguments, which other accounts can list, and whoever uses it first gets the pass; hand it over in a file if Windows machines are shared.
     if (path === '/ticket' && req.method === 'POST') {
       if (!isSessionWrite(req, res)) return forbid(res)
       if (!isLocked) return reply(res, 200, 'application/json', '{}')
-      return void isSameUser(req).then(ok => {
+      return void isAllowedUser(req).then(ok => {
         if (ok) return reply(res, 200, 'application/json', '{}')
         const now = Date.now()
         for (const [c, until] of tickets) if (until <= now || tickets.size >= KEEP_TICKETS) tickets.delete(c)

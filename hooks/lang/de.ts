@@ -11,6 +11,7 @@ export const de: Strings = {
     noBrowser: url => `Hier ließ sich kein Browser öffnen. Öffne ${url} selbst.`,
     page: {
       disconnected: 'Verbindung zum Sitzungsserver getrennt. Neuer Versuch…',
+      refused: 'Der Server kann nicht erkennen, dass dieser Browser dir gehört, und gibt die Sitzungen nicht frei. Öffne die Seite mit /agentmon open, oder melde dich per SSH mit dem Konto an, unter dem der Server läuft (Kiro Crew oder Claude Code).',
       noSignal: 'kein Signal',
       kindWaiting: 'Wartet',
       kindMemory: 'Speicher',

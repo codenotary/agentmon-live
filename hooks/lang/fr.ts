@@ -11,6 +11,7 @@ export const fr: Strings = {
     noBrowser: url => `Impossible d'ouvrir un navigateur ici. Ouvrez ${url} vous-même.`,
     page: {
       disconnected: 'Déconnecté du serveur de session. Nouvelle tentative…',
+      refused: 'Le serveur ne peut pas savoir que ce navigateur est le vôtre : il ne peut pas lire les sessions. Ouvrez la page avec /agentmon open, ou par SSH connectez-vous avec le compte qui exécute le serveur (Kiro Crew ou Claude Code).',
       noSignal: 'pas de signal',
       kindWaiting: 'En attente',
       kindMemory: 'Mémoire',

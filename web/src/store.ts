@@ -31,6 +31,8 @@ export type Detail = Omit<Call, 'view'> & { view: string; ms?: number }
 export type { Trend } from './sessions.ts'
 export type State = SessionState & {
   isDown: boolean
+  // The server took this browser for another account's.
+  isRefused: boolean
   downAt: number
   // Sessions the server still lists that have posted nothing for too long.
   silent: ReadonlySet<string>
@@ -67,6 +69,7 @@ let state: State = {
   picked: load(PICK_KEY),
   shown: null,
   isDown: false,
+  isRefused: false,
   downAt: 0,
   silent: new Set(),
   onlyFailures: false,
@@ -251,6 +254,9 @@ async function enter(): Promise<void> {
   const code = new URLSearchParams(location.search).get('c')
   if (code) history.replaceState(null, '', location.pathname + location.hash)
   const r = await fetch('/enter', { method: 'POST', headers: code ? { 'x-agentmon-code': code } : {} }).catch(() => undefined)
+  // A server that cannot be reached is down, not refusing.
+  const isRefused = r?.status === 403
+  if (isRefused !== state.isRefused) set({ isRefused })
   if (r?.ok) {
     pass = ((await r.json()) as { pass: string }).pass
     save(PASS_KEY, pass)

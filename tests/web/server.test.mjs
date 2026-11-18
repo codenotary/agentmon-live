@@ -482,6 +482,12 @@ test('a tab of another account gets its pass only for a one-time code; one of th
   assert.equal((await call(47431, '/ticket', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).text, '{}')
 })
 
+test('a browser of another account gets in only when AGENTMON_WEB_UIDS names it', async () => {
+  const { allowedUids } = await import('../../server/web.mjs')
+  assert.deepEqual([...allowedUids(undefined, 1000)], [1000])
+  assert.deepEqual([...allowedUids(' 1001, x,1002,,-3', 1000)], [1000, 1001, 1002])
+})
+
 test('ensure answers the run\'s key, not the secret, which it keeps in a file only the account reads', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'agentmon-token-'))
   const file = join(dir, 'made', 'web.token')
