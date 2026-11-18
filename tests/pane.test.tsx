@@ -403,7 +403,7 @@ async function starAfter($: Parameters<TestBody>[0], on: On, count: number, opti
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await clock.settle()
   const ui = await $.ui.mount(PANE)
-  const link = await ui.find({ type: 'Link', text: /star/ })
+  const link = await ui.find({ type: 'Button', text: /★/ })
   await ui.unmount()
   expect(store.get('starCount')).toBe(count + 1)
   return Boolean(link)

@@ -392,6 +392,13 @@ function fakeOpener(xdgBody, systemdOut) {
   return { dir, env: { ...env, PATH: dir } }
 }
 
+test('open takes the star page', { skip: process.platform !== 'linux' }, () => {
+  const { dir, env } = fakeOpener('echo "$1" > $OUT', '')
+  const r = spawnSync(process.execPath, [WEB, 'open', 'https://github.com/codenotary/agentmon-live'], { env, encoding: 'utf8' })
+  assert.equal(r.status, 0)
+  assert.equal(readFileSync(join(dir, 'out'), 'utf8').trim(), 'https://github.com/codenotary/agentmon-live')
+})
+
 test('over SSH, open finds the desktop session\'s display', { skip: process.platform !== 'linux' }, () => {
   const { dir, env } = fakeOpener('echo "$DISPLAY" > $OUT', 'HOME=/x\\nDISPLAY=:77\\n')
   const r = spawnSync(process.execPath, [WEB, 'open', 'http://127.0.0.1:47311/'], { env, encoding: 'utf8' })

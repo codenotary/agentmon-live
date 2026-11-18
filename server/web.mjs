@@ -577,9 +577,11 @@ function desktopEnv() {
   return { ...process.env, ...Object.fromEntries(found.map(m => [m[1], m[2]])) }
 }
 
+const STARS_URL = 'https://github.com/codenotary/agentmon-live'
+
 // The regex is what makes `cmd /c` safe here: it leaves no character the Windows shell would act on.
 function open(url) {
-  if (!/^http:\/\/127\.0\.0\.1:\d{1,5}\/?(\?c=[0-9a-f]{32})?$/.test(url ?? '')) return Promise.resolve(2)
+  if (url !== STARS_URL && !/^http:\/\/127\.0\.0\.1:\d{1,5}\/?(\?c=[0-9a-f]{32})?$/.test(url ?? '')) return Promise.resolve(2)
   const argv = process.platform === 'win32' ? ['cmd', '/c', 'start', '', url] : [process.platform === 'darwin' ? 'open' : 'xdg-open', url]
   return new Promise(resolve => {
     const child = spawn(argv[0], argv.slice(1), { detached: true, stdio: 'ignore', windowsHide: true, env: desktopEnv() })

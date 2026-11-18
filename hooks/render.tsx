@@ -11,7 +11,7 @@ import { stepRows, turnSpan } from './steps'
 import { BUCKET_COLOR, bucketName, cells, dur, focusList, liveBuckets, needsYou, shares, sparkline, topCounts } from './insights'
 import { learnedItems, lt, totals, typicalCompact } from './learn'
 import { droppedLines, editLine, isFlagged, lineText } from './testreview'
-import { openBrowser, setPane } from './web'
+import { openBrowser, openUrl, setPane } from './web'
 
 const main = atom({ plugin: 'agentmon-live', key: 'main' } as const, INIT.main)
 const tools = atom({ plugin: 'agentmon-live', key: 'tools' } as const, INIT.tools)
@@ -716,7 +716,11 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
           {t.feedback}
         </Button>
       )}
-      {cfg.feedback && cfg.isStarShown && <Link href={STARS_URL}>{t.star}</Link>}
+      {cfg.feedback && cfg.isStarShown && (
+        <Button key="star" plain hotkey="r" onPress={() => openUrl($, STARS_URL).then(isOpen => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(STARS_URL))))}>
+          {t.star}
+        </Button>
+      )}
       {release && (
         <Button key="update" plain hotkey="u" onPress={() => investigate(t.promptUpdate(cfg.version, release.version))}>
           {t.update}

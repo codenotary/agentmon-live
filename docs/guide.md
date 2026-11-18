@@ -61,7 +61,7 @@ Installing asks nothing. Ask Claude in chat ("hide the usage box", "switch Agent
 | `hiddenSections` | comma-separated dashboard sections to hide: `tasks`, `steps`, `insights`, `skills`, `advisor`, `changes`, `usage` | empty |
 | `learning` | `on` keeps what each session of a project shows (below); `off` keeps nothing | `on` |
 | `debugLog` | `on` writes each session's events to a debug log (below); `off` writes none | `on` |
-| `feedback` | `off` takes away the feedback button, the draft and the sending, and the star link | `on` |
+| `feedback` | `off` takes away the feedback button, the draft and the sending, and the star button (`r`) | `on` |
 | `feedbackIdentity` | An email or a GitHub handle that goes with feedback you send as yourself, so the makers can answer or credit you. Nothing checks it | empty |
 | `gitPollMinutes` | minutes between checks of the base branch (below); `0` turns the check off | `5` |
 | `gitFetch` | `true` runs `git fetch` for the base branch before each check; `false` compares against your last fetch | `false` |
