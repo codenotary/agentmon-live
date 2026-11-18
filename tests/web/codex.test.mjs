@@ -170,6 +170,9 @@ test('the MCP server lists a statusline tool Codex can find and reads the line a
   assert.equal(c.mimeType, 'application/json')
   assert.deepEqual(JSON.parse(c.text), { type: 'text', children: ['AgentMon · 1 open · test failed · ctx 25% · 5h 12% · http://127.0.0.1:47311/'] })
   assert.match(statusText(undefined), /no live Codex chat/)
+  const two = () => [...chats(), ['b', { ...chats()[0][1], session: { id: 'b' }, usage: { ctxPct: 70 }, turns: [{ startedAt: 1 }] }]]
+  const named = answer({ method: 'tools/call', params: { name: 'statusline', _meta: { 'com.openai/codex-statusline-state': { thread: { id: 'b' } } } } }, two)
+  assert.match(named.content[0].text, /ctx 70%/)
   assert.throws(() => answer({ method: 'resources/read', params: { uri: 'ui://other' } }, chats), /unknown resource/)
   assert.throws(() => answer({ method: 'nope' }, chats), /method not found/)
 })
@@ -180,6 +183,8 @@ test('the chat the status line shows is the one Codex names, else the one with t
   assert.equal(pickChat(chats, 'c'), chats[2][1])
   assert.equal(pickChat(chats, undefined), chats[1][1])
   assert.equal(pickChat([], undefined), undefined)
+  const sub = { session: { parent: 'gone' }, turns: [{ startedAt: 5 }] }
+  assert.equal(pickChat([['sub', sub]], undefined), sub)
 })
 
 test('feedback makes a link the person submits and sends nothing', () => {

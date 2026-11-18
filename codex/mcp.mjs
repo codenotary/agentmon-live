@@ -66,7 +66,10 @@ export const threadOf = meta => meta?.['com.openai/codex-statusline-state']?.thr
 export function pickChat(chats, threadId) {
   const hit = chats.find(([id]) => id === threadId)
   if (hit) return hit[1]
-  return chats.map(([, s]) => s).filter(s => !s.session?.parent).sort((a, b) => (a.turns.at(-1)?.startedAt ?? 0) - (b.turns.at(-1)?.startedAt ?? 0)).at(-1)
+  const all = chats.map(([, s]) => s)
+  const mains = all.filter(s => !s.session?.parent)
+  // A subagent still writing after its parent went quiet is the chat at work.
+  return (mains.length > 0 ? mains : all).sort((a, b) => (a.turns.at(-1)?.startedAt ?? 0) - (b.turns.at(-1)?.startedAt ?? 0)).at(-1)
 }
 
 // An item put away with the panel's x key, per chat. The Stop hook runs apart from this server and still asks once.
@@ -260,10 +263,10 @@ export function answer(msg, chats, dismissed = new Set(), found = {}) {
   if (method === 'tools/call') {
     const args = params.arguments ?? {}
     if (params.name === 'feedback') return { content: [{ type: 'text', text: feedbackLink(args) }] }
-    if (params.name === 'statusline') return { content: [{ type: 'text', text: statusText(pickChat(chats()), dismissed) }] }
+    if (params.name === 'statusline') return { content: [{ type: 'text', text: statusText(pickChat(chats(), threadOf(params._meta)), dismissed) }] }
     if (params.name === 'pane') {
       const all = chats()
-      return { content: [{ type: 'text', text: words(paneTree(pickChat(all), dismissed, { chats: all, release: found.release })) }] }
+      return { content: [{ type: 'text', text: words(paneTree(pickChat(all, threadOf(params._meta)), dismissed, { chats: all, release: found.release })) }] }
     }
     if (params.name === 'web') {
       openWeb()
