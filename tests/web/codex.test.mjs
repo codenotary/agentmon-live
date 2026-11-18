@@ -375,3 +375,29 @@ test('a subagent whose file went quiet with its turn open is done, not running',
   const [[, s]] = withAgents(readCodex(home, later, 60_000, cache), cache)
   assert.deepEqual([s.agents[0].status, s.active.some(a => a.agentId === 'kid')], ['done', false])
 })
+
+test('a subagent\'s own subagent draws in the top chat, one done before a restart is read again, and every edit counts', () => {
+  const home = mkdtempSync(join(tmpdir(), 'agentmon-codex-'))
+  const day = join(home, 'sessions/2026/11/10')
+  mkdirSync(day, { recursive: true })
+  const line = (time, type, payload) => JSON.stringify({ timestamp: `2026-11-10T10:${time}.000Z`, type, payload })
+  const rollout = (id, parent, path, own) => [line('00:30', 'session_meta', { id, cwd: '/w', parent_thread_id: parent, agent_path: path }), ...own].join('\n') + '\n'
+  const edit = (time, file) => [
+    line(time, 'response_item', { type: 'custom_tool_call', name: 'exec', call_id: `${file}${time}`, input: `*** Update File: ${file}` }),
+    line(time, 'event_msg', { type: 'item_completed', item: { type: 'FileChange', status: 'completed', changes: { [file]: {} } } }),
+    line(time, 'response_item', { type: 'custom_tool_call_output', call_id: `${file}${time}`, output: 'ok' }),
+  ]
+  const turn = (start, end, body) => [line(start, 'event_msg', { type: 'task_started' }), ...body, line(end, 'event_msg', { type: 'task_complete', duration_ms: 1000 })]
+  writeFileSync(join(day, `rollout-2026-11-10T10-00-00-${SID}.jsonl`), ROLLOUT)
+  writeFileSync(join(day, 'rollout-2026-11-10T10-00-30-kid.jsonl'), rollout('kid', SID, '/root/writer', turn('00:31', '00:40', [...edit('00:32', '/w/a.js'), ...edit('00:33', '/w/a.js')])))
+  const grandkid = join(day, 'rollout-2026-11-10T10-00-35-grandkid.jsonl')
+  writeFileSync(grandkid, rollout('grandkid', 'kid', '/root/writer/helper', turn('00:36', '00:38', [])))
+  // Done long before this server's first read.
+  utimesSync(grandkid, NOW / 1000 - 9000, NOW / 1000 - 9000)
+  const cache = new Map()
+  const chats = withAgents(readCodex(home, NOW, 60_000, cache), cache)
+  assert.deepEqual(chats.map(([id]) => id), [SID])
+  const [[, s]] = chats
+  assert.deepEqual(s.agents.map(a => [a.id, a.type, a.status]), [['kid', 'writer', 'done'], ['grandkid', 'helper', 'done']])
+  assert.equal(s.insights.edits['/w/a.js'], 2)
+})
