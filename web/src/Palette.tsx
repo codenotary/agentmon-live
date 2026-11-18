@@ -1,11 +1,12 @@
 import { Command } from 'cmdk'
-import { Copy, Filter, Monitor, Moon, MoveRight, PanelRightClose, PanelRightOpen, Sun, SwitchCamera } from 'lucide-react'
+import { Copy, Filter, LayoutGrid, Monitor, Moon, MoveRight, PanelRightClose, PanelRightOpen, Sun, SwitchCamera } from 'lucide-react'
 
 import type { WebSnapshot } from '../../types/index'
 import { sessionNames } from './format.ts'
+import { fill } from './kpi.ts'
 import type { Page } from './labels.ts'
 import { jumpTo, type Section } from './Nav.tsx'
-import { notify, pick, requestPane, set, setTheme, useStore } from './store.ts'
+import { chooseView, notify, pick, requestPane, set, setTheme, setView, useStore } from './store.ts'
 
 export async function copyText(text: string, done: string): Promise<void> {
   try {
@@ -39,6 +40,12 @@ export function Palette({ s, p, sections }: { s: WebSnapshot | undefined; p: Pag
         {st.sessions.size > 1 ? (
           <Command.Group heading={p.sessions}>
             {[...sessionNames(st.sessions)].map(([id, name]) => <Command.Item key={id} value={`${id} ${name}`} onSelect={run(() => pick(id))}><SwitchCamera size={14} aria-hidden />{name}</Command.Item>)}
+          </Command.Group>
+        ) : null}
+        {st.views.views.length ? (
+          <Command.Group heading={p.views}>
+            <Command.Item value={`view ${p.viewDefault}`} onSelect={run(() => setView(''))}><LayoutGrid size={14} aria-hidden />{p.viewDefault}</Command.Item>
+            {st.views.views.map(v => <Command.Item key={v.name} value={`view ${v.name}`} onSelect={run(() => chooseView(v.name, p.viewBroken))}><LayoutGrid size={14} aria-hidden />{fill(p.viewName, { name: v.name })}{v.error ? <span className="ml-auto text-bad">!</span> : null}</Command.Item>)}
           </Command.Group>
         ) : null}
         <Command.Group heading={p.jumpTo}>

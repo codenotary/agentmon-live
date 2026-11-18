@@ -312,7 +312,7 @@ function olderCopy() {
   const dir = mkdtempSync(join(tmpdir(), 'agentmon-old-'))
   cpSync(dirname(WEB), dir, { recursive: true })
   const then = new Date('2020-01-01')
-  for (const f of ['web.mjs', 'kiro.mjs', 'codex.mjs', 'spool.mjs', 'otlp.mjs', 'app.html']) utimesSync(join(dir, f), then, then)
+  for (const f of ['web.mjs', 'kiro.mjs', 'codex.mjs', 'spool.mjs', 'otlp.mjs', 'views.mjs', 'app.html']) utimesSync(join(dir, f), then, then)
   return join(dir, 'web.mjs')
 }
 const SHORT = { AGENTMON_WEB_TTL_MS: '500', AGENTMON_WEB_IDLE_MS: '500', AGENTMON_WEB_SWEEP_MS: '100' }
@@ -591,4 +591,20 @@ test('Kiro Crew\'s gateway reaches the page and the sessions under /api/, only w
   assert.equal((await raw(47490, '/api/enter', { method: 'POST', headers: { ...signed('POST', '/api/enter'), 'content-type': 'text/plain' }, body: 'x' })).status, 403)
   // Without the gateway nothing changed: this account's check still decides.
   assert.equal((await raw(47490, '/enter', { method: 'POST', headers: { origin: 'http://127.0.0.1:47490' } })).status, 403)
+})
+
+test('the views folder is sent on connect and again when a file changes', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'agentmon-home-'))
+  const dir = join(home, '.claude', 'agentmon-live', 'views')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'cost.json'), '{"sections":[]}')
+  startServer(47505, { HOME: home, AGENTMON_WEB_SWEEP_MS: '50' })
+  await waitUp(47505)
+  const views = text => [...text.matchAll(/event: views\ndata: (.*)\n/g)].map(m => JSON.parse(m[1]))
+  const first = readEvents(47505, text => views(text).length >= 2)
+  await new Promise(done => setTimeout(done, 200))
+  writeFileSync(join(dir, 'active'), 'cost')
+  const [before, after] = views(await first)
+  assert.deepEqual(before, { views: [{ name: 'cost', view: { sections: [] } }], active: '' })
+  assert.equal(after.active, 'cost')
 })

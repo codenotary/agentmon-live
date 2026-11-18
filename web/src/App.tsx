@@ -2,7 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { Component, memo, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 
-import type { WebSnapshot } from '../../types/index'
+import type { ViewBlock, WebSnapshot } from '../../types/index'
 
 import { CallDetail } from './CallDetail.tsx'
 import type { FeedEvent } from './events.ts'
@@ -21,6 +21,8 @@ import { Checks, Insights, Running, Tasks } from './panels/Side.tsx'
 import { Steps } from './panels/Steps.tsx'
 import { TurnClock } from './panels/TurnClock.tsx'
 import { Waterfall } from './panels/Waterfall.tsx'
+import { themeCss, viewOf } from './view.ts'
+import { ViewBlocks } from './ViewBlocks.tsx'
 import { currentOf, dismiss, getState, hasNoSignal, set, setCollapsed, useStore, type Trend } from './store.ts'
 import { LastUpdate, TopBar } from './TopBar.tsx'
 
@@ -53,7 +55,8 @@ class PartGuard extends Component<{ s: WebSnapshot; text: string; children: Reac
 const NO_EVENTS: FeedEvent[] = []
 
 // Skips the redraw when the store changed in a part no panel here reads through its props (a drag on the flow chart sets the store at pointer rate).
-const Part = memo(function Part({ view, s, l, p, events, trend }: { view: string; s: WebSnapshot; l: Labels; p: Page; events: FeedEvent[]; trend: Trend | undefined }) {
+const Part = memo(function Part({ view, blocks, s, l, p, events, trend }: { view: string; blocks?: ViewBlock[]; s: WebSnapshot; l: Labels; p: Page; events: FeedEvent[]; trend: Trend | undefined }) {
+  if (blocks) return <ViewBlocks blocks={blocks} s={s} l={l} p={p} events={events} trend={trend} />
   switch (view) {
     case 'calls':
       return (
@@ -123,7 +126,8 @@ export function App() {
   }, [s, isCurrent, isStopped])
   const p = useMemo(() => l?.page ?? pageOf(s), [l, s])
   const events = (s && st.events.get(s.session.id)) || NO_EVENTS
-  const sections = s && l ? sectionsOf(s, p, events) : []
+  const view = useMemo(() => viewOf(st.views, st.viewName), [st.views, st.viewName])
+  const sections = s && l ? sectionsOf(s, p, events, view) : []
   const isFirstDraw = useRef(true)
   const wasG = useRef(false)
 
@@ -141,6 +145,19 @@ export function App() {
     if (st.theme === 'auto') delete document.documentElement.dataset.theme
     else document.documentElement.dataset.theme = st.theme
   }, [st.theme])
+
+  // The view's colours as a sheet of their own, after the page's, so they win and the auto theme still follows the system.
+  const css = themeCss(view?.theme)
+  useEffect(() => {
+    // No view colours, no sheet: a browser without constructed sheets still draws the page.
+    if (!css) return
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(css)
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet]
+    return () => {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(x => x !== sheet)
+    }
+  }, [css])
 
   const isQuiet = st.isDown || st.silent.size > 0
   useEffect(() => {
@@ -188,7 +205,7 @@ export function App() {
         {s && !st.isDown && isStopped ? <div className="panel flex flex-wrap items-center gap-x-3 gap-y-1 !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status" data-testid="silent-banner">{p.sessionSilent} <LastUpdate s={s} p={p} className="lg:hidden" /><button type="button" className="ml-auto underline" data-testid="dismiss" onClick={() => dismiss(s.session.id)}>{p.dismiss}</button></div> : null}
         {s && !isCurrent ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status">{p.update}</div> : null}
         {!s && !st.isDown ? <Standby text={p.noSessions} /> : null}
-        {s && l ? <div key={s.session.id} className="fade-in flex min-w-0 flex-col gap-4">{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><PartGuard s={s} text={p.update}><Part view={x.id} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PartGuard></PageSection>)}</div> : null}
+        {s && l ? <div key={s.session.id} className="fade-in flex min-w-0 flex-col gap-4">{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><PartGuard s={s} text={p.update}><Part view={x.id} blocks={x.blocks} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PartGuard></PageSection>)}</div> : null}
       </main>
       </div>
       <Palette s={s} p={p} sections={sections} />

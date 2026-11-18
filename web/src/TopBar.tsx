@@ -5,7 +5,7 @@ import type { WebSnapshot } from '../../types/index'
 import { dur, sessionNames, stateOf, time } from './format.ts'
 import { fill } from './kpi.ts'
 import { labelsOf, type Page } from './labels.ts'
-import { hasNoSignal, pick, requestPane, set, setTheme, useClock, useStore, type State, type Theme } from './store.ts'
+import { chooseView, hasNoSignal, pick, requestPane, set, setTheme, useClock, useStore, type State, type Theme } from './store.ts'
 
 const NEXT: Record<Theme, Theme> = { auto: 'dark', dark: 'light', light: 'auto' }
 
@@ -73,6 +73,37 @@ function SessionPicker({ s, p, sessions }: { s: WebSnapshot; p: Page; sessions: 
   )
 }
 
+// Not a view name: those are a-z, 0-9 and -.
+const DEFAULT_ITEM = '(default)'
+
+// Shown once Claude wrote a view: the default page, then each file; a broken one says why instead of switching.
+function ViewPicker({ p }: { p: Page }) {
+  const st = useStore()
+  // A view whose file is gone draws the default page, and the menu says so.
+  const value = st.views.views.some(v => v.name === st.viewName && !v.error) ? st.viewName : DEFAULT_ITEM
+  return (
+    <Select.Root value={value} onValueChange={name => chooseView(name === DEFAULT_ITEM ? '' : name, p.viewBroken)}>
+      <Select.Trigger className="select-trigger" aria-label={p.views} title={p.views} data-testid="view-picker">
+        <span className="truncate"><Select.Value /></span>
+        <Select.Icon><ChevronDown size={14} className="flex-none text-ink-3" aria-hidden /></Select.Icon>
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Content className="select-menu" position="popper" sideOffset={4}>
+          <Select.Viewport>
+            {[{ name: DEFAULT_ITEM, label: p.viewDefault, error: undefined }, ...st.views.views.map(v => ({ name: v.name, label: v.name, error: v.error }))].map(v => (
+              <Select.Item key={v.name} value={v.name} className="select-item">
+                <Select.ItemIndicator className="select-check"><Check size={14} aria-hidden /></Select.ItemIndicator>
+                <Select.ItemText>{v.label}</Select.ItemText>
+                {v.error ? <span className="select-detail max-w-[32ch] truncate text-bad" title={v.error}>{v.error}</span> : null}
+              </Select.Item>
+            ))}
+          </Select.Viewport>
+        </Select.Content>
+      </Select.Portal>
+    </Select.Root>
+  )
+}
+
 export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
   const st = useStore()
   // Only a current snapshot is sure to hold these.
@@ -99,6 +130,7 @@ export function TopBar({ s, p }: { s: WebSnapshot | undefined; p: Page }) {
         {s && st.sessions.size > 1 ? <SessionPicker s={s} p={p} sessions={st.sessions} /> : s ? <span className="min-w-0 font-mono text-xs text-ink-2 [overflow-wrap:anywhere] lg:truncate">{whereOf(s)}</span> : null}
         {gate ? <span className={`font-mono text-[11px] whitespace-nowrap ${gate.ok ? 'text-good' : 'text-warn'}`} title={gate.text || undefined} data-testid="gate-chip">{gate.ok ? p.gatePassed : gate.isSent ? p.gateSent : p.gateOpen}</span> : null}
         <div className="ml-auto flex min-w-0 items-center gap-2">
+          {st.views.views.length ? <ViewPicker p={p} /> : null}
           {live?.isPaneOpen === undefined ? null : (
             <button type="button" className="icon-btn" aria-pressed={live.isPaneOpen} aria-label={live.isPaneOpen ? p.paneHide : p.paneShow} title={live.isPaneOpen ? p.paneHide : p.paneShow} data-testid="pane-toggle" onClick={() => requestPane(live.session.id, !live.isPaneOpen)}>
               {live.isPaneOpen ? <PanelRightClose size={14} aria-hidden /> : <PanelRightOpen size={14} aria-hidden />}

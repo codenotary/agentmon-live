@@ -312,6 +312,22 @@ export type WebSnapshot = {
   learned: { bench: BenchRow[] }
 }
 
+// A web view Claude writes to `~/.claude/agentmon-live/views/<name>.json`: the page draws it from its own catalog only. Pointers are JSON pointers into `WebSnapshot`.
+export type ViewPanel = 'Instruments' | 'Flow' | 'Waterfall' | 'TurnClock' | 'Events' | 'Running' | 'Steps' | 'Calls' | 'Insights' | 'Checks' | 'Tasks' | 'Agents' | 'Files' | 'Log'
+export type ViewFormat = 'usd' | 'count' | 'dur' | 'pct'
+export type ViewBlock =
+  | { panel: ViewPanel }
+  | { type: 'Row' | 'Column'; children: ViewBlock[] }
+  | { type: 'Card'; title?: string; children: ViewBlock[] }
+  | { type: 'Text'; text: string }
+  | { type: 'Stat'; label: string; value: string; format?: ViewFormat }
+  | { type: 'List'; label: string; items: string; field?: string; max?: number }
+  | { type: 'Sparkline'; label: string; points: string; field?: string }
+export type ViewSection = { id: string; label?: string; hidden?: boolean; blocks?: ViewBlock[] }
+export type WebView = { title?: string; theme?: { light?: Record<string, string>; dark?: Record<string, string> }; sections: ViewSection[] }
+// What the server sends as `views`: each file, or why it could not be read, and the one chosen from chat.
+export type ViewList = { views: { name: string; view?: unknown; error?: string }[]; active: string }
+
 declare module 'claude-code' {
   interface McpToolInputs {
     'mcp__agentmon-live__feedback': { type: string; text: string; details?: string }
