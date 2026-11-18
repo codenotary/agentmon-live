@@ -1,11 +1,11 @@
 import type { ViewAgg, ViewBlock, ViewColumn, ViewFormat, ViewLevels, ViewList, ViewNote, ViewPanel, ViewQuery, ViewSection, ViewTest, WebView } from '../../types/index'
-import { callTime, hhmm, kilo, levelOf, usdText, type Tone } from './format.ts'
+import { callTime, hhmm, kilo, levelOf, SECTION_KEYS, usdText, type Tone } from './format.ts'
 
 export const PANELS: readonly ViewPanel[] = ['Instruments', 'Flow', 'Waterfall', 'TurnClock', 'Events', 'Running', 'Steps', 'Calls', 'Insights', 'Checks', 'Tasks', 'Agents', 'Files', 'Log']
 // The colour tokens of `theme.css`; a test holds this list to that file.
 export const TOKENS: readonly string[] = ['--page', '--surface', '--surface-1', '--surface-2', '--surface-3', '--header', '--line', '--line-soft', '--line-input', '--ink', '--heading', '--ink-2', '--ink-3', '--signal', '--signal-bright', '--signal-soft', '--good', '--warn', '--bad', '--good-soft', '--warn-soft', '--bad-soft', '--info', '--info-line', '--ramp-1', '--ramp-2', '--ramp-3', '--ramp-4', '--ramp-5', '--ramp-other']
 // The page's own sections; `Nav.tsx` draws them in this order.
-export const BUILT_IN: readonly string[] = ['overview', 'calls', 'verification', 'agents', 'files', 'log']
+export const BUILT_IN: readonly string[] = Object.values(SECTION_KEYS)
 const FORMATS: readonly ViewFormat[] = ['usd', 'count', 'dur', 'pct', 'time']
 const AGGS: readonly ViewAgg[] = ['sum', 'avg', 'min', 'max', 'count']
 // Nothing that can end a declaration or open another rule: no `;`, `}`, `!`, quotes or nested parentheses.
@@ -31,9 +31,12 @@ export function pick(from: unknown, pointer: string): unknown {
   return at
 }
 
+export const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const isNone = (v: unknown) => v === undefined || v === null
+
 export function formatValue(v: unknown, format: ViewFormat | undefined): string {
   if (Array.isArray(v)) return format === 'count' ? kilo(v.length) : '—'
-  if (typeof v === 'number' && Number.isFinite(v)) {
+  if (isNumber(v)) {
     if (format === 'usd') return usdText(v)
     if (format === 'count') return kilo(v)
     // A call under a second keeps its milliseconds.
@@ -48,7 +51,6 @@ export function formatValue(v: unknown, format: ViewFormat | undefined): string 
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v)
-const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const text = (v: unknown) => (typeof v === 'string' ? v.slice(0, MAX_TEXT) : '')
 const pointer = (v: unknown) => (typeof v === 'string' && (v === '' || v.startsWith('/')) ? v.slice(0, MAX_TEXT) : undefined)
 const scalar = (v: unknown) => (typeof v === 'string' ? v.slice(0, MAX_TEXT) : typeof v === 'boolean' || isNumber(v) ? v : undefined)
@@ -75,9 +77,10 @@ const filtered = (s: unknown, rows: string, where: readonly ViewTest[] | undefin
 export function fold(items: readonly unknown[], field: string | undefined, how: ViewAgg): number | undefined {
   if (how === 'count') return items.length
   const n = items.map(i => pick(i, field ?? '')).filter(isNumber)
-  if (how === 'sum') return n.reduce((a, b) => a + b, 0)
+  const sum = n.reduce((a, b) => a + b, 0)
+  if (how === 'sum') return sum
   if (n.length === 0) return undefined
-  return how === 'avg' ? n.reduce((a, b) => a + b, 0) / n.length : how === 'min' ? Math.min(...n) : Math.max(...n)
+  return how === 'avg' ? sum / n.length : how === 'min' ? Math.min(...n) : Math.max(...n)
 }
 
 // A table's cells: the rows that pass `where`, one per `group` value when grouped, sorted, cut to `max`.
@@ -103,7 +106,7 @@ export function queryRows(s: unknown, q: ViewQuery, columns: readonly ViewColumn
     rows = rows
       .map(r => ({ r, v: cell(r, by) }))
       // What has no value goes last, whichever way the rest runs.
-      .sort((a, b) => (a.v === undefined || a.v === null ? 1 : b.v === undefined || b.v === null ? -1 : isNumber(a.v) && isNumber(b.v) ? (a.v - b.v) * turn : String(a.v).localeCompare(String(b.v)) * turn))
+      .sort((a, b) => (isNone(a.v) ? (isNone(b.v) ? 0 : 1) : isNone(b.v) ? -1 : isNumber(a.v) && isNumber(b.v) ? (a.v - b.v) * turn : String(a.v).localeCompare(String(b.v)) * turn))
       .map(x => x.r)
   }
   return rows.slice(0, q.max ?? 10).map(r => columns.map(c => cell(r, c)))
@@ -114,10 +117,10 @@ export function statValue(s: unknown, b: { value: string; field?: string; agg?: 
   return b.agg ? fold(filtered(s, b.value, b.where), b.field, b.agg) : pick(s, b.value)
 }
 
-// A Bars block's rows as `[name, value]`, largest first unless the file sorts them.
+// A Bars block's rows as `[name, value]`, largest first unless the file sorts them. A grouped bar goes by its group, whatever `name` says.
 export function barRows(s: unknown, b: Extract<ViewBlock, { type: 'Bars' }>): [string, number][] {
   const isGrouped = b.group !== undefined
-  const columns: ViewColumn[] = [{ label: 'name', field: b.name ?? '/key' }, { label: 'value', field: b.value ?? (isGrouped ? undefined : '/value'), agg: b.agg ?? (isGrouped ? 'count' : undefined) }]
+  const columns: ViewColumn[] = [{ label: 'name', field: isGrouped ? '/key' : b.name ?? '/key' }, { label: 'value', field: b.value ?? (isGrouped ? undefined : '/value'), agg: b.agg ?? (isGrouped ? 'count' : undefined) }]
   return queryRows(s, { ...b, sort: b.sort ?? 'value', desc: b.sort === undefined ? true : b.desc }, columns).flatMap(([name, value]) => (isNumber(value) ? [[formatValue(name, undefined), value] as [string, number]] : []))
 }
 
@@ -137,11 +140,12 @@ function shapeTests(raw: unknown): ViewTest[] | undefined {
   return tests.length ? tests : undefined
 }
 
+const rowCap = (max: unknown) => (isNumber(max) && max >= 1 ? Math.min(Math.floor(max), MAX_ROWS) : undefined)
+
 function shapeQuery(raw: Record<string, unknown>): ViewQuery | undefined {
   const rows = pointer(raw.rows)
   if (rows === undefined) return undefined
-  const max = isNumber(raw.max) && raw.max >= 1 ? Math.min(Math.floor(raw.max), MAX_ROWS) : undefined
-  return compact({ rows, where: shapeTests(raw.where), group: pointer(raw.group), sort: text(raw.sort) || undefined, desc: raw.desc === true ? true : undefined, max })
+  return compact({ rows, where: shapeTests(raw.where), group: pointer(raw.group), sort: text(raw.sort) || undefined, desc: raw.desc === true ? true : undefined, max: rowCap(raw.max) })
 }
 
 const levels = (raw: Record<string, unknown>): ViewLevels => ({ warnAt: number(raw.warnAt), badAt: number(raw.badAt) })
@@ -169,8 +173,7 @@ function shapeBlock(raw: unknown, depth: number, at: string, notes: ViewNote[]):
     }
     case 'List': {
       const items = need('items', pointer(raw.items))
-      const max = isNumber(raw.max) && raw.max >= 1 ? Math.min(Math.floor(raw.max), MAX_ROWS) : 10
-      return items === undefined ? undefined : { type: 'List', label: text(raw.label), items, field: pointer(raw.field), max }
+      return items === undefined ? undefined : { type: 'List', label: text(raw.label), items, field: pointer(raw.field), max: rowCap(raw.max) ?? 10 }
     }
     case 'Sparkline': {
       const points = need('points', pointer(raw.points))

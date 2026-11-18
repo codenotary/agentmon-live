@@ -9,12 +9,13 @@ var callTime = (ms) => ms === void 0 ? "" : Math.round(ms) < 1e3 ? `${Math.round
 var hhmm = (at) => new Date(at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 var usdText = (usd) => `$${usd.toFixed(2)}`;
 var kilo = (n) => n === void 0 ? "0" : n >= 999500 ? `${(n / 1e6).toFixed(1)}M` : n >= 99950 ? `${Math.round(n / 1e3)}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
+var SECTION_KEYS = { o: "overview", c: "calls", v: "verification", a: "agents", f: "files", l: "log" };
 var levelOf = (pct) => pct === void 0 ? "" : pct >= 80 ? "bad" : pct >= 60 ? "warn" : "good";
 
 // src/view.ts
 var PANELS = ["Instruments", "Flow", "Waterfall", "TurnClock", "Events", "Running", "Steps", "Calls", "Insights", "Checks", "Tasks", "Agents", "Files", "Log"];
 var TOKENS = ["--page", "--surface", "--surface-1", "--surface-2", "--surface-3", "--header", "--line", "--line-soft", "--line-input", "--ink", "--heading", "--ink-2", "--ink-3", "--signal", "--signal-bright", "--signal-soft", "--good", "--warn", "--bad", "--good-soft", "--warn-soft", "--bad-soft", "--info", "--info-line", "--ramp-1", "--ramp-2", "--ramp-3", "--ramp-4", "--ramp-5", "--ramp-other"];
-var BUILT_IN = ["overview", "calls", "verification", "agents", "files", "log"];
+var BUILT_IN = Object.values(SECTION_KEYS);
 var FORMATS = ["usd", "count", "dur", "pct", "time"];
 var AGGS = ["sum", "avg", "min", "max", "count"];
 var COLOUR = /^(#[0-9a-f]{3,8}|(rgba?|hsla?|oklch)\([\d.,%/\s+a-z-]*\))$/i;
@@ -36,9 +37,11 @@ function pick(from, pointer2) {
   }
   return at;
 }
+var isNumber = (v) => typeof v === "number" && Number.isFinite(v);
+var isNone = (v) => v === void 0 || v === null;
 function formatValue(v, format2) {
   if (Array.isArray(v)) return format2 === "count" ? kilo(v.length) : "\u2014";
-  if (typeof v === "number" && Number.isFinite(v)) {
+  if (isNumber(v)) {
     if (format2 === "usd") return usdText(v);
     if (format2 === "count") return kilo(v);
     if (format2 === "dur") return callTime(v);
@@ -49,7 +52,6 @@ function formatValue(v, format2) {
   return typeof v === "string" || typeof v === "boolean" ? String(v) : "\u2014";
 }
 var isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-var isNumber = (v) => typeof v === "number" && Number.isFinite(v);
 var text = (v) => typeof v === "string" ? v.slice(0, MAX_TEXT) : "";
 var pointer = (v) => typeof v === "string" && (v === "" || v.startsWith("/")) ? v.slice(0, MAX_TEXT) : void 0;
 var scalar = (v) => typeof v === "string" ? v.slice(0, MAX_TEXT) : typeof v === "boolean" || isNumber(v) ? v : void 0;
@@ -69,9 +71,10 @@ var filtered = (s, rows, where) => sourceRows(s, rows).filter((item) => (where ?
 function fold(items, field, how) {
   if (how === "count") return items.length;
   const n = items.map((i) => pick(i, field ?? "")).filter(isNumber);
-  if (how === "sum") return n.reduce((a, b) => a + b, 0);
+  const sum = n.reduce((a, b) => a + b, 0);
+  if (how === "sum") return sum;
   if (n.length === 0) return void 0;
-  return how === "avg" ? n.reduce((a, b) => a + b, 0) / n.length : how === "min" ? Math.min(...n) : Math.max(...n);
+  return how === "avg" ? sum / n.length : how === "min" ? Math.min(...n) : Math.max(...n);
 }
 function queryRows(s, q, columns) {
   const items = filtered(s, q.rows, q.where);
@@ -91,7 +94,7 @@ function queryRows(s, q, columns) {
   const by = columns.find((c) => c.label === q.sort) ?? (q.sort?.startsWith("/") ? { label: "", field: q.sort } : void 0);
   if (by) {
     const turn = q.desc ? -1 : 1;
-    rows = rows.map((r) => ({ r, v: cell(r, by) })).sort((a, b) => a.v === void 0 || a.v === null ? 1 : b.v === void 0 || b.v === null ? -1 : isNumber(a.v) && isNumber(b.v) ? (a.v - b.v) * turn : String(a.v).localeCompare(String(b.v)) * turn).map((x) => x.r);
+    rows = rows.map((r) => ({ r, v: cell(r, by) })).sort((a, b) => isNone(a.v) ? isNone(b.v) ? 0 : 1 : isNone(b.v) ? -1 : isNumber(a.v) && isNumber(b.v) ? (a.v - b.v) * turn : String(a.v).localeCompare(String(b.v)) * turn).map((x) => x.r);
   }
   return rows.slice(0, q.max ?? 10).map((r) => columns.map((c) => cell(r, c)));
 }
@@ -100,7 +103,7 @@ function statValue(s, b) {
 }
 function barRows(s, b) {
   const isGrouped = b.group !== void 0;
-  const columns = [{ label: "name", field: b.name ?? "/key" }, { label: "value", field: b.value ?? (isGrouped ? void 0 : "/value"), agg: b.agg ?? (isGrouped ? "count" : void 0) }];
+  const columns = [{ label: "name", field: isGrouped ? "/key" : b.name ?? "/key" }, { label: "value", field: b.value ?? (isGrouped ? void 0 : "/value"), agg: b.agg ?? (isGrouped ? "count" : void 0) }];
   return queryRows(s, { ...b, sort: b.sort ?? "value", desc: b.sort === void 0 ? true : b.desc }, columns).flatMap(([name, value]) => isNumber(value) ? [[formatValue(name, void 0), value]] : []);
 }
 function toneOf(v, b, isPercent = b.format === "pct") {
@@ -116,11 +119,11 @@ function shapeTests(raw) {
   });
   return tests.length ? tests : void 0;
 }
+var rowCap = (max) => isNumber(max) && max >= 1 ? Math.min(Math.floor(max), MAX_ROWS) : void 0;
 function shapeQuery(raw) {
   const rows = pointer(raw.rows);
   if (rows === void 0) return void 0;
-  const max = isNumber(raw.max) && raw.max >= 1 ? Math.min(Math.floor(raw.max), MAX_ROWS) : void 0;
-  return compact({ rows, where: shapeTests(raw.where), group: pointer(raw.group), sort: text(raw.sort) || void 0, desc: raw.desc === true ? true : void 0, max });
+  return compact({ rows, where: shapeTests(raw.where), group: pointer(raw.group), sort: text(raw.sort) || void 0, desc: raw.desc === true ? true : void 0, max: rowCap(raw.max) });
 }
 var levels = (raw) => ({ warnAt: number(raw.warnAt), badAt: number(raw.badAt) });
 function shapeBlock(raw, depth, at, notes) {
@@ -146,8 +149,7 @@ function shapeBlock(raw, depth, at, notes) {
     }
     case "List": {
       const items = need("items", pointer(raw.items));
-      const max = isNumber(raw.max) && raw.max >= 1 ? Math.min(Math.floor(raw.max), MAX_ROWS) : 10;
-      return items === void 0 ? void 0 : { type: "List", label: text(raw.label), items, field: pointer(raw.field), max };
+      return items === void 0 ? void 0 : { type: "List", label: text(raw.label), items, field: pointer(raw.field), max: rowCap(raw.max) ?? 10 };
     }
     case "Sparkline": {
       const points = need("points", pointer(raw.points));
@@ -263,6 +265,7 @@ export {
   barRows,
   fold,
   formatValue,
+  isNumber,
   notesOf,
   orderSections,
   pctOf,
