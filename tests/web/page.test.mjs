@@ -14,6 +14,7 @@ import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLeve
 import { labelsOf, lastKnown, PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, lanesIn, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
+import { formatValue, orderSections, pick, shapeView, themeCss, TOKENS, viewOf } from '../../web/src/view.ts'
 import { BUILT, builtHash, sourceHash } from '../../web/source-hash.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -809,4 +810,76 @@ test('the label-or-raw text of a call comes from callText, not from a copy of th
   const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? (e.name === 'node_modules' ? [] : walk(join(dir, e.name))) : /\.tsx?$/.test(e.name) ? [join(dir, e.name)] : []))
   const copies = [join(ROOT, 'hooks'), join(ROOT, 'web', 'src')].flatMap(walk).flatMap(f => readFileSync(f, 'utf8').split('\n').flatMap((line, i) => (/label \?\? (?!'')[^\n]{0,24}what/.test(line) && !line.includes('export const callText') ? [`${f.slice(ROOT.length + 1)}:${i + 1}`] : [])))
   assert.deepEqual(copies, [])
+})
+
+test('a view pointer reads the snapshot, escapes and all, and finds nothing outside it', () => {
+  const s = { usage: { usd: 1.5 }, active: [{ what: 'ls' }], 'a/b': { '~x': 3 } }
+  assert.equal(pick(s, '/usage/usd'), 1.5)
+  assert.equal(pick(s, '/active/0/what'), 'ls')
+  assert.equal(pick(s, '/a~1b/~0x'), 3)
+  assert.equal(pick(s, '/usage/missing'), undefined)
+  assert.equal(pick(s, '/active/0/what/length'), undefined)
+  assert.equal(pick(s, '/constructor'), undefined)
+  assert.equal(pick(s, 'usage'), undefined)
+  assert.equal(pick(s, ''), s)
+})
+
+test('a view value takes its format, and what is no value shows a dash', () => {
+  assert.equal(formatValue(1.234, 'usd'), '$1.23')
+  assert.equal(formatValue(12_500, 'count'), '12.5K')
+  assert.equal(formatValue([1, 2, 3], 'count'), '3')
+  assert.equal(formatValue(65_000, 'dur'), '1m 5s')
+  assert.equal(formatValue(41.6, 'pct'), '42%')
+  assert.equal(formatValue('main', undefined), 'main')
+  assert.equal(formatValue(undefined, 'usd'), '—')
+  assert.equal(formatValue({ a: 1 }, undefined), '—')
+})
+
+test('a view keeps what is in the catalog and drops the rest', () => {
+  const view = shapeView({
+    title: 'Cost',
+    theme: { dark: { '--signal': '#f97316', '--accent': '#fff', '--bad': 'red;}body{display:none', '--good': 'url(x)' }, light: { '--signal': 'rgb(194 65 12 / .9)' } },
+    sections: [
+      { id: 'overview' },
+      { id: 'cost', label: 'Cost', blocks: [{ type: 'Row', children: [{ type: 'Stat', label: 'Spend', value: '/usage/usd', format: 'usd' }, { type: 'Stat', label: 'x', value: 'usage' }, { type: 'Html', html: '<b>' }] }, { panel: 'Calls' }, { panel: 'Shell' }] },
+      { id: 'cost', label: 'again' },
+      { id: 'Bad Id' },
+      { id: 'log', hidden: true },
+    ],
+  })
+  assert.deepEqual(view.theme, { dark: { '--signal': '#f97316' }, light: { '--signal': 'rgb(194 65 12 / .9)' } })
+  assert.deepEqual(view.sections.map(s => s.id), ['overview', 'cost', 'log'])
+  assert.deepEqual(view.sections[1].blocks, [{ type: 'Row', children: [{ type: 'Stat', label: 'Spend', value: '/usage/usd', format: 'usd' }] }, { panel: 'Calls' }])
+  let deep = { type: 'Text', text: 'end' }
+  for (let i = 0; i < 10; i += 1) deep = { type: 'Column', children: [deep] }
+  const depth = b => (b.children ? 1 + Math.max(0, ...b.children.map(depth)) : 1)
+  assert.ok(depth(shapeView({ sections: [{ id: 'x', blocks: [deep] }] }).sections[0].blocks[0]) <= 6)
+  assert.deepEqual(shapeView('nope'), { sections: [] })
+})
+
+test('a view orders the sections, hides what it says, and keeps what it leaves out', () => {
+  const builtIn = ['overview', 'calls', 'verification', 'agents', 'files', 'log'].map(id => ({ id, label: id }))
+  const view = shapeView({ sections: [{ id: 'cost', label: 'Cost', blocks: [{ panel: 'Calls' }] }, { id: 'files', label: 'Changed' }, { id: 'log', hidden: true }, { id: 'empty' }] })
+  const sections = orderSections(builtIn, view, (id, label) => ({ id, label, custom: true }))
+  assert.deepEqual(sections.map(s => [s.id, s.label]), [['cost', 'Cost'], ['files', 'Changed'], ['overview', 'overview'], ['calls', 'calls'], ['verification', 'verification'], ['agents', 'agents']])
+  assert.deepEqual(sections[0].blocks, [{ panel: 'Calls' }])
+  assert.equal(sections[0].custom, true)
+  assert.deepEqual(orderSections(builtIn, undefined, () => ({})), builtIn)
+})
+
+test('a view\'s colours use the page\'s selectors, so the system theme still applies', () => {
+  assert.equal(themeCss(undefined), '')
+  assert.equal(themeCss({ light: { '--signal': '#c2410c' }, dark: { '--signal': '#f97316' } }), ':root{--signal:#c2410c}\n@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--signal:#f97316}}\n:root[data-theme="dark"]{--signal:#f97316}')
+  const css = readFileSync(join(ROOT, 'web/src/theme.css'), 'utf8')
+  for (const sel of [':root:not([data-theme="light"])', ':root[data-theme="dark"]']) assert.ok(css.includes(sel), sel)
+  const colours = [...new Set([...css.slice(0, css.indexOf('@theme')).matchAll(/^\s*(--[a-z0-9-]+):\s*([^;]+);/gm)].filter(m => !/shadow/.test(m[1])).map(m => m[1]))]
+  assert.deepEqual([...TOKENS].sort(), colours.sort())
+})
+
+test('the chosen view is the named file, checked; none for the default or a broken file', () => {
+  const list = { views: [{ name: 'cost', view: { sections: [{ id: 'log', hidden: true }] } }, { name: 'bad', error: 'bad JSON' }], active: '' }
+  assert.deepEqual(viewOf(list, 'cost').sections, [{ id: 'log', hidden: true }])
+  assert.equal(viewOf(list, ''), undefined)
+  assert.equal(viewOf(list, 'bad'), undefined)
+  assert.equal(viewOf(list, 'gone'), undefined)
 })

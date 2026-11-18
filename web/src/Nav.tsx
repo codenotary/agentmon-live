@@ -1,24 +1,25 @@
-import { Bot, FileText, LayoutDashboard, ScrollText, ShieldCheck, Terminal, type LucideIcon } from 'lucide-react'
+import { Bot, FileText, LayoutDashboard, LayoutGrid, ScrollText, ShieldCheck, Terminal, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import type { WebSnapshot } from '../../types/index'
+import type { ViewBlock, WebSnapshot, WebView } from '../../types/index'
 import { alertOf, type FeedEvent } from './events.ts'
 import type { Page } from './labels.ts'
 import { setCollapsed } from './store.ts'
+import { orderSections } from './view.ts'
 
-export type Section = { id: string; label: string; icon: LucideIcon; count?: number; alert?: 'bad' | 'warn' }
+export type Section = { id: string; label: string; icon: LucideIcon; count?: number; alert?: 'bad' | 'warn'; blocks?: ViewBlock[] }
 
-// The page's sections: the rail and the page both follow this order. The palette goes to the same list.
-export function sectionsOf(s: WebSnapshot, p: Page, events: readonly FeedEvent[]): Section[] {
+// The page's sections: the rail and the page both follow this order, a chosen view's when there is one. The palette goes to the same list.
+export function sectionsOf(s: WebSnapshot, p: Page, events: readonly FeedEvent[], view?: WebView): Section[] {
   const open = events.filter(e => e.clearedAt === undefined)
-  return [
+  return orderSections<Section>([
     { id: 'overview', label: p.overview, icon: LayoutDashboard, count: open.length, alert: alertOf(open) },
     { id: 'calls', label: p.toolCalls, icon: Terminal, count: s.active.length },
     { id: 'verification', label: p.verification, icon: ShieldCheck },
     { id: 'agents', label: p.subagents, icon: Bot, count: s.agents.length },
     { id: 'files', label: p.files, icon: FileText },
     { id: 'log', label: p.log, icon: ScrollText },
-  ]
+  ], view, (id, label) => ({ id, label, icon: LayoutGrid }))
 }
 
 const CLICK_HOLD_MS = 1200

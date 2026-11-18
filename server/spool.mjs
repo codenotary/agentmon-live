@@ -9,18 +9,23 @@ const NAME = /^([\w-]{1,80})\.json$/
 // shortcut: only the top of the shape is checked, so a sandbox can write a snapshot the page fails to draw; check every field when the sandbox is not your own.
 const isSnapshot = v => v !== null && typeof v === 'object' && typeof v.session === 'object' && v.session !== null && Array.isArray(v.turns)
 
-// The file's value when it changed since `mark`. A link is not followed and a pipe does not block: a sandbox writes this folder.
-function readChanged(path, mark) {
+// `read(fd, stat)` on a file others write: a link is not followed and a pipe does not block.
+export function withFile(path, read) {
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
-    const stat = fstatSync(fd)
-    if (!stat.isFile() || stat.size > MAX_SNAPSHOT) return {}
-    const now = `${stat.mtimeMs}:${stat.size}`
-    return now === mark ? {} : { mark: now, value: JSON.parse(readFileSync(fd, 'utf8')) }
+    return read(fd, fstatSync(fd))
   } finally {
     closeSync(fd)
   }
 }
+
+// The file's value when it changed since `mark`.
+const readChanged = (path, mark) =>
+  withFile(path, (fd, stat) => {
+    if (!stat.isFile() || stat.size > MAX_SNAPSHOT) return {}
+    const now = `${stat.mtimeMs}:${stat.size}`
+    return now === mark ? {} : { mark: now, value: JSON.parse(readFileSync(fd, 'utf8')) }
+  })
 
 // `[id, snapshot]` of each session that writes its snapshot to this folder because it cannot reach the server: one in a VM or a container.
 export function readSpool(dir, now, ttlMs, cache) {

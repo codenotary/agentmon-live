@@ -162,6 +162,30 @@ With no desktop session there, the server still listens on the remote machine, s
 ssh -L 47311:127.0.0.1:47311 <user>@<host>
 ```
 
+### Custom web views
+
+Ask Claude for a view of your own, such as "make a cost view with the log hidden and an orange accent". Claude writes it as a JSON file in `~/.claude/agentmon-live/views/<name>.json` and the page switches to it within a few seconds. The view menu in the top bar, and **Views** in the command palette (`⌘K`), go back to the default page or to any other view. The page keeps your choice over a reload; a switch made in chat wins.
+
+A view orders, renames and hides the page's sections (`overview`, `calls`, `verification`, `agents`, `files`, `log`), and adds sections of its own. A section it leaves out still shows, after the ones it lists, so a view never hides data by leaving it out. A section's `blocks` come from a fixed catalog: the page's own panels (`{ "panel": "Calls" }`), and `Row`, `Column`, `Card`, `Text`, `Stat`, `List` and `Sparkline`. A `Stat`, `List` or `Sparkline` reads a value from the session's snapshot by a JSON pointer such as `/usage/usd`, shown as `usd`, `count`, `dur` or `pct`. `theme` sets the page's colour tokens, such as `--signal`, for `light` and `dark`; colours only, no other CSS.
+
+```json
+{
+  "title": "Cost focus",
+  "theme": { "dark": { "--signal": "#f97316" }, "light": { "--signal": "#c2410c" } },
+  "sections": [
+    { "id": "cost", "label": "Cost", "blocks": [
+      { "type": "Row", "children": [
+        { "type": "Stat", "label": "Spend", "value": "/usage/usd", "format": "usd" },
+        { "type": "Stat", "label": "Context", "value": "/usage/ctxPct", "format": "pct" } ] },
+      { "panel": "Calls" } ] },
+    { "id": "calls", "hidden": true },
+    { "id": "log", "hidden": true }
+  ]
+}
+```
+
+Show each panel once: a view that moves a panel hides the section it came from, as `calls` above, or the page's links and the `/` key may land on the wrong copy. What the page cannot use, it leaves out: an unknown block, panel or token, and a value that is not a colour. A file that is not JSON, or larger than 64 KB, shows in the menu with its error. Choosing a view from chat writes its name to `views/active`. The views belong to the server, so the Codex and Kiro Crew pages show them too.
+
 ### Send to Datadog or Grafana Cloud
 
 Early preview: metric names and labels may still change. The server can send numbers from every session it shows, from Claude Code, Codex, Kiro Crew and sandboxes, as OpenTelemetry metrics (OTLP over HTTP, JSON). It is off by default. Claude Code's own telemetry (`CLAUDE_CODE_ENABLE_TELEMETRY=1`) already sends tokens, cost, lines changed and every tool result; these metrics add what it does not know:
