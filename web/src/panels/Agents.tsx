@@ -3,7 +3,7 @@ import { useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode 
 
 import type { Card, WebSnapshot } from '../../../types/index'
 import { AGENT_ROWS, dotOf, elapsedOf, endOf, groupLines, shownItems, isRunning, LEVEL_TONE, linesOf, sortLines, tokensOf, totalsOf, type AgentLine, type Pips, type Sort, type SortKey } from '../agents.ts'
-import { agentNames, dur, hhmm, kilo, time, type AgentName } from '../format.ts'
+import { agentNames, dur, hhmm, kilo, time, usdText, type AgentName } from '../format.ts'
 import type { Labels } from '../labels.ts'
 import { jumpTo } from '../Nav.tsx'
 import { copyText } from '../Palette.tsx'
@@ -14,7 +14,6 @@ import { ShowAll } from '../ui/ShowAll.tsx'
 import { rowsOf } from '../waterfall.ts'
 import { WaterfallRows } from './Waterfall.tsx'
 
-const usdText = (n: number) => `$${n.toFixed(2)}`
 const subOf = (a: Card) => `${a.type} · ${a.model}${a.effort ? ` ${a.effort}` : ''}`
 
 const dash = (n: number) => (n > 0 ? String(n) : '–')

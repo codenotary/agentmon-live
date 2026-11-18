@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
-import type { Call, WebSnapshot } from '../../types/index'
+import type { Call, ViewList, WebSnapshot } from '../../types/index'
 import { keepEvents, keptEvents } from './events.ts'
 import { DEFAULT_VIEW } from './flow.ts'
 import { parseIds } from './format.ts'
@@ -14,6 +14,7 @@ const COLLAPSED_KEY = 'agentmon-live-collapsed'
 // Each session's events, so a reload keeps their history.
 const EVENTS_KEY = 'agentmon-live-events'
 const PASS_KEY = 'agentmon-live-pass'
+const VIEW_KEY = 'agentmon-live-view'
 const KEEP_EVENT_SESSIONS = 10
 const THEME_FADE_MS = 200
 const NOTICE_MS = 2500
@@ -43,6 +44,9 @@ export type State = SessionState & {
   theme: Theme
   call: Detail | null
   isPaletteOpen: boolean
+  // The view files the server read, and the one on screen ('' for the default page).
+  views: ViewList
+  viewName: string
 }
 
 function load(key: string): string | null {
@@ -81,6 +85,8 @@ let state: State = {
   theme: savedTheme === 'light' || savedTheme === 'auto' ? savedTheme : 'dark',
   call: null,
   isPaletteOpen: false,
+  views: { views: [], active: '' },
+  viewName: load(VIEW_KEY) ?? '',
 }
 const listeners = new Set<() => void>()
 const subscribe = (fn: () => void) => {
@@ -147,6 +153,19 @@ export function setTheme(theme: Theme): void {
   document.documentElement.classList.add('theme-fade')
   setTimeout(() => document.documentElement.classList.remove('theme-fade'), THEME_FADE_MS)
   set({ theme })
+}
+
+export function setView(viewName: string): void {
+  save(VIEW_KEY, viewName)
+  set({ viewName })
+}
+// A choice made in chat wins when it changes; until then a reload keeps this tab's own.
+let serverActive: string | undefined
+function receivedViews(views: ViewList): void {
+  const isChange = serverActive === undefined ? load(VIEW_KEY) === null && views.active !== '' : views.active !== serverActive
+  serverActive = views.active
+  if (isChange) save(VIEW_KEY, views.active)
+  set(isChange ? { views, viewName: views.active } : { views })
 }
 
 // Between snapshots the session's clock runs on, from when the last one came; with no signal it stands at that last update.
@@ -271,7 +290,7 @@ export function connect(): void {
     const seen = () => {
       lastEventAt = Date.now()
     }
-    for (const name of ['open', 'ping', 'build', 'sessions', 'snapshot', 'removed']) events.addEventListener(name, seen)
+    for (const name of ['open', 'ping', 'build', 'sessions', 'snapshot', 'removed', 'views']) events.addEventListener(name, seen)
     // A newer server took over: this tab still runs the old page.
     events.addEventListener('build', e => {
       if (build !== undefined && build !== e.data) location.reload()
@@ -283,6 +302,7 @@ export function connect(): void {
       state = withLive(state, JSON.parse(e.data) as string[], Date.now())
       emit()
     })
+    events.addEventListener('views', e => receivedViews(JSON.parse(e.data) as ViewList))
     events.addEventListener('error', () => {
       if (!state.isDown) set({ isDown: true, downAt: Date.now() })
     })

@@ -11,6 +11,7 @@ export const callTime = (ms: number | undefined) => (ms === undefined ? '' : Mat
 export const time = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 export const hhmm = (at: number) => new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 // Each unit starts where the one below would round up into it: 999,600 is 1.0M, not 1000K.
+export const usdText = (usd: number) => `$${usd.toFixed(2)}`
 export const kilo = (n: number | undefined) => (n === undefined ? '0' : n >= 999_500 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 99_950 ? `${Math.round(n / 1000)}K` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n))
 export const short = (path: string) => path.split('/').slice(-3).join('/')
 // A path as the person knows it: inside an agent's worktree as inside the project, then relative to the project; elsewhere its last parts.

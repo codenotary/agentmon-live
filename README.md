@@ -224,6 +224,10 @@ One searchable stream of your prompts, Claude's answers, tool calls and subagent
 
 ![Session log with filter buttons, activity bars and rows](docs/web/log.png)
 
+### Your own views
+
+Ask Claude for a view of your own: "make a cost view, hide the log, orange accent". Claude writes it as a small JSON file, and the page switches to it. A view orders and hides sections, adds stats and lists read from the session, and sets the colours, all from a fixed catalog of parts the page trusts. The menu in the top bar goes back to the default page. The [guide](docs/guide.md#custom-web-views) has the format.
+
 ## Cost and privacy
 
 - **Your session stays on your machine.** The web view listens on `127.0.0.1` only, and what AgentMon learns is kept in Claude Code's local plugin store. Secrets are masked before they are shown.

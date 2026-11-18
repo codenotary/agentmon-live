@@ -2,7 +2,7 @@ import NumberFlow from '@number-flow/react'
 import { useState, type CSSProperties, type ReactNode } from 'react'
 
 import type { WebSnapshot } from '../../../types/index'
-import { blockedOf, dur, kilo, levelOf, type Tone, callText } from '../format.ts'
+import { blockedOf, dur, kilo, levelOf, type Tone, callText, usdText } from '../format.ts'
 import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLevel, typicalOf } from '../kpi.ts'
 import type { Page } from '../labels.ts'
 import { useStore, type Trend } from '../store.ts'
@@ -12,7 +12,7 @@ import { toneVar } from '../ui/Pill.tsx'
 import { Ruler, ShareBar } from '../ui/Ruler.tsx'
 import { Sparkline } from '../ui/Sparkline.tsx'
 
-function Stat({ label, tone = '', children, foot }: { label: string; tone?: Tone; children: ReactNode; foot?: ReactNode }) {
+export function Stat({ label, tone = '', children, foot }: { label: string; tone?: Tone; children: ReactNode; foot?: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col justify-center gap-0.5 px-4 py-[18px]">
       <span className="kpi-label truncate">{label}</span>
@@ -23,7 +23,6 @@ function Stat({ label, tone = '', children, foot }: { label: string; tone?: Tone
 }
 
 const Note = ({ text }: { text: string }) => <span className="text-xs text-ink-3 tabular-nums">{text}</span>
-const usdText = (usd: number) => `$${usd.toFixed(2)}`
 
 // Against a reference the ruler runs to twice that, so the tick sits in the middle: 75% of the track is 150% of it. A guide says nothing good or bad, so its zones stay neutral.
 function referenceFoot(value: number, ref: { value: number; isGuide: boolean }, text: string, tone: Tone, zones: readonly { to: number; tone: Tone }[], p: Page) {
