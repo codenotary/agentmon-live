@@ -19,7 +19,7 @@ export const LABELS = {
 }
 
 const WHO = 'main session'
-const KEEP = 500
+export const KEEP = 500
 const KEEP_TURNS = 50
 const CUT = 300
 const ANSWER_CUT = 4000
@@ -64,11 +64,15 @@ function recordChecks(snap, call, isUnsure) {
   const found = checksOf(call.what)
   const isOpen = isUnsure || call.what.length >= CUT
   for (const [i, { kind, part }] of found.entries()) {
-    const old = snap.checks.find(c => c.kind === kind)
     const result = isOpen ? 'unknown' : call.isFailed ? (i === found.length - 1 ? 'failed' : 'unknown') : hidesExit(call.what, kind) ? 'unknown' : 'ok'
-    const greenAt = old?.result === 'ok' ? old.at : old?.greenAt
-    snap.checks = [...snap.checks.filter(c => c !== old), { kind, command: part, who: WHO, at: call.at, result, ...(greenAt === undefined ? {} : { greenAt }) }]
+    putCheck(snap, { kind, command: part, who: WHO, at: call.at, result })
   }
+}
+// A check's newest run replaces its kind's last one; `greenAt` keeps the latest pass before it.
+export function putCheck(snap, check) {
+  const old = snap.checks.find(c => c.kind === check.kind)
+  const greenAt = Math.max(check.greenAt ?? 0, (old?.result === 'ok' ? old.at : old?.greenAt) ?? 0)
+  snap.checks = [...snap.checks.filter(c => c !== old), { ...check, ...(greenAt ? { greenAt } : {}) }]
 }
 const pad = n => String(n).padStart(2, '0')
 // As `dur` in hooks/insights.ts, which the pane prints.
@@ -485,8 +489,8 @@ export function readKiroSlot(home, slot, now, cache = new Map()) {
 }
 
 // A log's first line, without reading a long log whole.
-function firstLine(file) {
-  const buf = Buffer.alloc(4096)
+export function firstLine(file, size = 4096) {
+  const buf = Buffer.alloc(size)
   const fd = openSync(file, 'r')
   try {
     return buf.subarray(0, readSync(fd, buf, 0, buf.length, 0)).toString('utf8').split('\n', 1)[0]
