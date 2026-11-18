@@ -1,4 +1,6 @@
 // The repo's MCP server for Codex: a live status line under the prompt and the feedback tool. JSON-RPC over stdio, one message per line.
+import { spawn } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 import { codexHome, readCodex } from '../server/codex.mjs'
@@ -13,6 +15,9 @@ const MAX_TEXT = 2000
 const MAX_ISSUE_BODY = 5000
 const IDLE_MS = 30 * 60_000
 const WEB = 'http://127.0.0.1:47311/'
+const RELEASES = 'https://api.github.com/repos/codenotary/agentmon-live/releases/latest'
+const RELEASE_MS = 3_600_000
+const VERSION = JSON.parse(readFileSync(new URL('../.codex-plugin/plugin.json', import.meta.url), 'utf8')).version
 
 const TOOLS = [
   {
@@ -25,7 +30,7 @@ const TOOLS = [
   {
     name: 'pane',
     title: 'AgentMon',
-    description: "The AgentMon Live pane for the current Codex chat, as a panel of coloured text, charts and keys: open done-gate items, the running call, checks, recent calls, edited files, context and limits. Codex's sidebar reads it; nothing to call by hand.",
+    description: "The AgentMon Live pane for the current Codex chat, as a panel of coloured text, charts and keys: open done-gate items, the running call, subagents, changes and checks, insights, recent calls, context and limits, and a session log. Codex's sidebar reads it; nothing to call by hand.",
     inputSchema: { type: 'object', properties: {} },
     _meta: { 'openai/ui': { entrypoints: [{ type: 'sidebar', resourceUri: PANE_URI }] } },
   },
@@ -33,6 +38,11 @@ const TOOLS = [
     name: 'dismiss',
     description: "Puts an open item away in the AgentMon panel. The panel's x key calls it; call it only when the person asks to put an item away.",
     inputSchema: { type: 'object', properties: { chat: { type: 'string', description: 'The Codex chat id.' }, item: { type: 'string', description: 'The item text as the panel gives it.' } }, required: ['chat', 'item'] },
+  },
+  {
+    name: 'web',
+    description: "Opens the AgentMon Live web view in the person's browser. The panel's w key calls it.",
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'feedback',
@@ -54,7 +64,7 @@ export const threadOf = meta => meta?.['com.openai/codex-statusline-state']?.thr
 export function pickChat(chats, threadId) {
   const hit = chats.find(([id]) => id === threadId)
   if (hit) return hit[1]
-  return chats.map(([, s]) => s).sort((a, b) => (a.turns.at(-1)?.startedAt ?? 0) - (b.turns.at(-1)?.startedAt ?? 0)).at(-1)
+  return chats.map(([, s]) => s).filter(s => !s.session?.parent).sort((a, b) => (a.turns.at(-1)?.startedAt ?? 0) - (b.turns.at(-1)?.startedAt ?? 0)).at(-1)
 }
 
 // An item put away with the panel's x key, per chat. The Stop hook runs apart from this server and still asks once.
@@ -77,8 +87,9 @@ export function statusText(snapshot, dismissed = new Set()) {
 
 const secs = ms => `${Math.round(ms / 1000)}s`
 const RECENT = 8
-const TURNS = 20
 const MINUTES = 30
+const LOG = 10
+const WEB_ACTION = { type: 'action', key: 'w', label: 'open the web view', tool: 'web' }
 // Text is Codex's UI tree, the status line's format; panel, box, gauge, bars, sparkline, chart and action are the patched sidebar's widgets.
 const paint = (color, text, bold) => ({ type: 'text', props: { ...(color ? { color } : {}), ...(bold ? { weight: 'bold' } : {}) }, children: [text] })
 const line = (...children) => ({ type: 'text', children: [...children, '\n'] })
@@ -88,11 +99,22 @@ const level = pct => (pct >= 85 ? 'red' : pct >= 60 ? 'yellow' : 'green')
 const gauge = (label, pct) => ({ type: 'gauge', label, ratio: pct / 100, color: level(pct) })
 const KIND_COLORS = ['cyan', 'magenta', 'yellow', 'green', 'blue', 'red']
 
+const dur = ms => (ms >= 60_000 ? `${Math.floor(ms / 60_000)}m${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}s` : secs(ms))
+const pie = buckets => {
+  const total = Object.values(buckets).reduce((n, ms) => n + ms, 0)
+  // A slice under 1% is not drawn: it would read as 0%.
+  const slices = Object.entries(buckets).filter(([, ms]) => ms >= total / 100).sort((a, b) => b[1] - a[1]).slice(0, KIND_COLORS.length)
+  return { type: 'pie', height: 5, slices: slices.map(([k, ms], i) => ({ label: k, value: Math.round(ms), text: `${Math.round((ms / total) * 100)}% · ${dur(ms)}`, color: KIND_COLORS[i] })) }
+}
+
 // The pane holds no seconds clock: Codex redraws the sidebar whenever this panel changes, and the activity line moves once a minute.
-export function paneTree(snapshot, dismissed = new Set()) {
-  const web = line({ type: 'link', props: { href: WEB }, children: ['Open the web view'] })
-  if (!snapshot) return { type: 'panel', children: [line(paint(undefined, 'AgentMon Live', true)), line('No Codex chat written to in the last 30 minutes.'), web] }
-  const out = [line(paint(undefined, 'AgentMon Live', true), paint('blue', ` · ${[snapshot.build, snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' · ')}`))]
+// `chats` lists every live chat, so a chat's subagents show; `release` is a newer AgentMon release, if any.
+export function paneTree(snapshot, dismissed = new Set(), { chats = [], release } = {}) {
+  const web = { type: 'link', props: { href: WEB }, children: ['web view'] }
+  const keys = line(paint('blue', 'ctrl-x s focus or hide · alt-p tabs · '), web)
+  const update = release ? [line(paint('green', `↑ AgentMon Live ${release.version} is out · `, true), { type: 'link', props: { href: release.url }, children: ['what changed'] })] : []
+  if (!snapshot) return { type: 'panel', children: [line(paint(undefined, 'AgentMon Live', true)), keys, ...update, line('No Codex chat written to in the last 30 minutes.'), WEB_ACTION] }
+  const out = [line(paint(undefined, 'AgentMon Live', true), paint('blue', ` · ${[snapshot.build, snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' · ')}`)), keys, ...update, WEB_ACTION]
   const gaps = openGaps(snapshot, dismissed)
   out.push(box('Needs attention', gaps.length === 0 ? [line(paint('green', '✓ nothing open'))] : gaps.slice(0, 5).map(g => line(g.includes(' failed: ') ? paint('red', ' FAILED ', true) : paint('yellow', ' STALE ', true), ` ${one(g)}`)), gaps.length > 0 ? 'red' : 'green'))
   if (gaps.length > 0) {
@@ -100,18 +122,46 @@ export function paneTree(snapshot, dismissed = new Set()) {
     out.push({ type: 'action', key: 'x', label: 'put the first item away', tool: 'dismiss', arguments: { chat: snapshot.session.id, item: gaps[0] } })
   }
   out.push(box('Now', snapshot.active.length === 0 ? [line(paint('blue', 'idle'))] : snapshot.active.slice(0, 3).map(a => line(paint('yellow', '◉ ', true), paint(undefined, `${a.tool} `, true), one(a.what)))))
+  const agents = chats.map(([, s]) => s).filter(s => s.session.parent === snapshot.session.id)
+  if (agents.length > 0) {
+    out.push(box(`Agents (${agents.length})`, agents.flatMap(a => {
+      const doing = a.active[0]
+      const last = doing ?? a.trace.at(-1)
+      return [
+        line(doing ? paint('yellow', '◉ ', true) : paint('green', '✓ '), paint(undefined, `${a.session.agent} `, true), paint('blue', `${a.turns.length} turns · ${a.trace.length} calls`)),
+        line(paint('blue', '  ↳ '), last ? one(`${last.tool} ${last.what}`, 60) : 'no calls yet'),
+      ]
+    }), 'magenta'))
+  }
+  const cwd = snapshot.session.cwd ? `${snapshot.session.cwd}/` : undefined
+  const rel = f => (cwd && f.startsWith(cwd) ? f.slice(cwd.length) : f)
+  const { edited, read = [] } = snapshot.files
+  if (edited.length > 0 || snapshot.checks.length > 0) {
+    const stale = c => c.result !== 'running' && (snapshot.files.editedAt ?? 0) > c.at
+    out.push(box(`Changes · ${edited.length} edited · ${read.length} read`, [
+      ...edited.slice(-RECENT).map(f => line(paint('yellow', '✎ '), one(rel(f)))),
+      ...snapshot.checks.slice(-6).map(c => line(c.result === 'ok' && !stale(c) ? paint('green', '✓ ') : c.result === 'running' ? paint('yellow', '◉ ') : stale(c) ? paint('yellow', '↻ ') : paint('red', '✗ '), paint(undefined, `${c.kind} `, true), stale(c) ? paint('yellow', 'stale since the last edit · ') : '', one(c.command, 50))),
+      ...(snapshot.checks.length === 0 ? [line(paint('yellow', 'no test, lint or build run yet'))] : []),
+    ], snapshot.checks.some(c => c.result === 'failed') ? 'red' : 'cyan'))
+  }
+  const ins = snapshot.insights ?? {}
+  const insight = []
+  if (ins.session && Object.values(ins.session).some(ms => ms > 0)) insight.push(line(paint('blue', `Where ${dur(ins.sessionWall ?? 0)} over ${snapshot.turns.length} turns went`)), pie(ins.session))
+  const slow = [...snapshot.trace].filter(c => c.ms).sort((a, b) => b.ms - a.ms).slice(0, 3)
+  if (slow.length > 0) insight.push(line(paint('blue', 'Slowest calls')), ...slow.map(c => line(paint(c.ms >= 60_000 ? 'yellow' : undefined, dur(c.ms).padStart(6)), paint(undefined, ` ${c.tool} `, true), one(c.what, 50))))
+  const often = (counts, n) => Object.entries(counts ?? {}).filter(([, k]) => k >= n).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([f, k]) => `${rel(f)} ${k}×`)
+  const rereads = often(ins.reads, 2)
+  const churned = often(ins.edits, 3)
+  if (rereads.length > 0) insight.push(line(paint('yellow', 'read again '), one(rereads.join(' · '), 120)))
+  if (churned.length > 0) insight.push(line(paint('yellow', 'edited often '), one(churned.join(' · '), 120)))
+  const tok = ins.tokens
+  if (tok?.mainIn > 0) insight.push(line(paint('blue', 'tokens '), `${Math.round(tok.mainIn / 1000)}k in · ${Math.round(tok.mainOut / 1000)}k out · ${Math.round((tok.mainCached / tok.mainIn) * 100)}% cached`))
+  if (insight.length > 0) out.push(box('Insights', insight, 'blue'))
   const turn = snapshot.turns.at(-1)
   if (turn) {
     const spent = Object.entries(turn.isLive ? {} : turn.buckets).sort((a, b) => b[1] - a[1]).slice(0, 6)
-    const bars = spent.length > 0 ? [{ type: 'bars', bars: spent.map(([k, ms], i) => ({ label: k, value: Math.round(ms), text: secs(ms), color: KIND_COLORS[i % KIND_COLORS.length] })) }] : []
-    out.push(box(`Turn ${snapshot.turns.length}`, [line(paint('magenta', `› ${one(String(turn.prompt ?? '').split('\n')[0], 120)}`)), ...bars]))
-  }
-  const done = snapshot.turns.filter(t => !t.isLive).slice(-TURNS)
-  if (done.length >= 2) {
-    const first = snapshot.turns.length - done.length + 1
-    const kinds = [...new Set(done.flatMap(t => Object.keys(t.buckets)))].slice(0, KIND_COLORS.length)
-    const series = kinds.map((k, i) => ({ name: k, color: KIND_COLORS[i], points: done.map((t, n) => [first + n, Math.round((t.buckets[k] ?? 0) / 1000)]) }))
-    out.push(box(`Seconds per turn, last ${done.length}`, [{ type: 'chart', series, height: 8 }, line(...kinds.flatMap((k, i) => [paint(KIND_COLORS[i], '━ '), `${k}  `]))]))
+    const bars = spent.length > 0 ? [{ type: 'bars', bars: spent.map(([k, ms], i) => ({ label: k, value: Math.round(ms), text: dur(ms), color: KIND_COLORS[i % KIND_COLORS.length] })) }] : []
+    out.push(box(`Turn ${snapshot.turns.length}${turn.isLive ? ' · running' : ` · ${dur(turn.wallMs)}`}`, [line(paint('magenta', `› ${one(String(turn.prompt ?? '').split('\n')[0], 120)}`)), ...bars]))
   }
   const minute = Math.floor(snapshot.now / 60_000)
   const perMinute = Array.from({ length: MINUTES }, () => 0)
@@ -120,16 +170,18 @@ export function paneTree(snapshot, dismissed = new Set()) {
     if (ago >= 0 && ago < MINUTES) perMinute[MINUTES - 1 - ago] += 1
   }
   if (perMinute.some(n => n > 0)) out.push(box(`Calls per minute, last ${MINUTES}`, [{ type: 'sparkline', data: perMinute, height: 3 }]))
-  if (snapshot.checks.length > 0) out.push(box('Checks', snapshot.checks.slice(-6).map(c => line(c.result === 'ok' ? paint('green', '✓ ') : c.result === 'running' ? paint('yellow', '◉ ') : paint('red', '✗ '), paint(undefined, `${c.kind} `, true), one(c.command, 60)))))
   const recent = snapshot.trace.slice(-RECENT).reverse()
   if (recent.length > 0) out.push(box('Recent calls', recent.map(c => line(paint(c.isFailed ? 'red' : undefined, `${c.tool} `, true), one(c.what, 60)))))
-  const cwd = snapshot.session.cwd ? `${snapshot.session.cwd}/` : undefined
-  const edited = snapshot.files.edited.map(f => (cwd && f.startsWith(cwd) ? f.slice(cwd.length) : f))
-  if (edited.length > 0) out.push(box(`Files edited (${edited.length})`, edited.slice(-RECENT).map(f => line(one(f)))))
   const { ctxPct, ctxTokens, ctxWindow, rate = [] } = snapshot.usage
   const gauges = [...(ctxPct === undefined ? [] : [gauge(`context ${ctxPct}% ${Math.round(ctxTokens / 1000)}k/${Math.round(ctxWindow / 1000)}k`, ctxPct)]), ...rate.map(r => gauge(`${r.kind === 'five_hour' ? '5h' : '7d'} ${r.pct}%`, r.pct))]
   if (gauges.length > 0) out.push(box('Context and limits', gauges))
-  out.push(web)
+  const log = snapshot.turns.slice(-LOG).reverse()
+  if (log.length > 0) {
+    out.push(box(`Session log · ${snapshot.turns.length} turns`, log.flatMap((t, i) => [
+      line(paint('magenta', `#${snapshot.turns.length - i} `, true), paint('blue', t.isLive ? 'running ' : `${dur(t.wallMs)} `), `› ${one(String(t.prompt ?? '').split('\n')[0], 80)}`),
+      ...(t.answer ? [line(paint('blue', '   ↳ '), one(t.answer, 80))] : []),
+    ])))
+  }
   return { type: 'panel', children: out }
 }
 
@@ -139,6 +191,8 @@ export function words(node) {
   if (node.type === 'box') return `${node.title}\n${node.children.map(words).join('')}\n`
   if (node.type === 'gauge') return `${node.label}\n`
   if (node.type === 'bars') return node.bars.map(b => `${b.label} ${b.text ?? b.value}\n`).join('')
+  if (node.type === 'pie') return node.slices.map(b => `${b.label} ${b.text ?? b.value}\n`).join('')
+  if (node.type === 'action') return ''
   return (node.children ?? []).map(words).join('')
 }
 
@@ -156,7 +210,35 @@ export function feedbackLink({ type, text }) {
 }
 
 // shortcut: put-away items live as long as this server process; persist them if people restart Codex mid-task.
-export function answer(msg, chats, dismissed = new Set()) {
+// The newest release, when it is newer than this plugin; checked at most hourly and silent on any failure.
+export function isNewer(a, b) {
+  const parse = v => (/^\d+\.\d+\.\d+$/.test(v) ? v.split('.').map(Number) : undefined)
+  const [x, y] = [parse(a), parse(b)]
+  if (!x || !y) return false
+  const i = x.findIndex((n, k) => n !== y[k])
+  return i >= 0 && x[i] > y[i]
+}
+
+function watchRelease(found) {
+  if (process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC) return
+  const look = () =>
+    fetch(RELEASES, { headers: { accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10_000) })
+      .then(r => (r.ok ? r.json() : undefined))
+      .then(body => {
+        const version = String(body?.tag_name ?? '').replace(/^v/, '')
+        found.release = isNewer(version, VERSION) ? { version, url: String(body.html_url) } : undefined
+      })
+      .catch(() => {})
+  look()
+  setInterval(look, RELEASE_MS).unref()
+}
+
+function openWeb() {
+  const [cmd, args] = process.platform === 'darwin' ? ['open', [WEB]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', WEB]] : ['xdg-open', [WEB]]
+  spawn(cmd, args, { detached: true, stdio: 'ignore' }).on('error', () => {}).unref()
+}
+
+export function answer(msg, chats, dismissed = new Set(), found = {}) {
   const { method, params = {} } = msg
   if (method === 'initialize') return { protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: { tools: {}, resources: {} }, serverInfo: { name: 'agentmon-live', version: '1' } }
   if (method === 'ping') return {}
@@ -164,7 +246,11 @@ export function answer(msg, chats, dismissed = new Set()) {
   if (method === 'resources/list') return { resources: [{ uri: STATUSLINE_URI, name: 'statusline', mimeType: 'application/json' }, { uri: PANE_URI, name: 'pane', mimeType: 'application/json' }] }
   if (method === 'resources/read') {
     const chat = () => pickChat(chats(), threadOf(params._meta))
-    if (params.uri === PANE_URI) return { contents: [{ uri: PANE_URI, mimeType: 'application/json', text: JSON.stringify(paneTree(chat(), dismissed)) }] }
+    if (params.uri === PANE_URI) {
+      const all = chats()
+      const tree = paneTree(pickChat(all, threadOf(params._meta)), dismissed, { chats: all, release: found.release })
+      return { contents: [{ uri: PANE_URI, mimeType: 'application/json', text: JSON.stringify(tree) }] }
+    }
     if (params.uri !== STATUSLINE_URI) throw Object.assign(new Error(`unknown resource ${params.uri}`), { code: -32002 })
     const tree = { type: 'text', children: [statusText(chat(), dismissed)] }
     return { contents: [{ uri: STATUSLINE_URI, mimeType: 'application/json', text: JSON.stringify(tree) }] }
@@ -173,7 +259,14 @@ export function answer(msg, chats, dismissed = new Set()) {
     const args = params.arguments ?? {}
     if (params.name === 'feedback') return { content: [{ type: 'text', text: feedbackLink(args) }] }
     if (params.name === 'statusline') return { content: [{ type: 'text', text: statusText(pickChat(chats()), dismissed) }] }
-    if (params.name === 'pane') return { content: [{ type: 'text', text: words(paneTree(pickChat(chats()), dismissed)) }] }
+    if (params.name === 'pane') {
+      const all = chats()
+      return { content: [{ type: 'text', text: words(paneTree(pickChat(all), dismissed, { chats: all, release: found.release })) }] }
+    }
+    if (params.name === 'web') {
+      openWeb()
+      return { content: [{ type: 'text', text: `Opening ${WEB}` }] }
+    }
     if (params.name === 'dismiss') {
       if (typeof args.item !== 'string' || !args.item || typeof args.chat !== 'string' || !args.chat) return { content: [{ type: 'text', text: 'Not taken: chat and item are required.' }], isError: true }
       dismissed.add(`${args.chat}\n${args.item}`)
@@ -188,6 +281,8 @@ export function serve(input = process.stdin, output = process.stdout) {
   const cache = new Map()
   const chats = () => readCodex(codexHome(), Date.now(), IDLE_MS, cache)
   const dismissed = new Set()
+  const found = {}
+  watchRelease(found)
   createInterface({ input }).on('line', line => {
     let msg
     try {
@@ -199,7 +294,7 @@ export function serve(input = process.stdin, output = process.stdout) {
     if (msg.id === undefined) return
     let reply
     try {
-      reply = { jsonrpc: '2.0', id: msg.id, result: answer(msg, chats, dismissed) }
+      reply = { jsonrpc: '2.0', id: msg.id, result: answer(msg, chats, dismissed, found) }
     } catch (e) {
       reply = { jsonrpc: '2.0', id: msg.id, error: { code: e.code ?? -32603, message: String(e.message ?? e) } }
     }

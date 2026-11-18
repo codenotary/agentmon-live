@@ -29,7 +29,7 @@ function callOf(input, name) {
 }
 
 // The rollout as crew-log entries, so one fold serves both; entry types this does not know are skipped, since the format is Codex's own and changes.
-// shortcut: no approvals and no subagent cards, the rollout names neither; a subagent's chat is its own rollout and lists as its own session.
+// shortcut: no approvals and no subagent cards, the rollout names neither; a subagent's chat is its own rollout, lists as its own session and names its parent.
 export function foldRollout(entries, now) {
   const meta = entries.find(e => e.type === 'session_meta')?.payload ?? {}
   const out = [{ type: 'session', id: meta.id, cwd: meta.cwd }]
@@ -136,6 +136,8 @@ export function foldRollout(entries, now) {
   const folded = foldCrewLog(out, now, text)
   const { snapshot } = folded
   snapshot.build = `Codex${meta.cli_version ? ` · ${meta.cli_version}` : ''}`
+  // A subagent's chat is its own rollout; the parent's id and the agent's name tie it to the chat that started it.
+  if (meta.parent_thread_id) Object.assign(snapshot.session, { parent: String(meta.parent_thread_id), agent: String(meta.agent_nickname ?? meta.agent_path ?? 'agent') })
   snapshot.main.effort = effort
   snapshot.usage.rate = rate
   // The fold takes the context at a turn's end; the rollout has it after every model call.
