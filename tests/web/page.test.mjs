@@ -14,7 +14,7 @@ import { bandTone, fill, GUIDE, isAheadOfPace, paceOf, referenceOf, reversedLeve
 import { labelsOf, lastKnown, PAGE_EN, pageOf } from '../../web/src/labels.ts'
 import { clampView, DEFAULT_VIEW, dragMode, edgeOf, flowOf, lanesIn, mergeDots, wholeOf, windowOf } from '../../web/src/flow.ts'
 import { rowsOf, sortCalls, tableRows, ticksOf, xOf } from '../../web/src/waterfall.ts'
-import { formatValue, orderSections, pick, shapeView, themeCss, TOKENS, viewOf } from '../../web/src/view.ts'
+import { barRows, BUILT_IN, fold, formatValue, notesOf, orderSections, pctOf, pick, queryRows, shapeView, statValue, themeCss, TOKENS, toneOf, unresolved, viewOf } from '../../web/src/view.ts'
 import { BUILT, builtHash, sourceHash } from '../../web/source-hash.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -829,6 +829,7 @@ test('a view value takes its format, and what is no value shows a dash', () => {
   assert.equal(formatValue(12_500, 'count'), '12.5K')
   assert.equal(formatValue([1, 2, 3], 'count'), '3')
   assert.equal(formatValue(65_000, 'dur'), '1m 5s')
+  assert.equal(formatValue(240, 'dur'), '240 ms')
   assert.equal(formatValue(41.6, 'pct'), '42%')
   assert.equal(formatValue('main', undefined), 'main')
   assert.equal(formatValue(undefined, 'usd'), '—')
@@ -882,4 +883,149 @@ test('the chosen view is the named file, checked; none for the default or a brok
   assert.equal(viewOf(list, ''), undefined)
   assert.equal(viewOf(list, 'bad'), undefined)
   assert.equal(viewOf(list, 'gone'), undefined)
+})
+
+const AGENTS = { agents: [{ model: 'haiku', usd: 0.1, tools: 9, status: 'done' }, { model: 'opus', usd: 0.4, tools: 2, status: 'done' }, { model: 'haiku', usd: 0.3, tools: 1, status: 'running' }, { model: 'opus', tools: 5, status: 'done' }], edits: { 'a.ts': 4, 'b.ts': 1 } }
+
+test('a view table filters, groups, folds, sorts and cuts its rows', () => {
+  const cols = [{ label: 'Model', field: '/model' }, { label: 'Cost', field: '/usd' }]
+  assert.deepEqual(queryRows(AGENTS, { rows: '/agents' }, cols), [['haiku', 0.1], ['opus', 0.4], ['haiku', 0.3], ['opus', undefined]])
+  // What has no value goes last either way.
+  assert.deepEqual(queryRows(AGENTS, { rows: '/agents', sort: 'Cost', desc: true, max: 3 }, cols).map(r => r[1]), [0.4, 0.3, 0.1])
+  assert.deepEqual(queryRows(AGENTS, { rows: '/agents', sort: '/usd' }, cols).map(r => r[1]), [0.1, 0.3, 0.4, undefined])
+  assert.deepEqual(queryRows(AGENTS, { rows: '/agents', where: [{ field: '/status', is: 'done' }, { field: '/tools', above: 2 }] }, cols).map(r => r[0]), ['haiku', 'opus'])
+  assert.deepEqual(queryRows(AGENTS, { rows: '/agents', where: [{ field: '/status', not: 'done' }] }, cols).length, 1)
+  assert.deepEqual(queryRows(AGENTS, { rows: '/agents', where: [{ field: '/usd', below: 0.2 }] }, cols).length, 1)
+  const grouped = queryRows(AGENTS, { rows: '/agents', group: '/model', sort: 'Cost', desc: true }, [{ label: 'Model' }, { label: 'n', field: '/count' }, { label: 'Cost', field: '/usd', agg: 'sum' }, { label: 'Most', field: '/tools', agg: 'max' }])
+  assert.deepEqual(grouped, [['haiku', 2, 0.4, 9], ['opus', 2, 0.4, 5]])
+  // Numbers that only round alike are groups of their own.
+  assert.equal(queryRows({ list: [{ n: 0.004 }, { n: 0.001 }] }, { rows: '/list', group: '/n' }, [{ label: 'n' }]).length, 2)
+  // A record reads as key and value rows.
+  assert.deepEqual(queryRows(AGENTS, { rows: '/edits', sort: '/value', desc: true }, [{ label: 'File', field: '/key' }, { label: 'Edits', field: '/value' }]), [['a.ts', 4], ['b.ts', 1]])
+  assert.deepEqual(queryRows(AGENTS, { rows: '/missing' }, cols), [])
+})
+
+test('a view number folds a list, and takes its colour from the thresholds', () => {
+  assert.equal(fold(AGENTS.agents, '/usd', 'sum'), 0.8)
+  assert.equal(fold(AGENTS.agents, '/usd', 'avg').toFixed(3), '0.267')
+  assert.equal(fold(AGENTS.agents, '/usd', 'min'), 0.1)
+  assert.equal(fold(AGENTS.agents, '/usd', 'max'), 0.4)
+  assert.equal(fold(AGENTS.agents, undefined, 'count'), 4)
+  assert.equal(fold([], '/usd', 'sum'), 0)
+  assert.equal(fold([], '/usd', 'max'), undefined)
+  assert.equal(statValue(AGENTS, { value: '/agents', field: '/usd', agg: 'sum' }), 0.8)
+  assert.equal(statValue(AGENTS, { value: '/agents', agg: 'count', where: [{ field: '/status', is: 'running' }] }), 1)
+  assert.equal(statValue(AGENTS, { value: '/agents/0/usd' }), 0.1)
+  assert.equal(statValue(AGENTS, { value: '/edits', agg: 'count' }), 2)
+  assert.equal(toneOf(3, { warnAt: 1, badAt: 5 }), 'warn')
+  assert.equal(toneOf(5, { warnAt: 1, badAt: 5 }), 'bad')
+  assert.equal(toneOf(0, { warnAt: 1 }), 'good')
+  assert.equal(toneOf(85, { format: 'pct' }), 'bad')
+  assert.equal(toneOf(85, {}), '')
+  assert.equal(toneOf(undefined, { badAt: 1 }), '')
+  assert.equal(formatValue(0.26666, undefined), '0.27')
+  assert.match(formatValue(Date.now(), 'time'), /^\d\d:\d\d$/)
+  // Another day's time says which day.
+  assert.match(formatValue(1793802950000, 'time'), /^\d\d \w{3} \d\d:\d\d$/)
+  assert.equal(formatValue(0.004, undefined), '0.004')
+  assert.equal(formatValue(1234.5678, undefined), '1234.57')
+  // Past its top a dial stands at the end, and below nothing at the start.
+  assert.equal(pctOf(30, 20), 100)
+  assert.equal(pctOf(-5, 20), 0)
+  assert.equal(pctOf(5, 20), 25)
+  assert.equal(pctOf(undefined, 20), undefined)
+})
+
+test('view bars are name and value rows, largest first', () => {
+  assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/edits' }), [['a.ts', 4], ['b.ts', 1]])
+  assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/agents', group: '/model', value: '/tools', agg: 'sum' }), [['haiku', 10], ['opus', 7]])
+  assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/agents', group: '/status' }), [['done', 3], ['running', 1]])
+  assert.deepEqual(barRows(AGENTS, { type: 'Bars', label: '', rows: '/agents', name: '/model', value: '/usd', max: 1 }), [['opus', 0.4]])
+})
+
+test('a view keeps the new blocks as the file wrote them, and notes each thing it leaves out', () => {
+  const view = shapeView({
+    theme: { dark: { '--signal': '#f97316', '--accent': '#fff' } },
+    sections: [
+      { id: 'x', label: 'X', blocks: [
+        { type: 'Table', label: 'T', rows: '/agents', group: '/model', sort: 'Cost', desc: true, max: 500, where: [{ field: '/status', is: 'done' }, { field: 'status' }], columns: [{ label: 'Model' }, { label: 'Cost', field: '/usd', agg: 'sum', format: 'usd' }, { label: 'Bad', agg: 'median', format: 'money' }] },
+        { type: 'Bars', label: 'B', rows: '/edits', format: 'count' },
+        { type: 'Gauge', label: 'G', value: '/usage/ctxPct', warnAt: 50, badAt: 'x' },
+        { type: 'Meter', label: 'M', value: '/usage/usd', max: 20 },
+        { type: 'Stat', label: 'S', value: '/agents', field: '/usd', agg: 'sum', foot: 'all agents', badAt: 5 },
+        { type: 'Table', label: 'no columns', rows: '/agents' },
+        { type: 'Table', label: 'no rows', columns: [{ label: 'a' }] },
+        { type: 'Chart' },
+        { panel: 'Shell' },
+        { type: 'Stat', label: 'no pointer' },
+      ] },
+      { id: 'nothing' },
+      { id: 'Bad Id' },
+    ],
+  })
+  assert.deepEqual(view.sections[0].blocks, [
+    { type: 'Table', label: 'T', columns: [{ label: 'Model' }, { label: 'Cost', field: '/usd', agg: 'sum', format: 'usd' }, { label: 'Bad' }], rows: '/agents', where: [{ field: '/status', is: 'done' }], group: '/model', sort: 'Cost', desc: true, max: 50 },
+    { type: 'Bars', label: 'B', format: 'count', rows: '/edits' },
+    { type: 'Gauge', label: 'G', value: '/usage/ctxPct', warnAt: 50 },
+    { type: 'Meter', label: 'M', value: '/usage/usd', max: 20 },
+    { type: 'Stat', label: 'S', value: '/agents', field: '/usd', agg: 'sum', foot: 'all agents', badAt: 5 },
+  ])
+  assert.deepEqual(view.notes, [
+    { at: 'x/blocks/5', kind: 'pointer', detail: 'columns' },
+    { at: 'x/blocks/6', kind: 'pointer', detail: 'rows' },
+    { at: 'x/blocks/7', kind: 'block', detail: 'Chart' },
+    { at: 'x/blocks/8', kind: 'panel', detail: 'Shell' },
+    { at: 'x/blocks/9', kind: 'pointer', detail: 'value' },
+    { at: 'sections/1', kind: 'section', detail: 'nothing' },
+    { at: 'sections/2', kind: 'section', detail: 'Bad Id' },
+    { at: 'theme/dark', kind: 'colour', detail: '--accent' },
+  ])
+  // A view with nothing wrong carries no notes at all.
+  assert.equal(shapeView({ sections: [{ id: 'log', hidden: true }] }).notes, undefined)
+  assert.equal(shapeView({ sections: [{ id: 'x', blocks: Array.from({ length: 30 }, () => ({ type: 'Text', text: 'a' })) }] }).notes[0].kind, 'limit')
+})
+
+test('a view pointer that finds nothing in the session is named, a field only when there are rows to check', () => {
+  const view = shapeView({ sections: [{ id: 'x', blocks: [
+    { type: 'Stat', label: 'a', value: '/usage/cost' },
+    { type: 'Row', children: [{ type: 'Table', label: 'b', rows: '/agents', columns: [{ label: 'Cost', field: '/cost' }, { label: 'Model', field: '/model' }] }] },
+    { type: 'Table', label: 'c', rows: '/agents', group: '/model', columns: [{ label: 'Model', field: '/key' }, { label: 'Sum', field: '/price', agg: 'sum' }] },
+    { type: 'Bars', label: 'd', rows: '/none' },
+    { type: 'Sparkline', label: 'e', points: '/empty', field: '/ms' },
+    { type: 'Stat', label: 'f', value: '/agents', field: '/usd', agg: 'sum' },
+  ] }] })
+  assert.deepEqual(unresolved(view, { ...AGENTS, empty: [] }), [
+    { at: 'x/Stat a', kind: 'empty', detail: '/usage/cost' },
+    { at: 'x/Table b', kind: 'empty', detail: '/cost' },
+    { at: 'x/Table c', kind: 'empty', detail: '/price' },
+    { at: 'x/Bars d', kind: 'empty', detail: '/none' },
+  ])
+})
+
+test('the notes are what the file got wrong and what finds nothing; a view that comes with the mod is not held to a session without the data', () => {
+  const view = shapeView({ sections: [{ id: 'x', blocks: [{ type: 'Chart' }, { type: 'Gauge', label: 'Context', value: '/usage/ctxPct' }] }] })
+  assert.deepEqual(notesOf(view, { usage: {} }, false).map(n => n.kind), ['block', 'empty'])
+  assert.deepEqual(notesOf(view, { usage: {} }, true).map(n => n.kind), ['block'])
+  assert.deepEqual(notesOf(undefined, {}, false), [])
+  assert.deepEqual(notesOf(view, undefined, false), [])
+})
+
+test('the views that come with the mod leave nothing out and find all they point at in the sample session', () => {
+  const dir = join(ROOT, 'server/views')
+  const names = readdirSync(dir).filter(f => f.endsWith('.json'))
+  assert.deepEqual(names.sort(), ['cost.json', 'quality.json', 'speed.json'])
+  for (const name of names) {
+    const view = shapeView(JSON.parse(readFileSync(join(dir, name), 'utf8')))
+    assert.equal(view.notes, undefined, name)
+    assert.deepEqual(unresolved(view, fixture), [], name)
+    assert.ok(view.title, name)
+    // Each panel once: a view that draws a panel hides the section it came from.
+    const panels = JSON.stringify(view).match(/"panel":"\w+"/g) ?? []
+    assert.equal(new Set(panels).size, panels.length, name)
+  }
+})
+
+test('the page\'s own sections are the ones a view may name without blocks', () => {
+  const nav = readFileSync(join(ROOT, 'web/src/Nav.tsx'), 'utf8')
+  assert.deepEqual([...nav.slice(nav.indexOf('orderSections<Section>(['), nav.indexOf('], view,')).matchAll(/id: '([a-z]+)'/g)].map(m => m[1]), [...BUILT_IN])
 })

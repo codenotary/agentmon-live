@@ -1,0 +1,31 @@
+{
+  "title": "Cost",
+  "sections": [
+    { "id": "cost", "label": "Cost", "blocks": [
+      { "type": "Row", "children": [
+        { "type": "Stat", "label": "Session spend", "value": "/usage/usd", "format": "usd" },
+        { "type": "Stat", "label": "Subagent spend", "value": "/agents", "field": "/usd", "agg": "sum", "format": "usd" },
+        { "type": "Stat", "label": "Tokens in", "value": "/insights/tokens/mainIn", "format": "count", "foot": "main session" },
+        { "type": "Stat", "label": "Tokens out", "value": "/insights/tokens/mainOut", "format": "count", "foot": "main session" },
+        { "type": "Gauge", "label": "Context", "value": "/usage/ctxPct" } ] },
+      { "type": "Row", "children": [
+        { "type": "Table", "label": "Subagent cost by model", "rows": "/agents", "group": "/model", "sort": "Cost", "desc": true, "columns": [
+          { "label": "Model", "field": "/key" },
+          { "label": "Agents", "field": "/count" },
+          { "label": "In", "field": "/input", "agg": "sum", "format": "count" },
+          { "label": "Out", "field": "/output", "agg": "sum", "format": "count" },
+          { "label": "Cost", "field": "/usd", "agg": "sum", "format": "usd" } ] },
+        { "type": "Bars", "label": "Context by part", "rows": "/insights/breakdown", "name": "/name", "value": "/tokens", "format": "count" } ] },
+      { "type": "Row", "children": [
+        { "type": "Table", "label": "Most expensive subagents", "rows": "/agents", "sort": "Cost", "desc": true, "max": 8, "columns": [
+          { "label": "Task", "field": "/task" },
+          { "label": "Model", "field": "/model" },
+          { "label": "Tools", "field": "/tools", "format": "count" },
+          { "label": "Cost", "field": "/usd", "format": "usd" } ] },
+        { "type": "Column", "children": [
+          { "type": "Sparkline", "label": "Cost per past session", "points": "/learned/bench", "field": "/totalUsd", "format": "usd" },
+          { "type": "Table", "label": "Quota", "rows": "/usage/rate", "columns": [
+            { "label": "Window", "field": "/kind" },
+            { "label": "Used", "field": "/pct", "format": "pct" } ] } ] } ] } ] }
+  ]
+}

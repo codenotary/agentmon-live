@@ -314,19 +314,32 @@ export type WebSnapshot = {
 
 // A web view Claude writes to `~/.claude/agentmon-live/views/<name>.json`: the page draws it from its own catalog only. Pointers are JSON pointers into `WebSnapshot`.
 export type ViewPanel = 'Instruments' | 'Flow' | 'Waterfall' | 'TurnClock' | 'Events' | 'Running' | 'Steps' | 'Calls' | 'Insights' | 'Checks' | 'Tasks' | 'Agents' | 'Files' | 'Log'
-export type ViewFormat = 'usd' | 'count' | 'dur' | 'pct'
+export type ViewFormat = 'usd' | 'count' | 'dur' | 'pct' | 'time'
+export type ViewAgg = 'sum' | 'avg' | 'min' | 'max' | 'count'
+// One test on a row's field; all of a block's tests must hold.
+export type ViewTest = { field: string; is?: string | number | boolean; not?: string | number | boolean; above?: number; below?: number }
+// The rows a block reads: a list, or a record as `{ key, value }` rows. `group` makes one row per value, with `/key` and `/count`.
+export type ViewQuery = { rows: string; where?: ViewTest[]; group?: string; sort?: string; desc?: boolean; max?: number }
+export type ViewColumn = { label: string; field?: string; agg?: ViewAgg; format?: ViewFormat }
+// From these values on, the number shows as a warning or as bad.
+export type ViewLevels = { warnAt?: number; badAt?: number }
 export type ViewBlock =
   | { panel: ViewPanel }
   | { type: 'Row' | 'Column'; children: ViewBlock[] }
   | { type: 'Card'; title?: string; children: ViewBlock[] }
   | { type: 'Text'; text: string }
-  | { type: 'Stat'; label: string; value: string; format?: ViewFormat }
+  | ({ type: 'Stat'; label: string; value: string; field?: string; agg?: ViewAgg; where?: ViewTest[]; format?: ViewFormat; foot?: string } & ViewLevels)
   | { type: 'List'; label: string; items: string; field?: string; max?: number }
-  | { type: 'Sparkline'; label: string; points: string; field?: string }
+  | { type: 'Sparkline'; label: string; points: string; field?: string; format?: ViewFormat }
+  | ({ type: 'Table'; label: string; columns: ViewColumn[] } & ViewQuery)
+  | ({ type: 'Bars'; label: string; name?: string; value?: string; agg?: ViewAgg; format?: ViewFormat } & ViewQuery)
+  | ({ type: 'Gauge' | 'Meter'; label: string; value: string; max?: number; format?: ViewFormat } & ViewLevels)
 export type ViewSection = { id: string; label?: string; hidden?: boolean; blocks?: ViewBlock[] }
-export type WebView = { title?: string; theme?: { light?: Record<string, string>; dark?: Record<string, string> }; sections: ViewSection[] }
-// What the server sends as `views`: each file, or why it could not be read, and the one chosen from chat.
-export type ViewList = { views: { name: string; view?: unknown; error?: string }[]; active: string }
+// What the page left out of a view file, or a pointer that finds nothing in the session (`empty`); `at` is the place in the file.
+export type ViewNote = { at: string; kind: 'block' | 'panel' | 'pointer' | 'colour' | 'section' | 'limit' | 'empty'; detail?: string }
+export type WebView = { title?: string; theme?: { light?: Record<string, string>; dark?: Record<string, string> }; sections: ViewSection[]; notes?: ViewNote[] }
+// What the server sends as `views`: each file, or why it could not be read, then the views that come with the mod (`isShipped`), and the one chosen from chat.
+export type ViewList = { views: { name: string; view?: unknown; error?: string; isShipped?: boolean }[]; active: string }
 
 declare module 'claude-code' {
   interface McpToolInputs {

@@ -21,8 +21,8 @@ import { Checks, Insights, Running, Tasks } from './panels/Side.tsx'
 import { Steps } from './panels/Steps.tsx'
 import { TurnClock } from './panels/TurnClock.tsx'
 import { Waterfall } from './panels/Waterfall.tsx'
-import { themeCss, viewOf } from './view.ts'
-import { ViewBlocks } from './ViewBlocks.tsx'
+import { notesOf, themeCss, viewOf } from './view.ts'
+import { ViewBlocks, ViewNotes } from './ViewBlocks.tsx'
 import { currentOf, dismiss, getState, hasNoSignal, set, setCollapsed, useStore, type Trend } from './store.ts'
 import { LastUpdate, TopBar } from './TopBar.tsx'
 
@@ -128,6 +128,8 @@ export function App() {
   const events = (s && st.events.get(s.session.id)) || NO_EVENTS
   const view = useMemo(() => viewOf(st.views, st.viewName), [st.views, st.viewName])
   const sections = s && l ? sectionsOf(s, p, events, view) : []
+  const isShipped = st.views.views.find(x => x.name === st.viewName)?.isShipped === true
+  const viewNotes = useMemo(() => notesOf(view, s, isShipped), [view, s, isShipped])
   const isFirstDraw = useRef(true)
   const wasG = useRef(false)
 
@@ -205,7 +207,7 @@ export function App() {
         {s && !st.isDown && isStopped ? <div className="panel flex flex-wrap items-center gap-x-3 gap-y-1 !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status" data-testid="silent-banner">{p.sessionSilent} <LastUpdate s={s} p={p} className="lg:hidden" /><button type="button" className="ml-auto underline" data-testid="dismiss" onClick={() => dismiss(s.session.id)}>{p.dismiss}</button></div> : null}
         {s && !isCurrent ? <div className="panel !border-warn bg-warn-soft px-3.5 py-2.5 text-[13px] text-warn" role="status">{p.update}</div> : null}
         {!s && !st.isDown ? <Standby text={p.noSessions} /> : null}
-        {s && l ? <div key={s.session.id} className="fade-in flex min-w-0 flex-col gap-4">{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><PartGuard s={s} text={p.update}><Part view={x.id} blocks={x.blocks} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PartGuard></PageSection>)}</div> : null}
+        {s && l ? <div key={s.session.id} className="fade-in flex min-w-0 flex-col gap-4"><ViewNotes notes={viewNotes} p={p} />{sections.map(x => <PageSection key={x.id} x={x} isCollapsed={st.collapsed.has(x.id)}><PartGuard s={s} text={p.update}><Part view={x.id} blocks={x.blocks} s={s} l={l} p={p} events={events} trend={st.trends.get(s.session.id)} /></PartGuard></PageSection>)}</div> : null}
       </main>
       </div>
       <Palette s={s} p={p} sections={sections} />

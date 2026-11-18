@@ -17,10 +17,10 @@ export function Ruler({ pos, tone, tick, zones }: { pos: number; tone: Tone; tic
   )
 }
 
-export function ShareBar({ pct }: { pct: number }) {
+export function ShareBar({ pct, colour }: { pct: number; colour?: string }) {
   return (
     <div className="mt-1 flex h-1 overflow-hidden rounded-full bg-surface-3" aria-hidden>
-      <i className="h-full bg-ink-3" style={{ width: `${clamp(pct)}%` }} />
+      <i className="h-full bg-ink-3" style={{ width: `${clamp(pct)}%`, background: colour }} />
     </div>
   )
 }

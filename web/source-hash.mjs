@@ -8,6 +8,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 
 // What a build places beside `server/app.html`, and the list `server/web.mjs` serves.
 export const BUILT = ['vendor.js', 'app.js', 'app.css']
+// Built with them and not served: the view rules `server/view-check.mjs` runs.
+export const CHECK = 'view-shape.mjs'
 
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]))
@@ -23,6 +25,6 @@ export function sourceHash() {
 // So a test tells when these files are not the set one build made: a merge can take each from another branch.
 export function builtHash() {
   const hash = createHash('sha256')
-  for (const f of BUILT) hash.update(f).update('\0').update(readFileSync(join(HERE, '../server', f))).update('\0')
+  for (const f of [...BUILT, CHECK]) hash.update(f).update('\0').update(readFileSync(join(HERE, '../server', f))).update('\0')
   return hash.digest('hex')
 }

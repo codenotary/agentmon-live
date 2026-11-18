@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { withFile } from './spool.mjs'
 
@@ -14,8 +15,18 @@ const readSmall = path =>
     return readFileSync(fd, 'utf8')
   })
 
-// The views Claude wrote to this folder, and the one chosen from chat. A broken file is listed with its error, so the page can say what is wrong. The page checks each view's shape.
-export function readViews(dir) {
+// The views that come with the mod; a file of the same name in the person's folder takes its place.
+export const SHIPPED = join(dirname(fileURLToPath(import.meta.url)), 'views')
+
+// The views Claude wrote to this folder, and the one chosen from chat, then the views of `shipped` the folder does not name. A broken file is listed with its error, so the page can say what is wrong. The page checks each view's shape.
+export function readViews(dir, shipped) {
+  const own = readFolder(dir)
+  if (shipped === undefined) return own
+  const named = new Set(own.views.map(v => v.name))
+  return { views: [...own.views, ...readFolder(shipped).views.filter(v => !named.has(v.name)).map(v => ({ ...v, isShipped: true }))], active: own.active }
+}
+
+function readFolder(dir) {
   let names
   try {
     names = readdirSync(dir).filter(n => n.endsWith('.json')).sort().slice(0, KEEP_VIEWS)

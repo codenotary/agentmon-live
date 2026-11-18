@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { MAX_VIEW, readViews } from '../../server/views.mjs'
+import { spawnSync } from 'node:child_process'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { MAX_VIEW, readViews, SHIPPED } from '../../server/views.mjs'
 
 const folder = () => mkdtempSync(join(tmpdir(), 'agentmon-views-'))
 
@@ -42,4 +46,33 @@ test('no folder is no views; a link is not followed; a bad choice is none', () =
   assert.equal(views[0].view, undefined)
   assert.ok(views[0].error)
   assert.equal(active, '')
+})
+
+test('the views that come with the mod are listed with the person\'s, whose file of the same name wins', () => {
+  const dir = folder()
+  writeFileSync(join(dir, 'cost.json'), JSON.stringify({ title: 'Mine', sections: [] }))
+  writeFileSync(join(dir, 'active'), 'speed')
+  const { views, active } = readViews(dir, SHIPPED)
+  assert.deepEqual(views.map(v => v.name), ['cost', 'quality', 'speed'])
+  assert.equal(views[0].view.title, 'Mine')
+  assert.equal(views[2].view.title, 'Speed')
+  assert.deepEqual(views.map(v => v.isShipped), [undefined, true, true])
+  assert.equal(active, 'speed')
+  // With no folder of the person's, and with none of the mod's.
+  assert.deepEqual(readViews(join(folder(), 'missing'), SHIPPED).views.map(v => v.name), ['cost', 'quality', 'speed'])
+  assert.deepEqual(readViews(dir, join(folder(), 'missing')).views.map(v => v.name), ['cost'])
+})
+
+test('the check command says ok for a view the page takes whole, and names what it would leave out', () => {
+  const check = join(dirname(fileURLToPath(import.meta.url)), '../../server/view-check.mjs')
+  const good = spawnSync(process.execPath, [check, join(SHIPPED, 'cost.json')], { encoding: 'utf8' })
+  assert.equal(good.status, 0)
+  assert.equal(good.stdout.trim(), 'ok')
+  const file = join(folder(), 'bad.json')
+  writeFileSync(file, JSON.stringify({ sections: [{ id: 'x', blocks: [{ type: 'Chart' }, { type: 'Stat', label: 'a', value: '/usage/cost' }] }] }))
+  const bad = spawnSync(process.execPath, [check, file], { encoding: 'utf8' })
+  assert.equal(bad.status, 1)
+  assert.deepEqual(bad.stdout.trim().split('\n'), ['x/blocks/0: block Chart', 'x/Stat a: empty /usage/cost'])
+  writeFileSync(file, '{ "sections": ')
+  assert.equal(spawnSync(process.execPath, [check, file], { encoding: 'utf8' }).status, 2)
 })

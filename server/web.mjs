@@ -9,7 +9,7 @@ import { envMs, kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './k
 import { codexHome, readCodex, withAgents } from './codex.mjs'
 import { MAX_SNAPSHOT as MAX_BODY, readSpool } from './spool.mjs'
 import { otlpTarget, postOtlp, toOtlp } from './otlp.mjs'
-import { readViews } from './views.mjs'
+import { readViews, SHIPPED } from './views.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const NAME = 'agentmon-live'
@@ -223,7 +223,7 @@ function serve(port, fixture, isOpen) {
 
   // shortcut: no page-side save, add a POST behind isOwnPage+isReader if users want "save current layout" from the page.
   const viewsDir = join(stateDir(), 'views')
-  let views = JSON.stringify(readViews(viewsDir))
+  let views = JSON.stringify(readViews(viewsDir, SHIPPED))
 
   if (fixture) sessions.set('fixture', { json: JSON.stringify(JSON.parse(readFileSync(fixture, 'utf8'))), at: Infinity })
 
@@ -260,7 +260,7 @@ function serve(port, fixture, isOpen) {
         res.writeHead(200, { ...HEADERS, 'content-type': 'text/event-stream' })
         send(res, 'build', String(stamp))
         send(res, 'sessions', JSON.stringify([...sessions.keys()]))
-        if (clients.size === 0) views = JSON.stringify(readViews(viewsDir))
+        if (clients.size === 0) views = JSON.stringify(readViews(viewsDir, SHIPPED))
         send(res, 'views', views)
         // A replay says how old it is: a dead session must not read as fresh to a tab that just connected. A fixture never ages.
         for (const [id, s] of sessions) send(res, 'snapshot', packed(id, s.json, s.at === Infinity ? undefined : Date.now() - s.at))
@@ -369,7 +369,7 @@ function serve(port, fixture, isOpen) {
     const now = Date.now()
     for (const [id, s] of sessions) if (now - s.at > ttlMs) drop(id, true)
     if (sessions.size === 0 && now - idleSince > idleMs && (fixture || !kiroHost())) process.exit(0)
-    const next = clients.size ? JSON.stringify(readViews(viewsDir)) : views
+    const next = clients.size ? JSON.stringify(readViews(viewsDir, SHIPPED)) : views
     if (next !== views) broadcast('views', (views = next))
   }, envMs('AGENTMON_WEB_SWEEP_MS', 5000))
   // A chat on the Claude harness with the mod loaded posts under the same id, and its own snapshot says more: that one stays.

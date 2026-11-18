@@ -166,7 +166,7 @@ ssh -L 47311:127.0.0.1:47311 <user>@<host>
 
 Ask Claude for a view of your own, such as "make a cost view with the log hidden and an orange accent". Claude writes it as a JSON file in `~/.claude/agentmon-live/views/<name>.json` and the page switches to it within a few seconds. The view menu in the top bar, and **Views** in the command palette (`⌘K`), go back to the default page or to any other view. The page keeps your choice over a reload; a switch made in chat wins.
 
-A view orders, renames and hides the page's sections (`overview`, `calls`, `verification`, `agents`, `files`, `log`), and adds sections of its own. A section it leaves out still shows, after the ones it lists, so a view never hides data by leaving it out. A section's `blocks` come from a fixed catalog: the page's own panels (`{ "panel": "Calls" }`), and `Row`, `Column`, `Card`, `Text`, `Stat`, `List` and `Sparkline`. A `Stat`, `List` or `Sparkline` reads a value from the session's snapshot by a JSON pointer such as `/usage/usd`, shown as `usd`, `count`, `dur` or `pct`. `theme` sets the page's colour tokens, such as `--signal`, for `light` and `dark`; colours only, no other CSS.
+A view orders, renames and hides the page's sections (`overview`, `calls`, `verification`, `agents`, `files`, `log`), and adds sections of its own. A section it leaves out still shows, after the ones it lists, so a view never hides data by leaving it out. A section's `blocks` come from a fixed catalog: the page's own panels (`{ "panel": "Calls" }`), the layout blocks `Row`, `Column`, `Card` and `Text`, and the data blocks `Stat`, `Table`, `Bars`, `Gauge`, `Meter`, `Sparkline` and `List`. A data block reads the session's snapshot by a JSON pointer such as `/usage/usd`, shown as `usd`, `count`, `dur`, `pct` or `time`. `theme` sets the page's colour tokens, such as `--signal`, for `light` and `dark`; colours only, no other CSS.
 
 ```json
 {
@@ -183,6 +183,29 @@ A view orders, renames and hides the page's sections (`overview`, `calls`, `veri
   ]
 }
 ```
+
+Three views come with AgentMon Live and are in the menu from the start, below a line under your own: **Cost** (spend, subagent cost by model, context by part), **Speed** (time by tool, where the time went, slowest calls) and **Quality** (failed calls, most edited files, past sessions). A file of your own with the same name (`cost.json`, `speed.json`, `quality.json`) takes its place.
+
+What the data blocks do:
+
+| Block | Shows | Fields |
+| --- | --- | --- |
+| `Stat` | one number | `value`; over a list also `field`, `agg` and `where`; `foot` for a line below; `warnAt`, `badAt` for its colour |
+| `Table` | rows and columns | `rows`, `columns` (each `label`, `field`, `agg`, `format`; at most 8), and the row fields below |
+| `Bars` | each row's share of the total | `rows`, `name`, `value`, `agg`, `format`, and the row fields below |
+| `Gauge`, `Meter` | a number against its top | `value`, `max` (100 when left out), `warnAt`, `badAt` |
+| `Sparkline` | a line over a list, with its last, lowest and highest value | `points`, `field`, `format` |
+
+The row fields of `Table` and `Bars`: `rows` points at a list, or at a record, whose entries read as `/key` and `/value`. `where` keeps the rows that pass up to four tests, such as `{ "field": "/isFailed", "is": true }` (`is`, `not`, `above`, `below`). `group` makes one row per value of a field, with `/key` and `/count`; a column then takes `agg` (`sum`, `avg`, `min`, `max`, `count`) over its `field`. `sort` names a column's label or a field, `desc` turns it, and `max` cuts the rows (10, at most 50).
+
+```json
+{ "type": "Table", "label": "Subagent cost by model", "rows": "/agents", "group": "/model", "sort": "Cost", "desc": true, "columns": [
+  { "label": "Model", "field": "/key" },
+  { "label": "Agents", "field": "/count" },
+  { "label": "Cost", "field": "/usd", "agg": "sum", "format": "usd" } ] }
+```
+
+When the page leaves something out of the chosen view, or a pointer finds nothing in the session, a **View notes** box above the view lists each case, and the view menu shows the count beside the view's name. Claude checks a file the same way before it reports done: `node <plugin>/server/view-check.mjs <file>`.
 
 Show each panel once: a view that moves a panel hides the section it came from, as `calls` above, or the page's links and the `/` key may land on the wrong copy. What the page cannot use, it leaves out: an unknown block, panel or token, and a value that is not a colour. A file that is not JSON, or larger than 64 KB, shows in the menu with its error. Choosing a view from chat writes its name to `views/active`. The views belong to the server, so the Codex and Kiro Crew pages show them too.
 
