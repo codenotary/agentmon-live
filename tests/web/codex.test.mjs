@@ -316,7 +316,7 @@ test('the panel marks a check the way the gate judges it, whatever its command s
   assert.match(stale, /↻ test stale since the last edit · /)
 })
 
-test('a subagent draws inside the chat that started it: a card, its own calls on its lane, and none of the history it copied', () => {
+test('a subagent draws inside the chat that started it: a card, its own calls and checks, and none of the history it copied', () => {
   const home = mkdtempSync(join(tmpdir(), 'agentmon-codex-'))
   const day = join(home, 'sessions/2026/11/10')
   mkdirSync(day, { recursive: true })
@@ -328,27 +328,50 @@ test('a subagent draws inside the chat that started it: a card, its own calls on
   const parent = [...ROLLOUT.trim().split('\n'), ...spawn]
   const meta = line('00:40', 'session_meta', { id: 'kid', cwd: '/home/dev/github/demo', parent_thread_id: SID, agent_nickname: 'Einstein', agent_path: '/root/price_agent', subagent_history_start_ordinal: parent.length + 1 })
   const own = [
-    line('00:42', 'event_msg', { type: 'task_started' }),
-    line('00:43', 'response_item', { type: 'custom_tool_call', name: 'exec', call_id: 'k1', input: 'tools.exec({"cmd":"curl -s prices"})' }),
-    line('00:50', 'response_item', { type: 'custom_tool_call_output', call_id: 'k1', output: 'ok' }),
-    line('00:55', 'event_msg', { type: 'task_complete', duration_ms: 13_000 }),
+    line('01:05', 'event_msg', { type: 'task_started' }),
+    line('01:06', 'response_item', { type: 'custom_tool_call', name: 'exec', call_id: 'k1', input: 'tools.exec({"cmd":"npm test"})' }),
+    line('01:10', 'response_item', { type: 'custom_tool_call_output', call_id: 'k1', output: 'ok' }),
+    line('01:12', 'event_msg', { type: 'task_complete', duration_ms: 7_000 }),
   ]
   writeFileSync(join(day, `rollout-2026-11-10T10-00-00-${SID}.jsonl`), `${parent.join('\n')}\n`)
   writeFileSync(join(day, 'rollout-2026-11-10T10-00-40-kid.jsonl'), `${[meta, ...parent, ...own].join('\n')}\n`)
   const cache = new Map()
   const chats = readCodex(home, NOW, 60_000, cache)
   const kid = chats.find(([id]) => id === 'kid')[1]
-  assert.deepEqual([kid.turns.length, kid.trace.map(c => c.what)], [1, ['curl -s prices']])
+  assert.deepEqual([kid.turns.length, kid.trace.map(c => c.what)], [1, ['npm test']])
 
   const [[id, s], ...rest] = withAgents(chats, cache)
   assert.deepEqual([id, rest], [SID, []])
   const [card] = s.agents
-  assert.deepEqual({ ...card, model: undefined }, { id: 'kid', type: 'price_agent', model: undefined, effort: '', task: 'Einstein', status: 'done', files: 0, tools: 1, input: 0, output: 0, startedAt: Date.parse('2026-11-10T10:00:42Z'), endedAt: Date.parse('2026-11-10T10:00:55Z'), callId: 'sp1' })
-  assert.deepEqual(s.trace.filter(c => c.agentId).map(c => [c.who, c.what]), [['price_agent', 'curl -s prices']])
+  assert.deepEqual({ ...card, model: undefined }, { id: 'kid', type: 'price_agent', model: undefined, effort: '', task: 'Einstein', status: 'done', files: 0, tools: 1, input: 0, output: 0, startedAt: Date.parse('2026-11-10T10:01:05Z'), endedAt: Date.parse('2026-11-10T10:01:12Z'), callId: 'sp1' })
+  assert.deepEqual(s.trace.filter(c => c.agentId).map(c => [c.who, c.what]), [['price_agent', 'npm test']])
+  // The parent's test failed at 10:01:02; the subagent's later run is the one that counts.
+  assert.deepEqual(s.checks.map(c => [c.kind, c.who, c.result]), [['test', 'price_agent', 'ok']])
   assert.equal(s.trace.find(c => c.id === 'sp1').what, 'price_agent')
   assert.deepEqual(s.log.filter(l => l.agentId).map(l => l.result), ['started', 'done'])
   // Gone idle, its card stays with the parent; with no parent listed, it is a chat of its own.
   const alone = chats.filter(([x]) => x === SID)
   assert.deepEqual(withAgents(alone, cache)[0][1].agents.map(a => a.id), ['kid'])
   assert.deepEqual(withAgents([['kid', kid]], cache).map(([x]) => x), ['kid'])
+})
+
+test('a subagent whose file went quiet with its turn open is done, not running', () => {
+  const home = mkdtempSync(join(tmpdir(), 'agentmon-codex-'))
+  const day = join(home, 'sessions/2026/11/10')
+  mkdirSync(day, { recursive: true })
+  const meta = JSON.stringify({ timestamp: '2026-11-10T10:01:00.000Z', type: 'session_meta', payload: { id: 'kid', cwd: '/w', parent_thread_id: SID, agent_path: '/root/worker' } })
+  const open = JSON.stringify({ timestamp: '2026-11-10T10:01:01.000Z', type: 'event_msg', payload: { type: 'task_started' } })
+  const parentFile = join(day, `rollout-2026-11-10T10-00-00-${SID}.jsonl`)
+  const kidFile = join(day, 'rollout-2026-11-10T10-01-00-kid.jsonl')
+  writeFileSync(parentFile, ROLLOUT)
+  writeFileSync(kidFile, `${meta}\n${open}\n`)
+  utimesSync(kidFile, NOW / 1000, NOW / 1000)
+  const cache = new Map()
+  const live = withAgents(readCodex(home, NOW, 60_000, cache), cache)[0][1]
+  assert.deepEqual([live.agents[0].status, live.active.some(a => a.agentId === 'kid')], ['running', true])
+  // Silent past the patience a running turn gets; the parent still writes.
+  const later = NOW + 5 * 60_000
+  utimesSync(parentFile, later / 1000, later / 1000)
+  const [[, s]] = withAgents(readCodex(home, later, 60_000, cache), cache)
+  assert.deepEqual([s.agents[0].status, s.active.some(a => a.agentId === 'kid')], ['done', false])
 })

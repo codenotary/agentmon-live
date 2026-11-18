@@ -182,7 +182,8 @@ export function readCodex(home, now, idleMs, cache = new Map()) {
 // The chats with each subagent drawn inside its parent, as a Claude Code session draws its own: a card, a lane of calls, its edits. A subagent whose parent is not listed stays a chat of its own.
 export function withAgents(chats, cache) {
   const ids = new Set(chats.map(([id]) => id))
-  const kids = [...cache.values()].flatMap(hit => (hit.kept?.snapshot && ids.has(hit.kept.snapshot.session.parent) ? [hit.kept] : []))
+  // A file gone quiet with its turn open is a subagent that died: done, not running.
+  const kids = [...cache.values()].flatMap(hit => (hit.kept?.snapshot && ids.has(hit.kept.snapshot.session.parent) ? [{ ...hit.kept, isLive: hit.kept.isLive && !hit.isDone }] : []))
   return chats.flatMap(([id, s]) => {
     if (ids.has(s.session.parent)) return []
     const mine = kids.filter(k => k.snapshot.session.parent === id)
@@ -206,6 +207,13 @@ function adopt(parent, kids) {
     s.log.push({ at: startedAt, who: type, what: k.session.agent, result: 'started', agentId: id }, ...(endedAt === undefined ? [] : [{ at: endedAt, who: type, what: k.session.agent, result: 'done', agentId: id }]))
     if (isLive) s.active.push({ id, who: type, tool: 'subagent', what: k.session.agent, startedAt, agentId: id }, ...k.active.map(c => ({ ...c, who: type, agentId: id })))
     for (const [path, at] of Object.entries(k.files.editedTimes)) recordEdit(s, path, at)
+    // The newest run of each check is the one Verification shows, whoever ran it.
+    for (const c of k.checks) {
+      const old = s.checks.find(x => x.kind === c.kind)
+      if (old && old.at >= c.at) continue
+      const greenAt = Math.max(c.greenAt ?? 0, (old?.result === 'ok' ? old.at : old?.greenAt) ?? 0)
+      s.checks = [...s.checks.filter(x => x !== old), { ...c, who: type, ...(greenAt ? { greenAt } : {}) }]
+    }
     s.insights.tokens.agentsIn += input
     s.insights.tokens.agentsOut += output
   }
