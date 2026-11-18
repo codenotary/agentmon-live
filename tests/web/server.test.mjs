@@ -648,6 +648,9 @@ test('the views folder is sent on connect and again when a file changes', async 
   await new Promise(done => setTimeout(done, 200))
   writeFileSync(join(dir, 'active'), 'cost')
   const [before, after] = views(await first)
-  assert.deepEqual(before, { views: [{ name: 'cost', view: { sections: [] } }], active: '' })
+  // The person's own file, then the views that come with the mod.
+  assert.deepEqual(before.views.map(v => v.name), ['cost', 'quality', 'speed'])
+  assert.deepEqual(before.views[0].view, { sections: [] })
+  assert.equal(before.active, '')
   assert.equal(after.active, 'cost')
 })

@@ -42,9 +42,26 @@ A view is a JSON file in `~/.claude/agentmon-live/views/<name>.json`. The name i
 - `{ "panel": "<name>" }`: one of the page's panels: `Instruments`, `Flow`, `Waterfall`, `TurnClock`, `Events`, `Running`, `Steps`, `Calls`, `Insights`, `Checks`, `Tasks`, `Agents`, `Files`, `Log`.
 - `{ "type": "Row", "children": [...] }` side by side; `Column` stacked; `Card` with an optional `title` draws a box around its children.
 - `{ "type": "Text", "text": "..." }`.
-- `{ "type": "Stat", "label": "...", "value": "<pointer>", "format": "usd" | "count" | "dur" | "pct" }`. `count` of a list is its length; `dur` takes milliseconds.
-- `{ "type": "List", "label": "...", "items": "<pointer to a list>", "field": "<pointer inside each item>", "max": 10 }`.
-- `{ "type": "Sparkline", "label": "...", "points": "<pointer to a list>", "field": "<pointer to a number in each item>" }`.
+- `{ "type": "Stat", "label": "...", "value": "<pointer>", "format": "usd" | "count" | "dur" | "pct" | "time" }`. `count` of a list is its length; `dur` takes milliseconds; `time` takes a timestamp and adds the date when it is not today's. Over a list, add `"agg"` (`sum`, `avg`, `min`, `max`, `count`), `"field"` (the number in each row) and optionally `"where"`. `"foot"` is a line below the number. `"warnAt"` and `"badAt"` colour the number from those values on.
+- `{ "type": "Table", "label": "...", "rows": "<pointer>", "columns": [{ "label": "...", "field": "<pointer inside each row>", "format": "..." }] }`, at most 8 columns. Prefer it over `List`.
+- `{ "type": "Bars", "label": "...", "rows": "<pointer>", "name": "<pointer>", "value": "<pointer>", "format": "..." }`: each row's share of the total, largest first. For a record, leave `name` and `value` out.
+- `{ "type": "Gauge", "label": "...", "value": "<pointer>" }` for a percent; with `"max"` for any number against its top. `Meter` takes the same fields and draws a track. Both take `warnAt` and `badAt`.
+- `{ "type": "Sparkline", "label": "...", "points": "<pointer to a list>", "field": "<pointer to a number in each item>", "format": "..." }`.
+- `{ "type": "List", "label": "...", "items": "<pointer to a list>", "field": "<pointer inside each item>", "max": 10 }`: one value per row.
+
+### Rows (`Table`, `Bars`)
+
+- `rows` points at a list, or at a record, whose entries read as `/key` and `/value` (`/insights/edits`, `/insights/session`).
+- `"where": [{ "field": "/isFailed", "is": true }]`: up to 4 tests, all must hold. `is`, `not` compare a text, number or boolean; `above`, `below` a number.
+- `"group": "/model"`: one row per value, with `/key` (the value) and `/count`. A column then needs `"agg"` over its `field`, such as `{ "label": "Cost", "field": "/usd", "agg": "sum", "format": "usd" }`.
+- `"sort"`: a column's label or a field pointer. `"desc": true` turns it. `"max"`: rows shown, 10 by default, at most 50.
+
+```json
+{ "type": "Table", "label": "Time by tool", "rows": "/trace", "group": "/tool", "sort": "Total", "desc": true, "columns": [
+  { "label": "Tool", "field": "/key" },
+  { "label": "Calls", "field": "/count" },
+  { "label": "Total", "field": "/ms", "agg": "sum", "format": "dur" } ] }
+```
 
 Nesting stops at 6 levels and 24 children per block. Anything else is left out.
 
@@ -61,13 +78,28 @@ JSON pointers into the session's snapshot (`WebSnapshot` in the plugin's `types/
 | `/turns` | recent turns; `wallMs` per turn for a Sparkline |
 | `/active` | tool calls running now (`tool`, `what`, `who`) |
 | `/calls` | recent tool calls (`what`, `result`, `who`) |
-| `/trace` | every tool call with its time (`tool`, `what`, `ms` once done) |
-| `/agents` | subagents (`type`, `task`, `status`) |
+| `/trace` | every tool call with its time (`tool`, `what`, `who`, `at`, `ms` once done, `isFailed`) |
+| `/agents` | subagents (`type`, `task`, `status`, `model`, `usd`, `input`, `output`, `cached`, `tools`, `files`, `errors`, `startedAt`, `endedAt`) |
+| `/insights/tokens` | `mainIn`, `mainOut`, `mainCached`, `agentsIn`, `agentsOut` |
+| `/insights/breakdown` | the context window by part (`name`, `tokens`) |
+| `/insights/session`, `/insights/sessionWall` | where the session's time went (a record of milliseconds), and its whole time |
+| `/insights/slow`, `/insights/big` | slowest calls (`tool`, `what`, `who`, `ms`, `at`), largest results |
+| `/insights/edits`, `/insights/reads` | records of file path to count |
+| `/checks`, `/tasks` | verification runs (`kind`, `result`, `at`), tasks |
+| `/learned/bench` | up to 10 past sessions of the project (`at`, `turns`, `calls`, `errors`, `compactions`, `usd`, `totalUsd`, `outTokens`) |
 | `/main/model` | the model |
 | `/session/cwd`, `/session/branch` | where the session runs |
 
 ### Theme
 
 `theme.light` and `theme.dark` map colour tokens to colours. Tokens: `--page`, `--surface`, `--surface-1`, `--surface-2`, `--surface-3`, `--header`, `--line`, `--line-soft`, `--line-input`, `--ink`, `--heading`, `--ink-2`, `--ink-3`, `--signal` (the accent), `--signal-bright`, `--signal-soft`, `--good`, `--warn`, `--bad`, `--good-soft`, `--warn-soft`, `--bad-soft`, `--info`, `--info-line`, `--ramp-1` to `--ramp-5`, `--ramp-other`. Values: `#hex`, `rgb()`, `hsl()` or `oklch()` only. Keep text readable: give both themes, with enough contrast against `--page` and `--surface`.
+
+## Shipped views
+
+`cost`, `speed` and `quality` come with the mod (`server/views/` in the plugin) and are in the menu without a file. Read one as a worked example. To change one, copy it to `~/.claude/agentmon-live/views/` under the same name and edit the copy: it takes the shipped one's place.
+
+## Check before you report
+
+Run `node <plugin root>/server/view-check.mjs <file>` on every view you write or change. It prints `ok`, or one line for each thing the page would leave out (`block`, `panel`, `pointer`, `colour`, `section`, `limit`) and for each pointer that finds nothing in a sample session (`empty`). Fix the file until it says `ok`; an `empty` line for data this session may not have yet (no subagents, no past sessions) can stay, and you say so. The page shows the same lines in its **View notes** box.
 
 After writing, tell the user the view's name and that the page has switched to it. A file the page cannot read shows in its view menu with the error.

@@ -1,0 +1,25 @@
+{
+  "title": "Speed",
+  "sections": [
+    { "id": "speed", "label": "Speed", "blocks": [
+      { "type": "Row", "children": [
+        { "type": "Stat", "label": "Session time", "value": "/insights/sessionWall", "format": "dur" },
+        { "type": "Stat", "label": "Prompts", "value": "/turnCount", "format": "count" },
+        { "type": "Stat", "label": "Tool calls", "value": "/trace", "agg": "count", "format": "count" },
+        { "type": "Stat", "label": "Longest call", "value": "/trace", "field": "/ms", "agg": "max", "format": "dur" },
+        { "type": "Sparkline", "label": "Time per turn", "points": "/turns", "field": "/wallMs", "format": "dur" } ] },
+      { "type": "Row", "children": [
+        { "type": "Table", "label": "Time by tool", "rows": "/trace", "group": "/tool", "sort": "Total", "desc": true, "columns": [
+          { "label": "Tool", "field": "/key" },
+          { "label": "Calls", "field": "/count" },
+          { "label": "Total", "field": "/ms", "agg": "sum", "format": "dur" },
+          { "label": "Longest", "field": "/ms", "agg": "max", "format": "dur" } ] },
+        { "type": "Bars", "label": "Where the time went", "rows": "/insights/session", "format": "dur" } ] },
+      { "type": "Table", "label": "Slowest calls", "rows": "/insights/slow", "sort": "Time", "desc": true, "columns": [
+        { "label": "Tool", "field": "/tool" },
+        { "label": "What", "field": "/what" },
+        { "label": "Who", "field": "/who" },
+        { "label": "At", "field": "/at", "format": "time" },
+        { "label": "Time", "field": "/ms", "format": "dur" } ] } ] }
+  ]
+}

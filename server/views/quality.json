@@ -1,0 +1,28 @@
+{
+  "title": "Quality",
+  "sections": [
+    { "id": "quality", "label": "Quality", "blocks": [
+      { "type": "Row", "children": [
+        { "type": "Stat", "label": "Failed calls", "value": "/trace", "where": [{ "field": "/isFailed", "is": true }], "agg": "count", "format": "count", "warnAt": 1, "badAt": 5 },
+        { "type": "Stat", "label": "Tool calls", "value": "/trace", "agg": "count", "format": "count" },
+        { "type": "Stat", "label": "Files edited", "value": "/insights/edits", "agg": "count", "format": "count" },
+        { "type": "Stat", "label": "Subagents", "value": "/agents", "agg": "count", "format": "count" } ] },
+      { "type": "Row", "children": [
+        { "type": "Table", "label": "Failed calls", "rows": "/trace", "where": [{ "field": "/isFailed", "is": true }], "columns": [
+          { "label": "Tool", "field": "/tool" },
+          { "label": "What", "field": "/what" },
+          { "label": "Who", "field": "/who" },
+          { "label": "At", "field": "/at", "format": "time" } ] },
+        { "type": "Bars", "label": "Most edited files", "rows": "/insights/edits", "format": "count", "max": 8 } ] },
+      { "type": "Table", "label": "Past sessions", "rows": "/learned/bench", "sort": "/at", "desc": true, "columns": [
+        { "label": "When", "field": "/at", "format": "time" },
+        { "label": "Prompts", "field": "/turns", "format": "count" },
+        { "label": "Calls", "field": "/calls", "format": "count" },
+        { "label": "Errors", "field": "/errors", "format": "count" },
+        { "label": "Compactions", "field": "/compactions", "format": "count" },
+        { "label": "Cost", "field": "/totalUsd", "format": "usd" } ] },
+      { "panel": "Checks" },
+      { "panel": "Tasks" } ] },
+    { "id": "verification", "hidden": true }
+  ]
+}

@@ -1,6 +1,7 @@
 // Serves the fixture, screenshots the page in light, dark, at phone width, with the palette and with a call's details open, and checks the navigation: `npm i --no-save playwright && npx playwright install chromium && node scripts/web-shot.mjs <out dir>`.
 import { spawn } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -9,7 +10,9 @@ import { chromium } from 'playwright'
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PORT = '47390'
 const out = process.argv[2] ?? '.'
-const server = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT, '--fixture', join(ROOT, 'tests/fixtures/snapshot.json')], { stdio: 'inherit' })
+// An empty home, so the views are the ones that come with the mod and not this machine's.
+const env = { ...process.env, HOME: mkdtempSync(join(tmpdir(), 'agentmon-shot-')) }
+const server = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT, '--fixture', join(ROOT, 'tests/fixtures/snapshot.json')], { stdio: 'inherit', env })
 process.on('exit', () => server.kill())
 await new Promise(done => setTimeout(done, 500))
 
@@ -22,11 +25,17 @@ const shots = [
   ['palette', 'dark', 1440, page => page.keyboard.press('Control+k')],
   ['drawer', 'dark', 1440, page => page.click('#calls tbody tr')],
   ['agents', 'dark', 1440, async page => { for (const row of await page.locator('[data-testid=agents] tr[data-line]').all()) await row.click() }],
+  ['view-cost', 'dark', 1440, undefined, 'cost'],
+  ['view-speed', 'light', 1440, undefined, 'speed'],
+  ['view-quality', 'dark', 390, undefined, 'quality'],
 ]
 const problems = []
-for (const [name, colorScheme, width, act] of shots) {
+for (const [name, colorScheme, width, act, view] of shots) {
   const page = await browser.newPage({ colorScheme, viewport: { width, height: 900 } })
-  await page.addInitScript(theme => localStorage.setItem('agentmon-live-theme', theme), colorScheme)
+  await page.addInitScript(([theme, chosen]) => {
+    localStorage.setItem('agentmon-live-theme', theme)
+    if (chosen) localStorage.setItem('agentmon-live-view', chosen)
+  }, [colorScheme, view])
   page.on('pageerror', e => problems.push(`${name}: ${e.message}`))
   page.on('console', m => m.type() === 'error' && problems.push(`${name}: ${m.text()}`))
   page.on('dialog', d => (problems.push(`${name}: a log line ran as script`), d.dismiss()))
@@ -35,6 +44,10 @@ for (const [name, colorScheme, width, act] of shots) {
   await page.evaluate(() => document.fonts.ready)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   if (overflow > 0) problems.push(`${name}: the page scrolls sideways by ${overflow} px`)
+  // A view that comes with the mod draws its tables from the fixture and has nothing to say about its own file.
+  if (view && !(await page.$(`#section-${view} table tbody tr`))) problems.push(`${name}: the view drew no table rows`)
+  if (view && !(await page.$$eval(`#section-${view} [aria-hidden] > i`, list => list.some(i => i.style.background.includes('--ramp-1'))))) problems.push(`${name}: the bars are not in the ramp's colours`)
+  if (view && (await page.$('[data-testid=view-notes]'))) problems.push(`${name}: the view has notes: ${await page.locator('[data-testid=view-notes]').innerText()}`)
   await act?.(page)
   await page.waitForTimeout(act ? 400 : 900)
   await page.screenshot({ path: join(out, `web-${name}.png`), fullPage: !act || name === 'agents' })
@@ -349,7 +362,7 @@ server.kill()
 await live.waitForSelector('[data-testid=instruments][data-down]', { timeout: 15000 }).catch(() => problems.push('pins: the band did not see the connection drop'))
 if (await moves(live)) problems.push('pins: moved with the connection down')
 // A reconnect keeps panels mounted, so what a person typed stays.
-const again = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT, '--fixture', join(ROOT, 'tests/fixtures/snapshot.json')], { stdio: 'inherit' })
+const again = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', PORT, '--fixture', join(ROOT, 'tests/fixtures/snapshot.json')], { stdio: 'inherit', env })
 process.on('exit', () => again.kill())
 // The session on screen is the posted one: it reports to the new server, as a live session would.
 await new Promise(done => setTimeout(done, 300))
@@ -379,7 +392,7 @@ again.kill()
 const brokenFile = join(out, 'broken-snapshot.json')
 const { learned: _, ...broken } = JSON.parse(readFileSync(join(ROOT, 'tests/fixtures/snapshot.json'), 'utf8'))
 writeFileSync(brokenFile, JSON.stringify(broken))
-const brokenServer = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', '47391', '--fixture', brokenFile], { stdio: 'inherit' })
+const brokenServer = spawn(process.execPath, [join(ROOT, 'server/web.mjs'), 'serve', '47391', '--fixture', brokenFile], { stdio: 'inherit', env })
 process.on('exit', () => brokenServer.kill())
 await new Promise(done => setTimeout(done, 500))
 const guarded = await browser.newPage()

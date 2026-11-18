@@ -3,7 +3,9 @@ import { copyFileSync, existsSync, readFileSync, readdirSync, writeFileSync } fr
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BUILT, builtHash, sourceHash } from './source-hash.mjs'
+import { build } from 'esbuild'
+
+import { BUILT, builtHash, CHECK, sourceHash } from './source-hash.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SERVER = join(HERE, '../server')
@@ -14,6 +16,8 @@ if (!built.includes('<head>')) throw new Error('the built page has no <head>')
 const extra = readdirSync(join(HERE, 'dist')).filter(f => f !== 'index.html' && !BUILT.includes(f))
 if (extra.length > 0) throw new Error(`the build made files the server does not serve: ${extra.join(', ')}`)
 for (const file of BUILT) copyFileSync(join(HERE, 'dist', file), join(SERVER, file))
+// The view checks as a plain module, so `server/view-check.mjs` tells Claude what the page will leave out of a view file.
+await build({ entryPoints: [join(HERE, 'src/view.ts')], bundle: true, format: 'esm', platform: 'neutral', target: 'es2022', outfile: join(SERVER, CHECK), logLevel: 'warning' })
 // Last: the server takes this file's time as the build's.
 writeFileSync(join(SERVER, 'app.html'), built.replace('<head>', () => `<head>\n<meta name="agentmon-source" content="${sourceHash()}">\n<meta name="agentmon-built" content="${builtHash()}">`))
 

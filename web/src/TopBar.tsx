@@ -1,10 +1,12 @@
 import * as Select from '@radix-ui/react-select'
+import { Fragment, useMemo } from 'react'
 import { Check, ChevronDown, Command, Monitor, Moon, PanelRightClose, PanelRightOpen, Star, Sun, X } from 'lucide-react'
 
 import type { WebSnapshot } from '../../types/index'
 import { dur, sessionNames, stateOf, time } from './format.ts'
 import { fill } from './kpi.ts'
 import { labelsOf, type Page } from './labels.ts'
+import { shapeView } from './view.ts'
 import { chooseView, hasNoSignal, pick, requestPane, set, setTheme, useClock, useStore, type State, type Theme } from './store.ts'
 
 const NEXT: Record<Theme, Theme> = { auto: 'dark', dark: 'light', light: 'auto' }
@@ -81,6 +83,11 @@ function ViewPicker({ p }: { p: Page }) {
   const st = useStore()
   // A view whose file is gone draws the default page, and the menu says so.
   const value = st.views.views.some(v => v.name === st.viewName && !v.error) ? st.viewName : DEFAULT_ITEM
+  // A view goes by its title, and says how much of its file the page left out.
+  const shown = useMemo(() => st.views.views.map(v => {
+    const view = v.view === undefined ? undefined : shapeView(v.view)
+    return { name: v.name, label: view?.title ?? v.name, error: v.error, notes: view?.notes?.length ?? 0, isShipped: v.isShipped === true }
+  }), [st.views])
   return (
     <Select.Root value={value} onValueChange={name => chooseView(name === DEFAULT_ITEM ? '' : name, p.viewBroken)}>
       <Select.Trigger className="select-trigger" aria-label={p.views} title={p.views} data-testid="view-picker">
@@ -90,12 +97,17 @@ function ViewPicker({ p }: { p: Page }) {
       <Select.Portal>
         <Select.Content className="select-menu" position="popper" sideOffset={4}>
           <Select.Viewport>
-            {[{ name: DEFAULT_ITEM, label: p.viewDefault, error: undefined }, ...st.views.views.map(v => ({ name: v.name, label: v.name, error: v.error }))].map(v => (
-              <Select.Item key={v.name} value={v.name} className="select-item">
+            {[{ name: DEFAULT_ITEM, label: p.viewDefault, error: undefined, notes: 0, isShipped: false }, ...shown].map((v, i, list) => (
+              <Fragment key={v.name}>
+              {/* A line between the person's views and the ones that come with the mod. */}
+              {v.isShipped && !list[i - 1]!.isShipped ? <Select.Separator className="my-1 h-px bg-line" data-testid="view-shipped" /> : null}
+              <Select.Item value={v.name} className="select-item">
                 <Select.ItemIndicator className="select-check"><Check size={14} aria-hidden /></Select.ItemIndicator>
                 <Select.ItemText>{v.label}</Select.ItemText>
+                {v.notes ? <span className="select-detail text-warn" title={fill(p.viewNotes, { n: v.notes })} data-testid="view-note-count">{v.notes}</span> : null}
                 {v.error ? <span className="select-detail max-w-[32ch] truncate text-bad" title={v.error}>{v.error}</span> : null}
               </Select.Item>
+              </Fragment>
             ))}
           </Select.Viewport>
         </Select.Content>
