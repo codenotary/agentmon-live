@@ -306,6 +306,7 @@ const en = {
   feedbackCancel: 'cancel',
   feedbackIssue: 'open as GitHub issue',
   star: '★ Star Us',
+  likeAsk: 'Did you like the result? Give feedback or give us a star.',
   feedbackSent: 'Feedback sent. Thank you.',
   feedbackFailed: (why: string) => `Feedback not sent: ${why}`,
   feedbackAnonymous: 'anonymous',

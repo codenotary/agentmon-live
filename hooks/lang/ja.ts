@@ -299,6 +299,7 @@ export const ja: Strings = {
   feedbackCancel: '取り消し',
   feedbackIssue: 'GitHub の issue として開く',
   star: '★ Star Us',
+  likeAsk: '結果はいかがでしたか？フィードバックかスターをお願いします。',
   feedbackSent: 'フィードバックを送信しました。ありがとうございます。',
   feedbackFailed: why => `フィードバックを送信できませんでした: ${why}`,
   feedbackAnonymous: '匿名',

@@ -26,6 +26,7 @@ export async function loadFeedback($: EngineInterface): Promise<void> {
   const loads = (Number(await $.store.get(STARS_KEY).catch(() => undefined)) || 0) + 1
   await $.store.set(STARS_KEY, loads).catch(() => undefined)
   cfg.isStarShown = loads % 10 === 0
+  cfg.isAskShown = false
 }
 
 export async function registerFeedback($: EngineInterface): Promise<void> {

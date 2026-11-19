@@ -299,6 +299,7 @@ export const fr: Strings = {
   feedbackCancel: 'annuler',
   feedbackIssue: 'ouvrir comme issue GitHub',
   star: '★ Star Us',
+  likeAsk: 'Le résultat vous a plu ? Donnez votre avis ou donnez-nous une étoile.',
   feedbackSent: 'Avis envoyé. Merci.',
   feedbackFailed: why => `Avis non envoyé : ${why}`,
   feedbackAnonymous: 'anonyme',
