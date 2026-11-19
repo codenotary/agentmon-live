@@ -82,7 +82,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>) {
   if (doing.length === 0 && !list.some(a => a.status === 'running')) return drawFresh($, e)
   // A new urgent item (a call waiting for approval, a failed check or subagent) redraws at once, not a period late.
   const urgentCount = [doing.filter(a => a.isAsking).length, checked.filter(c => c.result === 'failed').length, list.filter(a => a.status === 'error' || a.tests === 'FAIL').length]
-  const key = JSON.stringify([lay, tab, adv, e.props.bodyColumns, e.surface, cfg.lang, cfg.isClassic, cfg.hidden, urgentCount, Math.floor(now / cfg.refreshMs)])
+  const key = JSON.stringify([lay, tab, adv, e.props.bodyColumns, e.surface, cfg.lang, cfg.isClassic, cfg.hidden, cfg.isAskShown, urgentCount, Math.floor(now / cfg.refreshMs)])
   if (frame?.key === key) return frame.tree
   const tree = await drawFresh($, e)
   frame = { key, tree }
@@ -223,7 +223,11 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   // Approval rows have no prompt, so `i` goes to the first row that does.
   const firstPrompt = shownItems.findIndex(x => x.prompt)
   // Investigate drafts a prompt in the prompt box; nothing is sent until the person sends it, and a draft there is kept.
-  const investigate = async (prompt: string) => {
+  const investigate = async (prompt: string, isFinding = false) => {
+    if (isFinding && !cfg.isAskShown) {
+      cfg.isAskShown = true
+      $.ui.invalidate('ui.render')
+    }
     const box = await $.prompt.read()
     await (box.text.trim() ? $.prompt.fill({ text: `\n\n${prompt}`, mode: 'append' }) : $.prompt.fill({ text: prompt, mode: 'replace' }))
   }
@@ -233,7 +237,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
     <Box gap={1}>
       {x.row}
       {x.prompt && (
-        <Button key={`investigate:${i}`} plain hotkey={i === firstPrompt ? 'i' : undefined} onPress={() => investigate(x.prompt ?? '')}>
+        <Button key={`investigate:${i}`} plain hotkey={i === firstPrompt ? 'i' : undefined} onPress={() => investigate(x.prompt ?? '', true)}>
           {t.investigate}
         </Button>
       )}
@@ -475,7 +479,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         <Box gap={1}>
           <Text dimColor>  ↳ {t.ago(secs(verdict.at ?? now))}{verdict.ref ? ` · ${verdict.ref}` : ''}</Text>
           {!verdict.ok && !verdict.isSent && (
-            <Button key="advisor:investigate" plain hotkey="f" onPress={() => investigate(t.gateReason(gaps.map(g => `- ${g}`).join('\n')))}>
+            <Button key="advisor:investigate" plain hotkey="f" onPress={() => investigate(t.gateReason(gaps.map(g => `- ${g}`).join('\n')), true)}>
               {t.askClaude}
             </Button>
           )}
@@ -628,7 +632,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
             {isWide && <Text dimColor>{s.who.slice(0, 16)}</Text>}
           </Text>
           {/* `i` belongs to Focus when it has something to ask; else to the slowest call. */}
-          <Button key={`investigate:slow:${i}`} plain hotkey={i === 0 && firstPrompt < 0 ? 'i' : undefined} onPress={() => investigate(ti.promptSlowDone(s.tool, s.what, dur(s.ms)))}>
+          <Button key={`investigate:slow:${i}`} plain hotkey={i === 0 && firstPrompt < 0 ? 'i' : undefined} onPress={() => investigate(ti.promptSlowDone(s.tool, s.what, dur(s.ms)), true)}>
             {t.investigate}
           </Button>
         </Box>
@@ -711,12 +715,13 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
       <Button key="pane:hide" plain hotkey="p" onPress={() => setPane($, false)}>{`◂ ${t.paneHide}`}</Button>
       {/* Narrower, the address wraps the header row; `o` still opens it. */}
       {cfg.webOn && cfg.webUrl && cols >= 130 && <Link href={cfg.webUrl}>{cfg.webUrl}</Link>}
+      {cfg.feedback && cfg.isAskShown && <Text>{t.likeAsk}</Text>}
       {cfg.feedback && (
         <Button key="feedback" plain hotkey="b" onPress={() => investigate(t.promptFeedback(MAX_TEXT))}>
           {t.feedback}
         </Button>
       )}
-      {cfg.feedback && cfg.isStarShown && (
+      {cfg.feedback && (cfg.isStarShown || cfg.isAskShown) && (
         <Button key="star" plain hotkey="r" onPress={() => openUrl($, STARS_URL).then(isOpen => (isOpen ? undefined : $.ui.toast(t.web.noBrowser(STARS_URL))))}>
           {t.star}
         </Button>
@@ -783,7 +788,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
         </Text>
         {/* With Insights hidden, `i` still reaches the slowest call from here. */}
         {slowest && !sections.some(s => s.key === 'insights') && (
-          <Button key="investigate:slowest" plain hotkey="i" onPress={() => investigate(ti.promptSlowDone(slowest.tool, slowest.what, dur(slowest.ms)))}>
+          <Button key="investigate:slowest" plain hotkey="i" onPress={() => investigate(ti.promptSlowDone(slowest.tool, slowest.what, dur(slowest.ms)), true)}>
             {t.investigate}
           </Button>
         )}

@@ -298,6 +298,7 @@ export const zh: Strings = {
   feedbackCancel: '取消',
   feedbackIssue: '作为 GitHub issue 打开',
   star: '★ Star Us',
+  likeAsk: '对结果满意吗？欢迎反馈，或给我们一颗星。',
   feedbackSent: '反馈已发送。谢谢。',
   feedbackFailed: why => `反馈未发送：${why}`,
   feedbackAnonymous: '匿名',

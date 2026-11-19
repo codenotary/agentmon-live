@@ -421,6 +421,47 @@ test('feedback off asks for no star', async ($, on) => {
   expect(await starAfter($, on, 9, { feedback: 'off' })).toBe(false)
 })
 
+// A failed lint check gives the pane an item to investigate.
+async function askAfter($: Parameters<TestBody>[0], on: On, press: string, options: Record<string, unknown>) {
+  const clock = mock.clock(on)
+  engine(on)
+  withOptions(on, options)
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__agentmon-live__${e.name}` } }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  const filled: string[] = []
+  on('prompt.fill', (_, e) => {
+    filled.push(e.text)
+    return { isFilled: true }
+  })
+  on('tool.call', () => ({ result: {}, text: 'src/a.ts: 3 problems', isError: true }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  const before = [await ui.find({ type: 'Text', text: /Did you like the result/ }), await ui.find({ type: 'Button', text: /★/ })].map(Boolean)
+  await ui.press({ key: press })
+  await clock.settle()
+  const after = [await ui.find({ type: 'Text', text: /Did you like the result/ }), await ui.find({ type: 'Button', text: /★/ })].map(Boolean)
+  await ui.unmount()
+  return { before, after, filled }
+}
+
+test('an investigate asks for feedback or a star, once the finding went to the prompt', async ($, on) => {
+  const { before, after, filled } = await askAfter($, on, 'investigate:0', {})
+  expect(before).toEqual([false, false])
+  expect(after).toEqual([true, true])
+  expect(filled.at(-1)).toMatch(/^The last lint check failed/)
+})
+
+test('the feedback button alone asks for nothing', async ($, on) => {
+  expect((await askAfter($, on, 'feedback', {})).after).toEqual([false, false])
+})
+
+test('feedback off asks for nothing after an investigate', async ($, on) => {
+  expect((await askAfter($, on, 'investigate:0', { feedback: 'off' })).after).toEqual([false, false])
+})
+
 // A turn with one model step and three reads of one file.
 async function turnWithReads($: Parameters<TestBody>[0], on: On) {
   const clock = mock.clock(on)
