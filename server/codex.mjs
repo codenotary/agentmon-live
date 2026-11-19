@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { cut, firstLine, foldCrewLog, KEEP, lines, LIVE_PATIENCE, pollLogs, putCheck, recordEdit } from './kiro.mjs'
+import { cut, firstLine, foldCrewLog, KEEP, lines, LIVE_PATIENCE, pollLogs, putCheck, recordEdit, VERSION } from './kiro.mjs'
 
 export const codexHome = () => process.env.CODEX_HOME ?? join(homedir(), '.codex')
 const READS = new Set(['read', 'search', 'list_files'])
@@ -146,7 +146,7 @@ export function foldRollout(all, now) {
 
   const folded = foldCrewLog(out, now, text)
   const { snapshot } = folded
-  snapshot.build = `Codex${meta.cli_version ? ` · ${meta.cli_version}` : ''}`
+  snapshot.build = ['Codex', meta.cli_version, VERSION && `AgentMon ${VERSION}`].filter(Boolean).join(' · ')
   // A subagent's chat is its own rollout; the parent's id and the agent's name tie it to the chat that started it.
   if (meta.parent_thread_id) Object.assign(snapshot.session, { parent: String(meta.parent_thread_id), agent: String(meta.agent_nickname ?? meta.agent_path ?? 'agent'), task: String(meta.agent_path ?? '').split('/').at(-1) })
   snapshot.main.effort = effort

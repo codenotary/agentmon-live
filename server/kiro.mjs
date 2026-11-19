@@ -2,6 +2,7 @@
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const kiroHome = () => process.env.KIROCREW_HOME ?? join(homedir(), '.kiro', 'crew')
 // Where the server keeps its own files: the account's secret, and the Kiro Crew app's note.
@@ -150,6 +151,15 @@ export function priceUsd(model, tokens) {
   return ((Number(tokens.input) || 0) * input + (Number(tokens.cache_read) || 0) * read + (Number(tokens.output) || 0) * output) / 1e6
 }
 
+// This copy's version: a chat the server reads has no mod of its own to name one.
+export const VERSION = (() => {
+  try {
+    return String(JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '.claude-plugin', 'plugin.json'), 'utf8')).version ?? '')
+  } catch {
+    return ''
+  }
+})()
+
 // Entry types this does not know are skipped: the crew log adds types and asks its readers to ignore them.
 // `editsOf(card)` gives the files a subagent wrote, `[{ path, at }]`: its own chat is not in this log.
 export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) {
@@ -161,7 +171,7 @@ export function foldCrewLog(entries, now, text = new Map(), editsOf = () => []) 
     lang: 'en',
     labels: LABELS,
     main: { model: '', effort: '' },
-    build: `Kiro Crew${head.agent ? ` · ${head.agent}` : ''}`,
+    build: ['Kiro Crew', head.agent, VERSION && `AgentMon ${VERSION}`].filter(Boolean).join(' · '),
     focus: [],
     usage: { rate: [], usd: 0 },
     turns: [],

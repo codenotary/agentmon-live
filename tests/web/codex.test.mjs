@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
 import { answer, dur, feedbackLink, isNewer, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
 import { foldRollout, readCodex, withAgents } from '../../server/codex.mjs'
-import { priceUsd } from '../../server/kiro.mjs'
+import { priceUsd, VERSION } from '../../server/kiro.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -23,7 +23,7 @@ test('a rollout folds into a snapshot with every required key', () => {
   const optional = new Set(['isPaneOpen', 'testReview', 'gate', 'steps', 'isStepsCut'])
   assert.deepEqual(SHAPE.top.filter(k => !(k in s) && !optional.has(k)), [])
   assert.deepEqual(Object.keys(s).filter(k => !SHAPE.top.includes(k)), [])
-  assert.deepEqual([s.session.id, s.session.cwd, s.build, s.main.model, s.main.effort], [SID, '/home/dev/github/demo', 'Codex · 0.166.0', 'gpt-6.1-sol', 'medium'])
+  assert.deepEqual([s.session.id, s.session.cwd, s.build, s.main.model, s.main.effort], [SID, '/home/dev/github/demo', `Codex · 0.166.0 · AgentMon ${VERSION}`, 'gpt-6.1-sol', 'medium'])
   assert.equal(isLive, true)
   assert.equal(s.turnCount, 1)
 })
@@ -233,7 +233,7 @@ test('the pane is a panel of text, charts and keys for the chat Codex names, wit
   const panel = paneTree(s)
   const text = words(panel)
   assert.equal(panel.type, 'panel')
-  assert.match(text, /^AgentMon Live · Codex · 0\.166\.0 · gpt-6\.1-sol · medium\n/)
+  assert.match(text, /^AgentMon Live · Codex · 0\.166\.0 · AgentMon \d+\.\d+\.\d+ · gpt-6\.1-sol · medium\n/)
   assert.match(text, /Now\n◉ shell npm run lint\n/)
   assert.match(text, /Turn 2 · running\n› run it again\n/)
   assert.match(text, /Changes · 2 edited · 1 read\n✎ src\/a\.ts\n✎ src\/b\.ts\n✗ test npm test\n/)
