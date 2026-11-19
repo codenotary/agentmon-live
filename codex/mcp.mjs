@@ -1,6 +1,8 @@
 // The repo's MCP server for Codex: a live status line under the prompt and the feedback tool. JSON-RPC over stdio, one message per line.
+import { execFile } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
+import { fileURLToPath } from 'node:url'
 
 import { codexHome, readCodex } from '../server/codex.mjs'
 import { envMs } from '../server/kiro.mjs'
@@ -15,8 +17,23 @@ const MAX_TEXT = 2000
 const MAX_ISSUE_BODY = 5000
 // The server's window for a quiet Codex chat, and its override.
 const IDLE_MS = envMs('AGENTMON_KIRO_IDLE_MS', 30 * 60_000)
-// shortcut: the server moves to the next port when another program holds this one, and these links then lead nowhere; have the server record its port if that happens.
-const WEB = 'http://127.0.0.1:47311/'
+const WEB_PORT = 47311
+// The server moves to the next port when another program holds this one; `ensure` names the port it runs on.
+let web = `http://127.0.0.1:${WEB_PORT}/`
+export function webOf(out) {
+  try {
+    const { port } = JSON.parse(out)
+    return Number.isInteger(port) ? `http://127.0.0.1:${port}/` : undefined
+  } catch {
+    return undefined
+  }
+}
+// shortcut: asked once at start, so a server that stops and comes back on another port is missed; ask again on a timer if that happens.
+function ensureWeb() {
+  execFile(process.execPath, [fileURLToPath(new URL('../server/web.mjs', import.meta.url)), 'ensure', String(WEB_PORT)], { timeout: 10_000 }, (_, out) => {
+    web = webOf(out) ?? web
+  })
+}
 const RELEASES = 'https://api.github.com/repos/codenotary/agentmon-live/releases/latest'
 const RELEASE_MS = 3_600_000
 const VERSION = JSON.parse(readFileSync(new URL('../.codex-plugin/plugin.json', import.meta.url), 'utf8')).version
@@ -71,7 +88,7 @@ export function pickChat(chats, threadId) {
 const openGaps = (snapshot, dismissed) => gapChecks(snapshot).filter(g => !dismissed.has(`${snapshot.session.id}\n${g.text}`))
 
 export function statusText(snapshot, dismissed = new Set()) {
-  if (!snapshot) return `AgentMon · no live Codex chat · ${WEB}`
+  if (!snapshot) return `AgentMon · no live Codex chat · ${web}`
   const gaps = openGaps(snapshot, dismissed)
   const checks = snapshot.checks.filter(c => c.result !== 'running').map(c => `${c.kind} ${c.result === 'ok' ? 'ok' : c.result}`)
   const five = snapshot.usage.rate?.find(r => r.kind === 'five_hour')
@@ -81,7 +98,7 @@ export function statusText(snapshot, dismissed = new Set()) {
     ...checks,
     snapshot.usage.ctxPct === undefined ? '' : `ctx ${snapshot.usage.ctxPct}%`,
     five ? `5h ${five.pct}%` : '',
-    WEB,
+    web,
   ].filter(Boolean).join(' · ')
 }
 
@@ -90,7 +107,7 @@ const RECENT = 8
 const MINUTES = 30
 const LOG = 10
 // Codex opens the address itself: it starts this server without the desktop's environment, so a browser started here never shows.
-const WEB_ACTION = { type: 'action', key: 'w', label: 'open the web view', url: WEB }
+const webAction = () => ({ type: 'action', key: 'w', label: 'open the web view', url: web })
 // Text is Codex's UI tree, the status line's format; panel, box, gauge, bars, sparkline, chart and action are the patched sidebar's widgets.
 const paint = (color, text, bold) => ({ type: 'text', props: { ...(color ? { color } : {}), ...(bold ? { weight: 'bold' } : {}) }, children: [text] })
 const line = (...children) => ({ type: 'text', children: [...children, '\n'] })
@@ -115,11 +132,11 @@ const pie = buckets => {
 // The pane holds no seconds clock: Codex redraws the sidebar whenever this panel changes, and the activity line moves once a minute.
 // `chats` lists every live chat, so a chat's subagents show; `release` is a newer AgentMon release, if any.
 export function paneTree(snapshot, dismissed = new Set(), { chats = [], release } = {}) {
-  const web = { type: 'link', props: { href: WEB }, children: ['web view'] }
-  const keys = line(paint('blue', 'ctrl-x s focus or hide · alt-p tabs · '), web)
+  const link = { type: 'link', props: { href: web }, children: ['web view'] }
+  const keys = line(paint('blue', 'ctrl-x s focus or hide · alt-p tabs · '), link)
   const update = release ? [line(paint('green', `↑ AgentMon Live ${release.version} is out · `, true), { type: 'link', props: { href: release.url }, children: ['what changed'] })] : []
-  if (!snapshot) return { type: 'panel', children: [line(paint(undefined, 'AgentMon Live', true)), keys, ...update, line(`No Codex chat written to in the last ${Math.round(IDLE_MS / 60_000)} minutes.`), WEB_ACTION] }
-  const out = [line(paint(undefined, 'AgentMon Live', true), paint('blue', ` · ${[snapshot.build, snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' · ')}`)), keys, ...update, WEB_ACTION]
+  if (!snapshot) return { type: 'panel', children: [line(paint(undefined, 'AgentMon Live', true)), keys, ...update, line(`No Codex chat written to in the last ${Math.round(IDLE_MS / 60_000)} minutes.`), webAction()] }
+  const out = [line(paint(undefined, 'AgentMon Live', true), paint('blue', ` · ${[snapshot.build, snapshot.main.model, snapshot.main.effort].filter(Boolean).join(' · ')}`)), keys, ...update, webAction()]
   const gaps = openGaps(snapshot, dismissed)
   out.push(box('Needs attention', gaps.length === 0 ? [line(paint('green', '✓ nothing open'))] : gaps.slice(0, 5).map(g => line(g.isFailed ? paint('red', ' FAILED ', true) : paint('yellow', ' STALE ', true), ` ${one(g.text)}`)), gaps.length > 0 ? 'red' : 'green'))
   if (gaps.length > 0) {
@@ -291,6 +308,7 @@ export function serve(input = process.stdin, output = process.stdout) {
   const dismissed = new Set()
   const found = {}
   watchRelease(found)
+  ensureWeb()
   createInterface({ input }).on('line', line => {
     let msg
     try {

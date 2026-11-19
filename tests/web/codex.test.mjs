@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { codexGaps, stopAnswer } from '../../codex/gate.mjs'
-import { answer, dur, feedbackLink, isNewer, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf } from '../../codex/mcp.mjs'
+import { answer, dur, feedbackLink, isNewer, PANE_URI, paneTree, pickChat, words, STATUSLINE_URI, statusText, threadOf, webOf } from '../../codex/mcp.mjs'
 import { foldRollout, readCodex, withAgents } from '../../server/codex.mjs'
 import { priceUsd, VERSION } from '../../server/kiro.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
@@ -419,4 +419,10 @@ test('a subagent\'s own subagent draws in the top chat, one done before a restar
   const [[, s]] = chats
   assert.deepEqual(s.agents.map(a => [a.id, a.type, a.status]), [['kid', 'writer', 'done'], ['grandkid', 'helper', 'done']])
   assert.equal(s.insights.edits['/w/a.js'], 2)
+})
+
+test('the web address follows the port ensure names, and keeps the last one on a failed ensure', () => {
+  assert.equal(webOf('{"port":47312,"key":"k","mark":"m"}\n'), 'http://127.0.0.1:47312/')
+  assert.equal(webOf(''), undefined)
+  assert.equal(webOf('{"port":"47312"}'), undefined)
 })
