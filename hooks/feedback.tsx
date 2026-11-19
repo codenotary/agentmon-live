@@ -11,7 +11,7 @@ export const FEEDBACK_TOOL = 'mcp__agentmon-live__feedback'
 const ISSUES = 'https://github.com/codenotary/agentmon-live/issues/new'
 const INSTALL_KEY = 'feedbackInstall'
 const STARS_KEY = 'starCount'
-export const STARS_URL = 'https://github.com/codenotary/agentmon-live/stargazers'
+export const STARS_URL = 'https://github.com/codenotary/agentmon-live'
 const KINDS = ['problem', 'idea', 'thanks', 'other']
 export const MAX_TEXT = 2000
 // What a browser's address bar and GitHub both take, with room for the title and the footer.

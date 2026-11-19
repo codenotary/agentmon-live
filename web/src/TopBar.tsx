@@ -13,7 +13,7 @@ const NEXT: Record<Theme, Theme> = { auto: 'dark', dark: 'light', light: 'auto' 
 
 const START_ITEM = 'agentmon-start'
 const START_URL = 'https://codenotary.com/agentmon-start'
-const STARS = 'https://github.com/codenotary/agentmon-live/stargazers'
+const STARS = 'https://github.com/codenotary/agentmon-live'
 
 // A Select item, not a link: Radix keeps keyboard focus on its items, so a plain link there could not be reached.
 function choose(id: string) {

@@ -9,7 +9,7 @@ import { after, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import * as kiro from '../../server/kiro.mjs'
-import { foldCrewLog, LABELS, readKiro, toolText } from '../../server/kiro.mjs'
+import { foldCrewLog, LABELS, readKiro, toolText, VERSION } from '../../server/kiro.mjs'
 import { SHAPE } from '../fixtures/snapshot-shape.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -37,7 +37,8 @@ test('a crew log folds into a snapshot with every required key', () => {
   const optional = new Set(['isPaneOpen', 'testReview', 'gate', 'steps', 'isStepsCut'])
   assert.deepEqual(SHAPE.top.filter(k => !(k in s) && !optional.has(k)), [])
   assert.deepEqual(Object.keys(s).filter(k => !SHAPE.top.includes(k)), [])
-  assert.deepEqual([s.v, s.session.id, s.session.cwd, s.build, s.main.model], [1, SID, '/home/dev/github/demo', 'Kiro Crew · kirocrew', 'fable'])
+  assert.equal(VERSION, JSON.parse(readFileSync(join(HERE, '../../.claude-plugin/plugin.json'), 'utf8')).version)
+  assert.deepEqual([s.v, s.session.id, s.session.cwd, s.build, s.main.model], [1, SID, '/home/dev/github/demo', `Kiro Crew · kirocrew · AgentMon ${VERSION}`, 'fable'])
   assert.equal(s.turnCount, 1)
   assert.deepEqual([s.turns[0].wallMs, s.turns[0].buckets.shell, s.turns[0].isLive, s.turns[0].prompt], [17292, 4064, undefined, 'how many lines of code?'])
   assert.deepEqual(s.trace, [{ id: 'toolu_014mx5RXWRkSGwzJQgXdAoef', at: 1794295529058, who: 'main session', tool: 'execute', what: '', ms: 4064 }])

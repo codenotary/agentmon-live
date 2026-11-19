@@ -399,6 +399,11 @@ export async function stopWeb($: EngineInterface, sessionId: string): Promise<vo
 export async function openBrowser($: EngineInterface): Promise<{ isOpen: boolean; link: string }> {
   if (!cfg.webUrl) return { isOpen: false, link: '' }
   const link = await openLink($)
-  const r = await $.process.run(['node', serverScript($), 'open', link], { timeoutMs: 10_000 }).catch(() => undefined)
-  return { isOpen: r?.exitCode === 0, link }
+  return { isOpen: await openUrl($, link), link }
+}
+
+// The server's opener takes the page's address and the star page, nothing else.
+export async function openUrl($: EngineInterface, url: string): Promise<boolean> {
+  const r = await $.process.run(['node', serverScript($), 'open', url], { timeoutMs: 10_000 }).catch(() => undefined)
+  return r?.exitCode === 0
 }
