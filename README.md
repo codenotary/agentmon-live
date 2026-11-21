@@ -38,7 +38,7 @@ In a Claude Code session (2.1.308 or later):
 /plugin install agentmon-live --marketplace codenotary/agentmon-live
 ```
 
-Answer `y` to add the marketplace and pick a scope. There is nothing to set up. The pane opens by itself when the terminal is wide enough, or with `/agentmon`.
+Answer `y` to add the marketplace and pick a scope. There is nothing to set up. The pane opens by itself when the terminal is wide enough (not on the mobile app), or with `/agentmon`.
 
 <details>
 <summary>From a shell, the desktop app, or let Claude do it</summary>

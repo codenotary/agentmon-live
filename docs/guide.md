@@ -42,7 +42,7 @@ Languages: English (default), German, French, Spanish, Chinese and Japanese.
 | `/agentmon debug` | Prints the path of this session's debug log (see Debug log) |
 | `/agentmon clear` | Resets counters, finished cards, log and the done gate's results; running subagents stay. The word for clear in each language works too: `leeren`, `vider`, `limpiar`, `清空`, `クリア` |
 
-The pane opens by itself at session start when the terminal is wide enough.
+The pane opens by itself at session start when the terminal is wide enough. On the mobile app it does not open by itself, since it would cover the chat; `/agentmon` opens it.
 
 ## Options
 
