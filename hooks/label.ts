@@ -26,7 +26,7 @@ export function category(tool: string, call: object): Category {
   return 'other'
 }
 
-// What a call counts under: an MCP tool with a target of its own (a browser, the computer) counts as both.
+// What a call counts under: an MCP tool that counts under another category (browser, computer, web) counts under MCP too.
 export function tallies(tool: string, cat: Category): Category[] {
   return cat !== 'mcp' && /^mcp__/.test(tool) ? [cat, 'mcp'] : [cat]
 }
