@@ -86,11 +86,11 @@ test('on the phone app the pane waits for /agentmon', async ($, on) => {
   expect(opens).toBe(1)
 })
 
-test('the pane opens by itself on a terminal', async ($, on) => {
+test('the pane opens by itself on a terminal, a phone beside it or not', async ($, on) => {
   const clock = mock.clock(on)
   let opens = 0
   engine(on, '', () => opens++)
-  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('session.surfaces', () => ({ value: ['terminal', 'mobile'] }))
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await clock.settle()

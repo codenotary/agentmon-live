@@ -370,8 +370,9 @@ export const register: Register = on => {
       update($, checks, list => list.map(c => (c.result === 'running' ? { ...c, result: 'unknown' as const } : c))),
     ])
     // The phone app docks no pane: one opened unasked covers the chat there.
-    const isPhone = (await $.session.surfaces().catch((): readonly string[] => [])).includes('mobile')
-    if (!isPhone && !(await read($, layout)).isPaneHidden) void $.ui.open({ id: PANE, title: 'AgentMon Live' })
+    const drawn = await $.session.surfaces().catch((): readonly string[] => [])
+    const isPhoneOnly = drawn.includes('mobile') && !drawn.includes('terminal')
+    if (!isPhoneOnly && !(await read($, layout)).isPaneHidden) void $.ui.open({ id: PANE, title: 'AgentMon Live' })
     // Reading the build need not hold up the session.
     $.clock.after(0, async () => {
       cfg.build = await build($).catch(() => '')
