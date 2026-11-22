@@ -125,7 +125,7 @@ async function drawFresh($: EngineInterface, e: RenderInput<'Pane'>) {
   const list = stored.map(a => ({ ...a, status: statusOf.get(a.id) ?? a.status }))
   const cols = e.props.bodyColumns
   const isWide = cols >= 100
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
+  const total = st.calls ?? Object.values(counts).reduce((a, b) => a + b, 0)
   const most = Math.max(1, ...Object.values(counts))
   // Two columns less than the row leaves, for the bar's end caps.
   const barRoom = Math.max(6, Math.min(24, cols - (isWide ? 62 : 32)))

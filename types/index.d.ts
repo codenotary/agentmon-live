@@ -219,7 +219,7 @@ export type FeedbackDraft = { type: string; text: string; details: string }
 export type Flow = { cat: string; at: number }
 
 // `streak` counts the main loop's failed calls in a row this turn.
-export type Stats = { errors: Record<string, number>; compactions: number; streak?: number }
+export type Stats = { errors: Record<string, number>; compactions: number; streak?: number; calls?: number }
 
 // `epoch` moves on each clear and load; an answer to an older epoch is dropped.
 export type Advisor = {
