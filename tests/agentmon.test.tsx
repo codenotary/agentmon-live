@@ -73,6 +73,30 @@ test('helpers format like the screenshot', async () => {
   expect(gitCommand('cd repo\ngit status')).toBe('git status')
 })
 
+test('on the phone app the pane waits for /agentmon', async ($, on) => {
+  const clock = mock.clock(on)
+  let opens = 0
+  engine(on, '', () => opens++)
+  on('session.surfaces', () => ({ value: ['mobile'] }))
+
+  await $.session.start({ cwd: '/', surface: 'mobile', isInteractive: true })
+  await clock.settle()
+  expect(opens).toBe(0)
+  await $.command.run({ ...TYPED, command: 'agentmon', args: '' })
+  expect(opens).toBe(1)
+})
+
+test('the pane opens by itself on a terminal, a phone beside it or not', async ($, on) => {
+  const clock = mock.clock(on)
+  let opens = 0
+  engine(on, '', () => opens++)
+  on('session.surfaces', () => ({ value: ['terminal', 'mobile'] }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(opens).toBe(1)
+})
+
 test('pane counts tool calls and shows a spawned subagent', async ($, on) => {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
