@@ -215,6 +215,25 @@ test('git commands get their own row and no log line', async ($, on) => {
   await ui.unmount()
 })
 
+test('a browser MCP call counts as browser and as MCP, and once in the total', async ($, on) => {
+  const clock = mock.clock(on)
+  engine(on)
+  on('tool.call', () => ({ result: {}, isError: true }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'mcp__claude-in-chrome__navigate', url: 'https://example.com' } as never)
+  await $.tool.call({ tool: 'mcp__github__get_issue', issue: 1 } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/x' })
+
+  await clock.settle()
+  const ui = await $.ui.mount(PANE)
+  expect((await ui.find({ type: 'Text', text: /total \d/ }))?.text).toBe('total 3')
+  expect(await ui.find({ type: 'Text', text: /^browser\s+▕.*▏\s+1 1\/min 1 failed/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^MCP\s+▕.*▏\s+2 2\/min 2 failed/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^read files\s+▕.*▏\s+1 1\/min/ })).toBeTruthy()
+  await ui.unmount()
+})
+
 test('the done gate box shows what it does until it first runs', async ($, on) => {
   on('command.register', () => ({ value: { command: 'agentmon' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))

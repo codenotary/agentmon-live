@@ -26,6 +26,11 @@ export function category(tool: string, call: object): Category {
   return 'other'
 }
 
+// What a call counts under: an MCP tool that counts under another category (browser, computer, web) counts under MCP too.
+export function tallies(tool: string, cat: Category): Category[] {
+  return cat !== 'mcp' && /^mcp__/.test(tool) ? [cat, 'mcp'] : [cat]
+}
+
 const ACTOR_OF: Record<Category, Actor> = { git: 'shell', shell: 'shell', read: 'files', search: 'files', edit: 'files', web: 'web', agents: 'agents', skills: 'skills', browser: 'browser', computer: 'browser', mcp: 'mcp', other: 'model' }
 
 // Who acts in a call, by the tool's name alone: the person, the shell, the files, another agent.

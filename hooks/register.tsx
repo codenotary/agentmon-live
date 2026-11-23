@@ -12,7 +12,7 @@ import type { Turn } from './done'
 import { debug, debugPath, openDebugLog, saveDebugLog } from './debuglog'
 import { FEEDBACK_TOOL, holdDraft, loadFeedback, registerFeedback } from './feedback'
 import { build, checkRelease, refreshBase, watchBase } from './release'
-import { category, clean, labelOf } from './label'
+import { category, clean, labelOf, tallies } from './label'
 import { errSig } from './learn'
 import { benchCommand, isMemoryPath, learnCommand, memoryCommand, newPrompt, noteCall, noteCompact, noteGaps, queueMemoryCheck, saveTurn, startLearning } from './learning'
 import { brief, describe, failLine, findChecks, hidesExit, mask, outcomeOf, shortPath, testCounts, testScope, testsOf, took } from './format'
@@ -358,9 +358,11 @@ export const register: Register = on => {
     // State from an older version or another language holds keys this one does not draw; drop them.
     const known = (k: string) => k in t.cat
     const keep = (r: Record<string, number>) => Object.fromEntries(Object.entries(r).filter(([k]) => known(k)))
+    const counted = await read($, tools)
     await Promise.all([
       update($, tools, keep),
-      update($, stats, s => ({ ...s, errors: keep(s.errors) })),
+      // An older version kept no call count; its tallies counted each call once.
+      update($, stats, s => ({ ...s, errors: keep(s.errors), calls: s.calls ?? Object.values(keep(counted)).reduce((a, b) => a + b, 0) })),
       update($, agents, list => trimAgents(reconcile(list.filter(a => a.status in t.status), live))),
       // A load starts a new advisor epoch, so an answer the last load asked for is dropped.
       update($, advisor, a => ({ ...a, notes: a.notes.filter(n => n.kind === 'done' || n.kind === 'check'), epoch: (a.epoch ?? 0) + 1, state: a.state === 'checking' ? ('idle' as const) : a.state })),
@@ -473,7 +475,7 @@ export const register: Register = on => {
         update($, tools, () => ({})),
         update($, agents, list => list.filter(isLive)),
         update($, log, () => []),
-        update($, stats, () => ({ errors: {}, compactions: 0, streak: 0 })),
+        update($, stats, () => ({ errors: {}, compactions: 0, streak: 0, calls: 0 })),
         update($, calls, () => []),
         update($, trace, () => []),
         update($, steps, () => []),
@@ -694,7 +696,8 @@ export const register: Register = on => {
     pulse($)
     // The other rows are written as it starts, so the detail tabs and the checks show it while it is under way; the call does not wait for them.
     const recorded = Promise.all([
-      update($, tools, c => ({ ...c, [cat]: (c[cat] ?? 0) + 1 })),
+      update($, tools, c => tallies(e.tool, cat).reduce((o, k) => bump(o, k), c)),
+      update($, stats, v => ({ ...v, calls: (v.calls ?? 0) + 1 })),
       id !== undefined && update($, agents, all => all.map(a => (a.id === id ? { ...a, tools: a.tools + 1, others: (a.others ?? 0) + (cat === 'read' || cat === 'search' ? 0 : 1), files: agentFiles, lastAt: startedAt } : a))),
       tab && update($, calls, all => [...all, { id: callId, at: startedAt, who, view: tab, what, ...label, result: 'running', ...(id === undefined ? {} : { agentId: id }) }].slice(-60)),
       update($, trace, all => [...all, { id: callId, at: startedAt, who, tool: e.tool, what: what.slice(0, TRACE_TEXT), ...label, ...(isMemoryPath(pathOf(e) ?? '') ? { isMemory: true } : {}), ...(id === undefined ? {} : { agentId: id }), ...(to === undefined ? {} : { to }) }].slice(-KEEP_TRACE)),
@@ -819,12 +822,12 @@ export const register: Register = on => {
         (r.isError || isMain) &&
           update($, stats, v => ({
             ...v,
-            errors: r.isError ? { ...v.errors, [cat]: (v.errors[cat] ?? 0) + 1 } : v.errors,
+            errors: r.isError ? tallies(e.tool, cat).reduce((o, k) => bump(o, k), v.errors) : v.errors,
             streak: isMain ? (r.isError ? (v.streak ?? 0) + 1 : 0) : v.streak,
           })),
         failed && e.agentId !== undefined && update($, agents, all => all.map(a => (a.id === e.agentId ? { ...a, errors: (a.errors ?? 0) + 1 } : a))),
         update($, lastCall, () => ({ tool: e.tool, what, ...label, who, model, at })),
-        update($, flow, all => [...all, { cat, at }].slice(-300)),
+        update($, flow, all => [...all, ...tallies(e.tool, cat).map(c => ({ cat: c, at }))].slice(-300)),
         tab && update($, calls, all => all.map(c => (c.id === callId ? { ...c, result: failed ? t.failed : 'ok', error } : c))),
         update($, trace, all => all.map(c => (c.id === callId ? { ...c, ms: at - startedAt, ...(failed ? { isFailed: true, error: error?.slice(0, TRACE_TEXT) } : {}), ...(r.deny === undefined ? {} : { isDenied: true }) } : c))),
         found.length > 0 && update($, checks, all => all.map(c => (isMine(c) ? { ...c, result: isBackground ? ('running' as const) : resultOf(c.kind), ...(c.kind === 'test' && counts ? counts : {}) } : c))),
