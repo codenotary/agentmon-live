@@ -193,12 +193,15 @@ export function failLine(answer: string): string | undefined {
 
 // `pnpm --filter web test`, `npm --prefix api test`, `yarn workspace web test` run the same script in one package.
 const RUN = String.raw`(?:npm|pnpm|yarn|bun)\s+(?:(?:--filter|-F|--prefix|-C|--dir|-w|--workspace)(?:=|\s+)\S+\s+|(?:-r|--recursive)\s+|workspace\s+\S+\s+)*(?:run\s+)?`
+// Gradle: `./gradlew`, `.\gradlew.bat` or `gradle`, then any flags and earlier tasks (not one after `-x`, which excludes it),
+// then a task with an optional project path (`:app:testDebugUnitTest`).
+const GRADLE = String.raw`(?:\S*\\)?(?:gradlew(?:\.bat)?|gradle)\s+(?:(?!-x\s|--exclude-task[\s=])\S+\s+)*?(?::?[\w.-]+:)*`
 // Each pattern must start a command; the first kind that matches wins, so `tsc` is a typecheck, not a build.
 const CHECKS: [CheckKind, RegExp][] = [
-  ['typecheck', new RegExp(String.raw`^(?:tsc|${RUN}(?:typecheck|type-check)|mypy|pyright|cargo check)\b`)],
-  ['lint', new RegExp(String.raw`^(?:${RUN}lint|eslint|ruff|clippy|golangci-lint|flake8|biome (?:check|lint)|(?:claude )?plugin validate)\b`)],
-  ['test', new RegExp(String.raw`^(?:${RUN}(?:test\b|t(?![\w:-]))|go test|cargo test|pytest|unittest|jest|vitest|mocha|node --test|deno test|playwright test|gradlew? test|mvn test|dotnet test|(?:claude )?plugin test|make test)\b`)],
-  ['build', new RegExp(String.raw`^(?:${RUN}build|cargo build|go build|make(?!\s+(?:clean|distclean|install|help)\b)|webpack|esbuild|vite build)\b`)],
+  ['typecheck', new RegExp(String.raw`^(?:tsc|${RUN}(?:typecheck|type-check)|mypy|pyright|cargo check|${GRADLE}compile\w*Kotlin)\b`)],
+  ['lint', new RegExp(String.raw`^(?:${RUN}lint|eslint|ruff|clippy|golangci-lint|flake8|biome (?:check|lint)|(?:claude )?plugin validate|${GRADLE}(?:lint\w*|ktlintCheck|detekt|spotlessCheck))\b`)],
+  ['test', new RegExp(String.raw`^(?:${RUN}(?:test\b|t(?![\w:-]))|go test|cargo test|pytest|unittest|jest|vitest|mocha|node --test|deno test|playwright test|gradlew? test|mvn test|dotnet test|(?:claude )?plugin test|make test|${GRADLE}(?:test(?:\w*UnitTest)?|connected\w*AndroidTest|check))\b`)],
+  ['build', new RegExp(String.raw`^(?:${RUN}build|cargo build|go build|make(?!\s+(?:clean|distclean|install|help)\b)|webpack|esbuild|vite build|${GRADLE}(?:assemble\w*|build|bundle\w*))\b`)],
 ]
 
 // Which check a shell command runs, if any, and the part of the command that runs it. Only the commands
