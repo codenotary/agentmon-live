@@ -23,6 +23,30 @@ test('outcomeOf reads the summary before test names', () => {
   expect(outcomeOf('', 'test')).toBe('unknown')
 })
 
+test('findCheck reads Gradle tasks with a project path, flags and the Windows wrapper', () => {
+  const kinds: [string, string | undefined][] = [
+    ['./gradlew :app:testDebugUnitTest', 'test'],
+    ["./gradlew :app:testDebugUnitTest --tests 'com.example.WidgetTest'", 'test'],
+    ['./gradlew :market:test', 'test'],
+    ['./gradlew :app:connectedDebugAndroidTest', 'test'],
+    ['./gradlew check', 'test'],
+    ['./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest', 'test'],
+    ['.\\gradlew.bat :app:testDebugUnitTest', 'test'],
+    ['./gradlew :app:assembleDebug', 'build'],
+    ['./gradlew :app:bundleRelease', 'build'],
+    ['./gradlew :app:assembleDebug -x test', 'build'],
+    ['./gradlew assembleRelease --exclude-task test', 'build'],
+    ['./gradlew :app:lintDebug', 'lint'],
+    ['./gradlew ktlintCheck', 'lint'],
+    ['./gradlew :app:compileDebugKotlin', 'typecheck'],
+    ['./gradlew --stop', undefined],
+    ['./gradlew clean', undefined],
+    ['./gradlew :app:testClasses', undefined],
+    ['./gradlew buildEnvironment', undefined],
+  ]
+  for (const [command, kind] of kinds) expect([command, findCheck(command)?.kind]).toEqual([command, kind])
+})
+
 test('findChecks lists every check in command order', () => {
   expect(findChecks('npm run lint && npm test').map(c => c.kind)).toEqual(['lint', 'test'])
   expect(findCheck('npm run lint && npm test')?.part).toBe('npm run lint')
