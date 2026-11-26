@@ -521,6 +521,59 @@ export function readKiroSlot(home, slot, now, cache = new Map()) {
   }
 }
 
+// Kiro Crew's scheduled jobs: one session per job, one turn per run. A run writes no crew log, so its calls do not show.
+// shortcut: the page names a session by cwd and branch only, so the job's name goes in `branch`; give the snapshot a title field when a second reader needs one.
+export function readCron(home, now, idleMs, cache = new Map()) {
+  let jobs
+  try {
+    jobs = JSON.parse(readFileSync(join(home, 'crons.json'), 'utf8')).jobs
+  } catch {
+    return []
+  }
+  if (!Array.isArray(jobs)) return []
+  // A gateway that was killed leaves its run file behind, so the pid and its start time decide.
+  const running = new Map()
+  try {
+    for (const name of readdirSync(join(home, 'cron-running'))) {
+      try {
+        const r = JSON.parse(readFileSync(join(home, 'cron-running', name), 'utf8'))
+        process.kill(r.pid, 0)
+        if (r.pid_start !== undefined && Number(r.pid_start) !== startOf(r.pid)) continue
+        running.set(String(r.job_id), Number(r.started_at) * 1000)
+      } catch {}
+    }
+  } catch {}
+  const out = []
+  for (const job of jobs) {
+    const id = String(job?.id ?? '')
+    if (!/^[\w-]{1,60}$/.test(id)) continue
+    const file = join(home, 'cron-history', `${id}.jsonl`)
+    let runs = []
+    try {
+      const { size } = statSync(file)
+      if (cache.get(file)?.size !== size) cache.set(file, { size, runs: lines(readFileSync(file, 'utf8')).slice(-KEEP_TURNS) })
+      runs = cache.get(file).runs
+    } catch {}
+    const startedAt = running.get(id)
+    const lastAt = Math.max(0, ...runs.map(r => Number(r.finished_at) * 1000 || 0))
+    if (startedAt === undefined && now - lastAt > idleMs) continue
+    const entries = [{ type: 'session', id: `cron-${id}`, cwd: join(home, 'workspace'), agent: 'cron' }]
+    const run = (at, text) => entries.push({ type: 'message/received', time: at, data: { text } }, { type: 'turn/started', time: at, data: {} })
+    for (const r of runs) {
+      const at = Number(r.started_at) * 1000
+      if (!at) continue
+      run(at, job.message)
+      const end = Number(r.finished_at) * 1000 || at
+      entries.push({ type: 'message/sent', time: end, data: { text: r.trace || r.summary || r.error } }, { type: 'turn/completed', time: end, data: { duration_ms: end - at } })
+    }
+    if (startedAt) run(startedAt, job.message)
+    const { snapshot } = foldCrewLog(entries, now)
+    snapshot.session.branch = `cron: ${String(job.name ?? id).slice(0, 80)}`
+    out.push([snapshot.session.id, snapshot])
+  }
+  return out
+}
+
 // A log's first line, without reading a long log whole.
 export function firstLine(file, size = 4096) {
   const buf = Buffer.alloc(size)
