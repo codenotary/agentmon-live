@@ -5,7 +5,7 @@ import { createServer, get, request } from 'node:http'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { envMs, kiroHome, kiroHost, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
+import { envMs, kiroHome, kiroHost, readCron, readKiro, readKiroSlot, stateDir } from './kiro.mjs'
 import { codexHome, readCodex, withAgents } from './codex.mjs'
 import { MAX_SNAPSHOT as MAX_BODY, readSpool } from './spool.mjs'
 import { otlpTarget, postOtlp, toOtlp } from './otlp.mjs'
@@ -382,11 +382,12 @@ function serve(port, fixture, isOpen) {
   const spoolDir = process.env.AGENTMON_SPOOL || join(stateDir(), 'spool')
   const spoolCache = new Map()
   const codexCache = new Map()
+  const cronCache = new Map()
   if (isLocked) setInterval(() => {
     const now = Date.now()
     const codex = withAgents(readCodex(codexHome(), now, kiroIdleMs, codexCache), codexCache)
     const isCodex = new Set(codex.map(([id]) => id))
-    const live = new Map([...readKiro(kiroHome(), now, kiroIdleMs, kiroCache), ...codex, ...readSpool(spoolDir, now, ttlMs, spoolCache)])
+    const live = new Map([...readKiro(kiroHome(), now, kiroIdleMs, kiroCache), ...readCron(kiroHome(), now, kiroIdleMs, cronCache), ...codex, ...readSpool(spoolDir, now, ttlMs, spoolCache)])
     for (const [slot, until] of wanted) {
       if (until < now) wanted.delete(slot)
       else if (![...live.values()].some(s => s.session.slot === slot)) {

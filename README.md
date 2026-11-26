@@ -89,6 +89,7 @@ Then turn it on in Kiro Crew:
 
 - **What you see:** turns with their time split, tool calls with duration and result, waiting approvals and time blocked on you, subagents and the files they wrote, events and insights, the task list, the context gauge, prompts and answers. kiro-cli reports credits, so the cost tile reads **Credits** and tokens stay empty.
 - **Verification:** the last test, lint, typecheck and build command of the chat, each ok, failed or unknown. Kiro Crew's log holds no output, so there are no test counts.
+- **Scheduled jobs:** each Kiro Crew cron job shows as a session named `cron: <job name>`, one turn per run with its prompt, answer and time, while a run goes on or for 30 minutes after the last one. A run writes no crew log, so its tool calls do not show.
 - **What stays empty:** the done gate, Focus and learning. Those come from the plugin inside a Claude Code session.
 - **To remove it:** `kirocrew app uninstall agentmon-live`.
 

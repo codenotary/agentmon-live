@@ -512,3 +512,38 @@ test('a closed chat a tab asks for is listed while the ask holds, and only to th
   const text = await events(port, t => t.includes(`"id":"${SID}"`), pass)
   assert.match(text, new RegExp(`"slot":"${entries[0].slot}"`))
 })
+
+test('a cron job shows as a session with a turn per run, a live run open, and leaves once idle', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agentmon-cron-'))
+  mkdirSync(join(dir, 'cron-history'))
+  mkdirSync(join(dir, 'cron-running'))
+  writeFileSync(join(dir, 'crons.json'), JSON.stringify({ jobs: [{ id: 'j1', name: 'check price', message: 'fetch the price' }, { id: '../x' }] }))
+  writeFileSync(join(dir, 'cron-history/j1.jsonl'), JSON.stringify({ started_at: 1000, finished_at: 1015, status: 'success', trace: 'price is 5' }) + '\n{"half')
+  const now = 1_100_000
+  const [[id, s], ...rest] = kiro.readCron(dir, now, 600_000)
+  assert.equal(rest.length, 0)
+  assert.equal(id, 'cron-j1')
+  assert.equal(s.session.branch, 'cron: check price')
+  assert.deepEqual(s.turns.map(t => [t.startedAt, t.wallMs, t.prompt, t.answer]), [[1_000_000, 15_000, 'fetch the price', 'price is 5']])
+  assert.equal(s.main.turnLive, undefined)
+
+  writeFileSync(join(dir, 'cron-running/j1.r2.json'), JSON.stringify({ job_id: 'j1', started_at: 1090, pid: process.pid, pid_start: kiro.startOf(process.pid) }))
+  const [[, live]] = kiro.readCron(dir, now, 600_000)
+  assert.equal(live.turns.length, 2)
+  assert.equal(live.main.turnLive, true)
+
+  writeFileSync(join(dir, 'cron-running/j1.r2.json'), JSON.stringify({ job_id: 'j1', started_at: 1090, pid: process.pid, pid_start: -1 }))
+  assert.deepEqual(kiro.readCron(dir, now + 600_000, 600_000), [])
+  assert.deepEqual(kiro.readCron(join(dir, 'none'), now, 600_000), [])
+})
+
+test('a run file naming pid 0 or -1 is no live run, and a long history is read from its end', () => {
+  for (const pid of [0, -1, 'x']) assert.equal(kiro.isAlive(pid), false)
+  assert.equal(kiro.isAlive(process.pid), true)
+  assert.equal(kiro.isAlive(process.pid, -1), false)
+  const file = join(mkdtempSync(join(tmpdir(), 'agentmon-tail-')), 'h.jsonl')
+  writeFileSync(file, ['{"n":1}', '{"n":2}', '{"n":3}'].join('\n') + '\n')
+  const size = readFileSync(file).length
+  assert.deepEqual(kiro.lastLines(file, size, 12).map(r => r.n), [3])
+  assert.deepEqual(kiro.lastLines(file, size).map(r => r.n), [1, 2, 3])
+})

@@ -521,12 +521,75 @@ export function readKiroSlot(home, slot, now, cache = new Map()) {
   }
 }
 
+// Kiro Crew's scheduled jobs: one session per job, one turn per run. A run writes no crew log, so its calls do not show.
+// shortcut: the page names a session by cwd and branch only, so the job's name goes in `branch`; give the snapshot a title field when a second reader needs one.
+export function readCron(home, now, idleMs, cache = new Map()) {
+  let jobs
+  try {
+    jobs = JSON.parse(readFileSync(join(home, 'crons.json'), 'utf8')).jobs
+  } catch {
+    return []
+  }
+  if (!Array.isArray(jobs)) return []
+  // A gateway that was killed leaves its run file behind, so the pid and its start time decide.
+  const running = new Map()
+  try {
+    for (const name of readdirSync(join(home, 'cron-running'))) {
+      try {
+        const r = JSON.parse(readFileSync(join(home, 'cron-running', name), 'utf8'))
+        if (isAlive(r.pid, r.pid_start)) running.set(String(r.job_id), Number(r.started_at) * 1000)
+      } catch {}
+    }
+  } catch {}
+  const out = []
+  for (const job of jobs) {
+    const id = String(job?.id ?? '')
+    if (!/^[\w-]{1,60}$/.test(id)) continue
+    const file = join(home, 'cron-history', `${id}.jsonl`)
+    let runs = []
+    try {
+      const { size } = statSync(file)
+      if (cache.get(file)?.size !== size) cache.set(file, { size, runs: lastLines(file, size).slice(-KEEP_TURNS) })
+      runs = cache.get(file).runs
+    } catch {}
+    const startedAt = running.get(id)
+    const lastAt = Math.max(0, ...runs.map(r => Number(r.finished_at) * 1000 || 0))
+    if (startedAt === undefined && now - lastAt > idleMs) continue
+    const entries = [{ type: 'session', id: `cron-${id}`, cwd: join(home, 'workspace'), agent: 'cron' }]
+    const run = (at, text) => entries.push({ type: 'message/received', time: at, data: { text } }, { type: 'turn/started', time: at, data: {} })
+    for (const r of runs) {
+      const at = Number(r.started_at) * 1000
+      if (!at) continue
+      run(at, job.message)
+      const end = Number(r.finished_at) * 1000 || at
+      entries.push({ type: 'message/sent', time: end, data: { text: r.trace || r.summary || r.error } }, { type: 'turn/completed', time: end, data: { duration_ms: end - at } })
+    }
+    if (startedAt) run(startedAt, job.message)
+    const { snapshot } = foldCrewLog(entries, now)
+    snapshot.session.branch = `cron: ${String(job.name ?? id).slice(0, 80)}`
+    out.push([snapshot.session.id, snapshot])
+  }
+  return out
+}
+
 // A log's first line, without reading a long log whole.
 export function firstLine(file, size = 4096) {
   const buf = Buffer.alloc(size)
   const fd = openSync(file, 'r')
   try {
     return buf.subarray(0, readSync(fd, buf, 0, buf.length, 0)).toString('utf8').split('\n', 1)[0]
+  } finally {
+    closeSync(fd)
+  }
+}
+
+// A log's last rows, without reading a long log whole: the first row the cut lands in is dropped.
+export function lastLines(file, size, bytes = 256 * 1024) {
+  const buf = Buffer.alloc(Math.min(size, bytes))
+  const fd = openSync(file, 'r')
+  try {
+    const text = buf.subarray(0, readSync(fd, buf, 0, buf.length, size - buf.length)).toString('utf8')
+    return lines(size > buf.length ? text.slice(text.indexOf('\n') + 1) : text)
   } finally {
     closeSync(fd)
   }
@@ -545,14 +608,23 @@ export function startOf(pid) {
   }
 }
 
+// A process that still runs under the pid a file named; 0 and -1 would match a whole group.
+export function isAlive(pid, start) {
+  if (!Number.isInteger(pid) || pid <= 1) return false
+  try {
+    process.kill(pid, 0)
+  } catch {
+    return false
+  }
+  return start === undefined || Number(start) === startOf(pid)
+}
+
 // The gateway that asked for this server, while it runs. A gateway that was killed leaves the file behind, so the pid decides.
 // shortcut: off Linux there is no start time, so a pid the system gave to another process reads as a live gateway until that one exits.
 export function kiroHost(file = kiroHostFile()) {
   try {
     const { pid, start, origins } = JSON.parse(readFileSync(file, 'utf8'))
-    if (!Number.isInteger(pid) || pid <= 1) return undefined
-    process.kill(pid, 0)
-    if (start !== undefined && start !== startOf(pid)) return undefined
+    if (!isAlive(pid, start)) return undefined
     return { pid, origins: (Array.isArray(origins) ? origins : []).filter(o => /^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}$/.test(o)).slice(0, 4) }
   } catch {
     return undefined
