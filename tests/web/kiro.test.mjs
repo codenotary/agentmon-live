@@ -536,3 +536,14 @@ test('a cron job shows as a session with a turn per run, a live run open, and le
   assert.deepEqual(kiro.readCron(dir, now + 600_000, 600_000), [])
   assert.deepEqual(kiro.readCron(join(dir, 'none'), now, 600_000), [])
 })
+
+test('a run file naming pid 0 or -1 is no live run, and a long history is read from its end', () => {
+  for (const pid of [0, -1, 'x']) assert.equal(kiro.isAlive(pid), false)
+  assert.equal(kiro.isAlive(process.pid), true)
+  assert.equal(kiro.isAlive(process.pid, -1), false)
+  const file = join(mkdtempSync(join(tmpdir(), 'agentmon-tail-')), 'h.jsonl')
+  writeFileSync(file, ['{"n":1}', '{"n":2}', '{"n":3}'].join('\n') + '\n')
+  const size = readFileSync(file).length
+  assert.deepEqual(kiro.lastLines(file, size, 12).map(r => r.n), [3])
+  assert.deepEqual(kiro.lastLines(file, size).map(r => r.n), [1, 2, 3])
+})

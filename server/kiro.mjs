@@ -537,9 +537,7 @@ export function readCron(home, now, idleMs, cache = new Map()) {
     for (const name of readdirSync(join(home, 'cron-running'))) {
       try {
         const r = JSON.parse(readFileSync(join(home, 'cron-running', name), 'utf8'))
-        process.kill(r.pid, 0)
-        if (r.pid_start !== undefined && Number(r.pid_start) !== startOf(r.pid)) continue
-        running.set(String(r.job_id), Number(r.started_at) * 1000)
+        if (isAlive(r.pid, r.pid_start)) running.set(String(r.job_id), Number(r.started_at) * 1000)
       } catch {}
     }
   } catch {}
@@ -551,7 +549,7 @@ export function readCron(home, now, idleMs, cache = new Map()) {
     let runs = []
     try {
       const { size } = statSync(file)
-      if (cache.get(file)?.size !== size) cache.set(file, { size, runs: lines(readFileSync(file, 'utf8')).slice(-KEEP_TURNS) })
+      if (cache.get(file)?.size !== size) cache.set(file, { size, runs: lastLines(file, size).slice(-KEEP_TURNS) })
       runs = cache.get(file).runs
     } catch {}
     const startedAt = running.get(id)
@@ -585,6 +583,18 @@ export function firstLine(file, size = 4096) {
   }
 }
 
+// A log's last rows, without reading a long log whole: the first row the cut lands in is dropped.
+export function lastLines(file, size, bytes = 256 * 1024) {
+  const buf = Buffer.alloc(Math.min(size, bytes))
+  const fd = openSync(file, 'r')
+  try {
+    const text = buf.subarray(0, readSync(fd, buf, 0, buf.length, size - buf.length)).toString('utf8')
+    return lines(size > buf.length ? text.slice(text.indexOf('\n') + 1) : text)
+  } finally {
+    closeSync(fd)
+  }
+}
+
 // Written by the Kiro Crew app's start hook (`kiro/hooks.py`): the gateway's pid and the pages that may frame this one.
 export const kiroHostFile = () => process.env.AGENTMON_KIRO_FILE || join(stateDir(), 'kiro.json')
 
@@ -598,14 +608,23 @@ export function startOf(pid) {
   }
 }
 
+// A process that still runs under the pid a file named; 0 and -1 would match a whole group.
+export function isAlive(pid, start) {
+  if (!Number.isInteger(pid) || pid <= 1) return false
+  try {
+    process.kill(pid, 0)
+  } catch {
+    return false
+  }
+  return start === undefined || Number(start) === startOf(pid)
+}
+
 // The gateway that asked for this server, while it runs. A gateway that was killed leaves the file behind, so the pid decides.
 // shortcut: off Linux there is no start time, so a pid the system gave to another process reads as a live gateway until that one exits.
 export function kiroHost(file = kiroHostFile()) {
   try {
     const { pid, start, origins } = JSON.parse(readFileSync(file, 'utf8'))
-    if (!Number.isInteger(pid) || pid <= 1) return undefined
-    process.kill(pid, 0)
-    if (start !== undefined && start !== startOf(pid)) return undefined
+    if (!isAlive(pid, start)) return undefined
     return { pid, origins: (Array.isArray(origins) ? origins : []).filter(o => /^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}$/.test(o)).slice(0, 4) }
   } catch {
     return undefined
